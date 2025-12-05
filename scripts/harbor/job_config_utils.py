@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 import yaml
 
@@ -17,14 +17,16 @@ def load_job_config(config_path: Path | str) -> JobConfig:
 
     suffix = path.suffix.lower()
     if suffix in {".yaml", ".yml"}:
-        return JobConfig.model_validate(yaml.safe_load(path.read_text()))
-    if suffix == ".json":
-        return JobConfig.model_validate_json(path.read_text())
+        config = JobConfig.model_validate(yaml.safe_load(path.read_text()))
+    elif suffix == ".json":
+        config = JobConfig.model_validate_json(path.read_text())
+    else:
+        raise ValueError(
+            f"Unsupported Harbor job config format '{path.suffix}'. "
+            "Expected one of: .yaml, .yml, .json."
+        )
 
-    raise ValueError(
-        f"Unsupported Harbor job config format '{path.suffix}'. "
-        "Expected one of: .yaml, .yml, .json."
-    )
+    return _normalize_job_config_agent_kwargs(config)
 
 
 def dump_job_config(config: JobConfig, output_path: Path | str) -> Path:
@@ -89,6 +91,7 @@ def update_agent_kwargs(config: JobConfig, kwargs: dict | None) -> JobConfig:
 
     merged = dict(updated.agents[0].kwargs or {})
     merged.update(kwargs)
+    merged = normalize_trajectory_kwargs(merged)
     updated.agents[0].kwargs = merged
     return updated
 
@@ -142,4 +145,52 @@ def extend_agent_kwargs_lists(
         else:
             agent.kwargs[key] = [existing, value]
     updated.agents[0] = agent
+    return updated
+
+
+def normalize_trajectory_kwargs(kwargs: dict[str, Any] | None) -> dict[str, Any]:
+    """Convert legacy ``trajectory_configs`` into the singular ``trajectory_config``."""
+
+    if kwargs is None:
+        return {}
+
+    normalized = dict(kwargs)
+    legacy = normalized.pop("trajectory_configs", None)
+    current = normalized.get("trajectory_config")
+
+    def _ensure_mapping(value: Any, label: str) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError(
+                f"{label} must be a mapping (received {type(value).__name__})."
+            )
+        return value
+
+    merged: dict[str, Any] = {}
+    legacy_map = _ensure_mapping(legacy, "trajectory_configs")
+    if legacy_map:
+        merged.update(legacy_map)
+    current_map = _ensure_mapping(current, "trajectory_config")
+    if current_map:
+        merged.update(current_map)
+
+    if merged:
+        normalized["trajectory_config"] = merged
+    elif current is None:
+        normalized.pop("trajectory_config", None)
+
+    return normalized
+
+
+def _normalize_job_config_agent_kwargs(config: JobConfig) -> JobConfig:
+    """Apply ``normalize_trajectory_kwargs`` to all agent entries."""
+
+    updated = config.model_copy(deep=True)
+    normalized_agents = []
+    for agent in updated.agents:
+        agent_copy = agent.model_copy(deep=True)
+        agent_copy.kwargs = normalize_trajectory_kwargs(agent_copy.kwargs)
+        normalized_agents.append(agent_copy)
+    updated.agents = normalized_agents
     return updated

@@ -4,7 +4,7 @@
 
 # OT-Agent: Data Recipes for Training Agentic Models
 
-Welcome to OT-Agent, a large-scale research project dedicated to creating the best tooling and finding the best data for training small agentic models.
+Welcome to OpenThoughts-Agent (OT-Agent for short), a large-scale research project dedicated to creating the best tooling and finding the best data for training small agentic models.
 
 ## Links
 

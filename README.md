@@ -201,18 +201,18 @@ Adding a new cluster involves defining its resources, sbatch templates, and a do
    - Keep placeholders like `{time_limit}`, `{job_name}`, `{experiments_dir}` etc. intact; they will be filled by `hpc.launch`.
 4. **Declare required templates** in `hpc/sbatch_data_requirements.json` so `_validate_sbatch_templates` can verify your cluster has all needed sbatch files for datagen and training.
 5. **Test with a dry run**:
-   ```bash
-   source hpc/dotenv/<your-cluster>.env
+```bash
+source hpc/dotenv/<your-cluster>.env
 eval "$DCFT_ACTIVATE_ENV"
-   cd "$DCFT"
-   python -m hpc.launch \
-     --job_type datagen \
-     --datagen_script data/<dataset>/generate.py \
-     --datagen_target_repo test-org/test-dataset \
-     --experiments_dir "$DCFT/experiments" \
-     --dry_run
-   ```
-6. Once sbatch scripts look correct, drop `--dry_run` to submit real jobs. If your cluster needs special handling (login vs compute nodes, proxies, etc.), add it to `hpc/hpc.py` and, if necessary, `hpc/launch.py` (for example, see the existing logic for JURECA/JUWELS internet nodes).
+cd "$DCFT"
+python -m hpc.launch \
+  --job_type datagen \
+  --datagen_script data/<dataset>/generate.py \
+  --datagen_target_repo test-org/test-dataset \
+  --experiments_dir "$DCFT/experiments" \
+  --dry_run
+```
+1. Once sbatch scripts look correct, drop `--dry_run` to submit real jobs. If your cluster needs special handling (login vs compute nodes, proxies, etc.), add it to `hpc/hpc.py` and, if necessary, `hpc/launch.py` (for example, see the existing logic for JURECA/JUWELS internet nodes).
 
 #### Learn More about HPC Launch
 

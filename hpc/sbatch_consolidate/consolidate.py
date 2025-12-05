@@ -212,7 +212,7 @@ def main() -> None:
     parser.add_argument("--base-repo", default="", help="Base repo to copy ancillary files from.")
     parser.add_argument("--workdir", required=True, help="Working directory for consolidation artifacts.")
     parser.add_argument("--commit-message", required=True, help="Commit message for the upload.")
-    parser.add_argument("--project-root", required=True, help="Path to dc-agent project root.")
+    parser.add_argument("--project-root", required=True, help="Path to open-thoughts-agent project root.")
     args = parser.parse_args()
 
     consolidate(

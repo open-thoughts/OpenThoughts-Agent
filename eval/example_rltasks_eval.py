@@ -18,7 +18,7 @@ from pathlib import Path
 from datetime import datetime
 from huggingface_hub import snapshot_download
 
-# Add the dc-agent directory to Python path
+# Add the open-thoughts-agent directory to Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from scripts.sandboxes.tasks_parquet_converter import from_parquet

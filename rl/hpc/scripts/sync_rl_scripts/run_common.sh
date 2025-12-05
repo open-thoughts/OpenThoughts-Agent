@@ -69,7 +69,7 @@ python3 -m hpc.launch \
  -S generator.eval_n_samples_per_prompt=8 \
  -S generator.gpu_memory_utilization=0.8 \
  -S trainer.logger="$LOGGER" \
- -S trainer.project_name=dc-agent \
+ -S trainer.project_name=open-thoughts-agent \
  -S trainer.run_name="$RUN_NAME" \
  -S trainer.resume_mode=latest \
  -S generator.backend=vllm \

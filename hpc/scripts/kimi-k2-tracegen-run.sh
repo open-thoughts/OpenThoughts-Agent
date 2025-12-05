@@ -3,7 +3,7 @@ set -euo pipefail
 
 source ~/.bashrc
 source ~/secrets.env
-cd "$SCRATCH/dc-agent"
+cd "$SCRATCH/open-thoughts-agent"
 source hpc/dotenv/nyutorch.env
 git pull --ff-only || true
 

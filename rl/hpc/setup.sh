@@ -5,7 +5,7 @@ echo "=== OT-Agent HPC Setup ==="
 
 # Check if we're in the right directory
 if [ ! -f "hpc/launch.py" ]; then
-    echo "Error: Please run this script from the dc-agent/train directory"
+    echo "Error: Please run this script from the open-thoughts-agent/train directory"
     echo "Current directory: $(pwd)"
     exit 1
 fi

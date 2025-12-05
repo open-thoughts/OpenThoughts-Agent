@@ -15,7 +15,7 @@ set -euo pipefail
 export DCFT=/scratch/bf996/dcagent_scratch
 
 # Explicit dotenv path to avoid brittle expansions
-export DCFT_DOTENV=${DCFT_DOTENV:-/scratch/bf996/dc-agent/hpc/dotenv/nyutorch.env}
+export DCFT_DOTENV=${DCFT_DOTENV:-/scratch/bf996/open-thoughts-agent/hpc/dotenv/nyutorch.env}
 source "$DCFT_DOTENV"
 if [ -f "$DCFT_PRIVATE/database/access.env" ]; then
     source "$DCFT_PRIVATE/database/access.env"
@@ -31,7 +31,7 @@ export CUDA_LAUNCH_BLOCKING=0
 export PYTORCH_CUDA_ALLOC_CONF="garbage_collection_threshold:0.6,max_split_size_mb:128"
 export OUTLINES_CACHE_DIR="${OUTLINES_CACHE_DIR:-/tmp/.outlines}"
 export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/tmp/triton_cache}"
-export RUN_SINGULARITY=/scratch/bf996/dc-agent/hpc/scripts/run-singularity-torch.bash
+export RUN_SINGULARITY=/scratch/bf996/open-thoughts-agent/hpc/scripts/run-singularity-torch.bash
 
 if [ ! -x "$RUN_SINGULARITY" ]; then
     echo "Missing singularity launcher at $RUN_SINGULARITY" >&2
@@ -142,7 +142,7 @@ if [ "$DISABLE_LOG_REQUESTS" = "1" ]; then
 fi
 
 CMD_STR=$(printf '%q ' "${CMD[@]}")
-CONTAINER_CMD="cd \"/scratch/bf996/dc-agent\" && export PYTHONPATH=\"/scratch/bf996/dc-agent:\\$PYTHONPATH\" && $CMD_STR"
+CONTAINER_CMD="cd \"/scratch/bf996/open-thoughts-agent\" && export PYTHONPATH=\"/scratch/bf996/open-thoughts-agent:\\$PYTHONPATH\" && $CMD_STR"
 
 srun --cpu_bind=v --accel-bind=v /bin/bash "$RUN_SINGULARITY" /bin/bash -c "$CONTAINER_CMD" 2>&1 | tee "{experiments_dir}/logs/vllm_server_${SLURM_JOB_ID}.log"
 

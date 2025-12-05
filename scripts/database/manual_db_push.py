@@ -2,7 +2,7 @@
 """
 Manually register a trained model with Supabase.
 
-Usage (from dc-agent/):
+Usage (from open-thoughts-agent/):
     source hpc/dotenv/tacc.env       # or otherwise export the Supabase + WANDB env vars
     python scripts/database/manual_db_push.py
 """
@@ -22,7 +22,7 @@ from database.unified_db.utils import register_trained_model  # noqa: E402
 
 
 HF_MODEL_ID = "DCAgent2/swesmith-stackseq"
-WANDB_RUN = "dogml/dc-agent/81en31zw"
+WANDB_RUN = "dogml/open-thoughts-agent/81en31zw"
 DATASET_NAME = "penfever/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k,penfever/GLM-4.6-swesmith-32ep-131k-nosumm-reasoning"
 BASE_MODEL = "Qwen/Qwen3-8B"
 TRAINING_TYPE = "SFT"

@@ -16,7 +16,7 @@ set -euo pipefail
 export DCFT=/scratch/$USER/dcagent_scratch
 
 # Explicit dotenv path to avoid brittle expansions
-export DCFT_DOTENV=${DCFT_DOTENV:-/scratch/$USER/dc-agent/hpc/dotenv/nyutorch.env}
+export DCFT_DOTENV=${DCFT_DOTENV:-/scratch/$USER/open-thoughts-agent/hpc/dotenv/nyutorch.env}
 source "$DCFT_DOTENV"
 
 if [ -f "$DCFT_PRIVATE/database/access.env" ]; then
@@ -72,7 +72,7 @@ export NUM_GPUS=$((NUM_GPUS_PER_NODE*SLURM_NNODES))
 export HF_HOME=${HF_HOME:-$HF_HUB_CACHE}
 WANDB_DIR_DEFAULT="{experiments_dir}/wandb"
 export WANDB_DIR=${DCFT_WANDB_DIR:-$WANDB_DIR_DEFAULT}
-export RUN_SINGULARITY=/scratch/$USER/dc-agent/hpc/scripts/run-singularity-torch.bash
+export RUN_SINGULARITY=/scratch/$USER/open-thoughts-agent/hpc/scripts/run-singularity-torch.bash
 
 if [ ! -f "$RUN_SINGULARITY" ]; then
     echo "Missing singularity launcher at $RUN_SINGULARITY" >&2
@@ -92,8 +92,8 @@ srun --cpu_bind=v --accel-bind=v bash -c '
   set -euo pipefail
 
   TRAIN_LAUNCH_CMD=$(cat <<EOC
-cd "/scratch/$USER/dc-agent"
-export PYTHONPATH="/scratch/$USER/dc-agent:\$PYTHONPATH"
+cd "/scratch/$USER/open-thoughts-agent"
+export PYTHONPATH="/scratch/$USER/open-thoughts-agent:\$PYTHONPATH"
 export HF_HOME="/scratch/$USER/.cache/huggingface"
 export CHECKPOINTS_DIR="/scratch/$USER/dcagent_scratch/checkpoints"
 export WANDB_DIR="$OUTPUT_DIR/wandb"

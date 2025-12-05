@@ -1,6 +1,6 @@
 # Scripts
 
-Utility entrypoints that support data generation, trace analysis, Harbor uploads, Daytona orchestration, and benchmarking live in this directory. Run commands from the `dc-agent/` root so relative imports resolve correctly, and append `--help` to any script for full CLI details.
+Utility entrypoints that support data generation, trace analysis, Harbor uploads, Daytona orchestration, and benchmarking live in this directory. Run commands from the `open-thoughts-agent/` root so relative imports resolve correctly, and append `--help` to any script for full CLI details.
 
 ## Directory overview
 - `analysis/` – post-processing helpers for trace JSONL files and eval runtimes.

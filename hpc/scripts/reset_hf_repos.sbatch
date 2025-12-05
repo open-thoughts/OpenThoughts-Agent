@@ -25,8 +25,8 @@ set -euo pipefail
 cd "$DCFT"
 
 ORG="${HF_ORG:-DCAgent2}"
-mkdir -p "${SCRATCH}/dc-agent/experiments"
-MODEL_LIST_FILE="$(mktemp "${SCRATCH}/dc-agent/experiments/${ORG}_public_models.XXXXXX.txt")"
+mkdir -p "${SCRATCH}/open-thoughts-agent/experiments"
+MODEL_LIST_FILE="$(mktemp "${SCRATCH}/open-thoughts-agent/experiments/${ORG}_public_models.XXXXXX.txt")"
 trap 'rm -f "$MODEL_LIST_FILE"' EXIT
 
 echo "Listing public models for organization: ${ORG}"

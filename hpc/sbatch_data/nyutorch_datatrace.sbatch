@@ -26,7 +26,7 @@ fi
 export DCFT=/scratch/bf996/dcagent_scratch
 
 # Explicit dotenv path to avoid brittle expansions
-export DCFT_DOTENV=${DCFT_DOTENV:-/scratch/bf996/dc-agent/hpc/dotenv/nyutorch.env}
+export DCFT_DOTENV=${DCFT_DOTENV:-/scratch/bf996/open-thoughts-agent/hpc/dotenv/nyutorch.env}
 source "$DCFT_DOTENV"
 if [ -f "$DCFT_PRIVATE/database/access.env" ]; then
     source "$DCFT_PRIVATE/database/access.env"
@@ -36,7 +36,7 @@ fi
 
 export PYTHONFAULTHANDLER=1
 export HF_HOME=${HF_HOME:-$HF_HUB_CACHE}
-export RUN_SINGULARITY=/scratch/bf996/dc-agent/hpc/scripts/run-singularity-torch.bash
+export RUN_SINGULARITY=/scratch/bf996/open-thoughts-agent/hpc/scripts/run-singularity-torch.bash
 
 if [ ! -f "$RUN_SINGULARITY" ]; then
     echo "Missing singularity launcher at $RUN_SINGULARITY" >&2
@@ -183,7 +183,7 @@ if [ -n "$TRACE_TASK_TYPE" ]; then
 fi
 
 CMD_STR=$(printf '%q ' "${CMD[@]}")
-CONTAINER_CMD="cd \"/scratch/bf996/dc-agent\" && export PYTHONPATH=\"/scratch/bf996/dc-agent:\\$PYTHONPATH\" && $CMD_STR"
+CONTAINER_CMD="cd \"/scratch/bf996/open-thoughts-agent\" && export PYTHONPATH=\"/scratch/bf996/open-thoughts-agent:\\$PYTHONPATH\" && $CMD_STR"
 
 if [ "$TRACE_USE_GPU" = "1" ]; then
     if [ "$TRACE_NUM_GPUS" -le 0 ]; then

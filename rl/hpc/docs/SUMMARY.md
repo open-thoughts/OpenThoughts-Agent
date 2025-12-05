@@ -2,12 +2,12 @@
 
 ## 🎯 **Complete HPC System Successfully Created**
 
-I have successfully created a comprehensive HPC setup for the dc-agent training system, adapting the existing DCFT HPC system specifically for dc-agent with SkyRL integration.
+I have successfully created a comprehensive HPC setup for the open-thoughts-agent training system, adapting the existing DCFT HPC system specifically for open-thoughts-agent with SkyRL integration.
 
 ## 📁 **System Structure (24 files total)**
 
 ```
-dc-agent/rl/hpc/
+open-thoughts-agent/rl/hpc/
 ├── README.md                    # Comprehensive documentation
 ├── SUMMARY.md                   # This summary
 ├── setup.sh                     # Quick setup script

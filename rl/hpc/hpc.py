@@ -41,7 +41,7 @@ class HPC(BaseModel):
     @computed_field
     @property
     def train_sbatch_jinja_path(self) -> str:
-        # All sbatch files should be in the "dc-agent/rl/hpc/sbatch" directory
+        # All sbatch files should be in the "open-thoughts-agent/rl/hpc/sbatch" directory
         hpc_dir = os.path.dirname(os.path.realpath(__file__))
         return os.path.join(hpc_dir, "sbatch", self.train_sbatch_jinja_filename)
 

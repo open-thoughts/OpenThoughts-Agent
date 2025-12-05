@@ -1,5 +1,5 @@
 #!/bin/bash
-# Status monitoring script for dc-agent jobs
+# Status monitoring script for open-thoughts-agent jobs
 
 LINES=${1:-1}
 

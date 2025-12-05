@@ -39,19 +39,19 @@ export TRITON_CACHE_DIR=/scratch/10000/eguha3/triton_cache_dir
 export FLASHINFER_WORKSPACE_BASE=/scratch/08002/gsmyrnis/flashinfer_cache
 export UV_CACHE_DIR=/scratch/10000/eguha3/uv_cache_dir
 export HYDRA_FULL_ERROR=1
-export HF_CACHE_DIR=/scratch/08134/negin/dc-agent-shared/.hf_cache
+export HF_CACHE_DIR=/scratch/08134/negin/open-thoughts-agent-shared/.hf_cache
 export HF_HUB_CACHE=$SCRATCH/hub
 
 # DB/API secrets etc.
-source /scratch/08134/negin/dc-agent-shared/dc-agent/eval/tacc/secret.env
+source /scratch/08134/negin/open-thoughts-agent-shared/open-thoughts-agent/eval/tacc/secret.env
 
 # Toolchain fixes
-ln -sf /home1/apps/gcc/15.1.0/lib64/libstdc++.so.6 /scratch/08134/negin/dc-agent-shared/SkyRL/envs/tacc_rl_v4/lib/libstdc++.so.6
-export LD_LIBRARY_PATH=/home1/apps/gcc/15.1.0/lib64:/scratch/08134/negin/dc-agent-shared/SkyRL/envs/tacc_rl_v4/lib/python3.12/site-packages/torch/lib:$LD_LIBRARY_PATH
+ln -sf /home1/apps/gcc/15.1.0/lib64/libstdc++.so.6 /scratch/08134/negin/open-thoughts-agent-shared/SkyRL/envs/tacc_rl_v4/lib/libstdc++.so.6
+export LD_LIBRARY_PATH=/home1/apps/gcc/15.1.0/lib64:/scratch/08134/negin/open-thoughts-agent-shared/SkyRL/envs/tacc_rl_v4/lib/python3.12/site-packages/torch/lib:$LD_LIBRARY_PATH
 
 # Conda env
 source /scratch/08002/gsmyrnis/miniconda3/etc/profile.d/conda.sh
-conda activate /scratch/08134/negin/dc-agent-shared/SkyRL/envs/tacc_rl_v4
+conda activate /scratch/08134/negin/open-thoughts-agent-shared/SkyRL/envs/tacc_rl_v4
 
 # Verify sandbox installation
 sb --help >/dev/null
@@ -141,7 +141,7 @@ if [ ! -d "$RUN_DIR" ]; then
 fi
 
 # Point PYTHONPATH at your uploader package
-export PYTHONPATH="/scratch/08134/negin/dc-agent-shared/dcagents-leaderboard:${PYTHONPATH:-}"
+export PYTHONPATH="/scratch/08134/negin/open-thoughts-agent-shared/dcagents-leaderboard:${PYTHONPATH:-}"
 
 export RUN_DIR="$RUN_DIR"
 export UPLOAD_USERNAME="${UPLOAD_USERNAME:-negin}"

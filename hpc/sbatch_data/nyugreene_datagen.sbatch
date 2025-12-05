@@ -20,7 +20,7 @@ if [ -z "$DCFT_PRIVATE_CANDIDATE" ]; then
     if [ -d "$PWD/hpc/dotenv" ]; then
         DCFT_PRIVATE_CANDIDATE="$PWD"
     else
-        DCFT_PRIVATE_CANDIDATE="/scratch/bf996/dc-agent"
+        DCFT_PRIVATE_CANDIDATE="/scratch/bf996/open-thoughts-agent"
     fi
 fi
 export DCFT_PRIVATE="$DCFT_PRIVATE_CANDIDATE"
@@ -34,7 +34,7 @@ fi
 
 export PYTHONFAULTHANDLER=1
 export HF_HOME=${HF_HOME:-$HF_HUB_CACHE}
-export RUN_SINGULARITY=/scratch/bf996/dc-agent/hpc/scripts/run-singularity.bash
+export RUN_SINGULARITY=/scratch/bf996/open-thoughts-agent/hpc/scripts/run-singularity.bash
 
 if [ ! -f "$RUN_SINGULARITY" ]; then
     echo "Missing singularity launcher at $RUN_SINGULARITY" >&2
@@ -111,7 +111,7 @@ if [ -n "${DATAGEN_EXTRA_ARGS:-}" ]; then
 fi
 
 CMD_STR=$(printf '%q ' "${CMD[@]}")
-CONTAINER_CMD="cd \"/scratch/bf996/dc-agent\" && export PYTHONPATH=\"/scratch/bf996/dc-agent:\\$PYTHONPATH\" && $CMD_STR"
+CONTAINER_CMD="cd \"/scratch/bf996/open-thoughts-agent\" && export PYTHONPATH=\"/scratch/bf996/open-thoughts-agent:\\$PYTHONPATH\" && $CMD_STR"
 
 if [ "$GPU_REQUIRED" = "1" ]; then
     if [ "$REQUESTED_GPUS" -le 0 ]; then

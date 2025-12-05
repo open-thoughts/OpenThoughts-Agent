@@ -23,7 +23,7 @@ Note: The sbatch script/job itself is responsible for creating the DB row with a
 import os
 import sys
 
-sys.path.insert(0, "/scratch/08134/negin/dc-agent-shared/dcagents-leaderboard")
+sys.path.insert(0, "/scratch/08134/negin/open-thoughts-agent-shared/dcagents-leaderboard")
 
 import json
 import re

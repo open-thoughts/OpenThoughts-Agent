@@ -184,7 +184,7 @@ def _add_dataclass_arguments(arg_group, dataclass_type, exclude_fields=None):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Launch HPC jobs for dc-agent experiment")
+    parser = argparse.ArgumentParser(description="Launch HPC jobs for open-thoughts-agent experiment")
 
     # Create argument groups for better organization
     launch_group = parser.add_argument_group("Launch Arguments")

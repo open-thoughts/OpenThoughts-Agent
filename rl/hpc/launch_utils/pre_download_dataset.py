@@ -21,7 +21,7 @@ try:
     # Add parent directory to path to find scripts module
     import sys
     from pathlib import Path
-    # Get the dc-agent root directory (3 levels up from this file)
+    # Get the open-thoughts-agent root directory (3 levels up from this file)
     dc_agent_root = Path(__file__).resolve().parents[3]
     if str(dc_agent_root) not in sys.path:
         sys.path.insert(0, str(dc_agent_root))

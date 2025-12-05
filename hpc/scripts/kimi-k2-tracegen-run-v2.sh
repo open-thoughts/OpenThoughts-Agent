@@ -21,7 +21,7 @@ if [[ -z "${SCRATCH:-}" ]]; then
     export SCRATCH="$HOME"
 fi
 
-cd "$SCRATCH/dc-agent"
+cd "$SCRATCH/open-thoughts-agent"
 
 # Source environment - disable strict mode temporarily
 set +u

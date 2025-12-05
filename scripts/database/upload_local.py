@@ -27,7 +27,7 @@ def upload_to_db(model_configs: Any):
     Args:
         model_configs (Model): The model configuration created from generate_model_configs()
     """
-    raise NotImplementedError("Database integration is disabled in dc-agent")
+    raise NotImplementedError("Database integration is disabled in open-thoughts-agent")
 
 
 def create_model_repo(model_name):
@@ -99,7 +99,7 @@ def wandb_sync(output_dir):
 
 
 def check_model_exists(hf_model: str):
-    raise NotImplementedError("Database integration is disabled in dc-agent")
+    raise NotImplementedError("Database integration is disabled in open-thoughts-agent")
 
 
 def generate_model_configs(
@@ -118,7 +118,7 @@ def generate_model_configs(
     Returns:
         Model: A model configuration object containing the relevant metadata to be uplaoded to DB.
     """
-    raise NotImplementedError("Database-backed model metadata generation is disabled in dc-agent")
+    raise NotImplementedError("Database-backed model metadata generation is disabled in open-thoughts-agent")
 
 
 def upload_to_db(model_configs: Any):
@@ -129,7 +129,7 @@ def upload_to_db(model_configs: Any):
     Args:
         model_configs (Model): The model configuration created from generate_model_configs()
     """
-    raise NotImplementedError("Database integration is disabled in dc-agent")
+    raise NotImplementedError("Database integration is disabled in open-thoughts-agent")
 
 
 def upload_to_hf(training_parameters):

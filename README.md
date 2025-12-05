@@ -190,7 +190,7 @@ RL training currently uses cluster-specific scripts under `rl/` rather than the 
 Adding a new cluster involves defining its resources, sbatch templates, and a dotenv file so `hpc.launch` can target it.
 
 1. **Create a dotenv for your cluster** under `hpc/dotenv/`, following `tacc.env` as a template. At a minimum, define:
-   - `DCFT` (path to your dc-agent checkout on the cluster)
+   - `DCFT` (path to your open-thoughts-agent checkout on the cluster)
    - `DCFT_ACTIVATE_ENV` (command to activate the Python env)
    - paths for `EXPERIMENTS_DIR`, `DATASETS_DIR`, `MODELS_DIR`, and any cluster-specific SIF/Apptainer images.
 2. **Register basic cluster metadata** by exporting `HPC_NAME` and related fields in your dotenv or by passing them on the CLI:

@@ -15,20 +15,20 @@ conda activate /scratch/08134/negin/anaconda3/envs/tbench312
 
 which python
 
-bash /scratch/08134/negin/dc-agent-shared/dc-agent/eval/tacc_eval/start_ray_server.sh
+bash /scratch/08134/negin/open-thoughts-agent-shared/open-thoughts-agent/eval/tacc_eval/start_ray_server.sh
 sleep 60
-python /scratch/08134/negin/dc-agent-shared/dc-agent/eval/tacc_eval/start_ray.py &
+python /scratch/08134/negin/open-thoughts-agent-shared/open-thoughts-agent/eval/tacc_eval/start_ray.py &
 sleep 60
 echo "Starting apptainer"
 module load tacc-apptainer
 echo "Starting ssh"
-ssh -L 127.0.0.1:23753:127.0.0.1:23750 -N -f -i  /scratch/08134/negin/dc-agent-shared/ssh_keys/etash_docker_v1 eguha3@34.174.66.137 &
+ssh -L 127.0.0.1:23753:127.0.0.1:23750 -N -f -i  /scratch/08134/negin/open-thoughts-agent-shared/ssh_keys/etash_docker_v1 eguha3@34.174.66.137 &
 echo "Starting apptainer exec"
-export IMAGE="/scratch/08134/negin/dc-agent-shared/dc-agent/images/python_3.13.sif"
-apptainer exec --nv --bind /scratch/08134/negin/dc-agent-shared/docker:/usr/local/bin/docker --bind /scratch/08134/negin/dc-agent-shared/.docker:/root/.docker:ro --bind /tmp:/tmp \
+export IMAGE="/scratch/08134/negin/open-thoughts-agent-shared/open-thoughts-agent/images/python_3.13.sif"
+apptainer exec --nv --bind /scratch/08134/negin/open-thoughts-agent-shared/docker:/usr/local/bin/docker --bind /scratch/08134/negin/open-thoughts-agent-shared/.docker:/root/.docker:ro --bind /tmp:/tmp \
   ${IMAGE} \
   bash -c "
-  source /scratch/08134/negin/dc-agent-shared/tb-env/bin/activate
+  source /scratch/08134/negin/open-thoughts-agent-shared/tb-env/bin/activate
   export DOCKER_HOST=tcp://127.0.0.1:23753
   rm -f ~/.docker/cli-plugins/docker-compose
   # Create the directory if it doesn't exist
@@ -44,4 +44,4 @@ apptainer exec --nv --bind /scratch/08134/negin/dc-agent-shared/docker:/usr/loca
   ## INSTALLING FOR ARM64
   curl -SL https://github.com/docker/buildx/releases/download/v0.11.2/buildx-v0.11.2.linux-arm64 -o ~/.docker/cli-plugins/docker-buildx
   chmod +x ~/.docker/cli-plugins/docker-buildx
-  python /scratch/08134/negin/dc-agent-shared/dc-agent/eval/example_tbench.py"
+  python /scratch/08134/negin/open-thoughts-agent-shared/open-thoughts-agent/eval/example_tbench.py"

@@ -8,12 +8,12 @@
 #     ../eval-jsonl
 #
 # Defaults if not provided:
-#   ROOT=/scratch/08134/negin/dc-agent-shared/dc-agent/eval/tacc/jobs/to_upload
+#   ROOT=/scratch/08134/negin/open-thoughts-agent-shared/open-thoughts-agent/eval/tacc/jobs/to_upload
 #   OUT_DIR=../eval-jsonl
 
 set -euo pipefail
 
-ROOT=${1:-/scratch/08134/negin/dc-agent-shared/dc-agent/eval/tacc/jobs/to_upload}
+ROOT=${1:-/scratch/08134/negin/open-thoughts-agent-shared/open-thoughts-agent/eval/tacc/jobs/to_upload}
 OUT_DIR=${2:-../eval-jsonl}
 
 mkdir -p "$OUT_DIR"

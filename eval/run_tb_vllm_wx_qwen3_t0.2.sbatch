@@ -28,7 +28,7 @@ MODEL_NAME="Qwen/Qwen3-8B"
 GPU_MEM_UTIL="0.85"
 
 # Remote Docker VM SSH
-SSH_KEY="/scratch/10672/wenxuand/dc-agent-shared/.ssh/docker_vm_key"
+SSH_KEY="/scratch/10672/wenxuand/open-thoughts-agent-shared/.ssh/docker_vm_key"
 # SSH_KEY="/home/08134/negin/.ssh/docker_vm_key"
 SSH_USER_HOST="negin_raoof@34.42.235.32"
 DOCKER_REMOTE_TCP="127.0.0.1:23750"

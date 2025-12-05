@@ -15,7 +15,7 @@ module load tacc-apptainer
 source /scratch/08002/gsmyrnis/miniconda3/etc/profile.d/conda.sh
 conda activate /scratch/08002/gsmyrnis/miniconda3/envs/dcft
 
-export IMAGE="/scratch/08134/negin/dc-agent-shared/dc-agent/images/python_3.13.sif"
+export IMAGE="/scratch/08134/negin/open-thoughts-agent-shared/open-thoughts-agent/images/python_3.13.sif"
 chmod 666 -R /scratch/10000/eguha3/ssh_keys/etash_docker_v2
 ssh -L 127.0.0.1:23753:127.0.0.1:23750 -N -f -i  /scratch/10000/eguha3/ssh_keys/etash_docker_v2 eguha3@34.174.178.159 &
 
@@ -27,10 +27,10 @@ python -m vllm.entrypoints.openai.api_server \
 
 sleep 30
 chmod 777 -R /scratch/10000/eguha3/ssh_keys/etash_docker_v2
-apptainer exec --nv --bind /scratch/08134/negin/dc-agent-shared/docker:/usr/local/bin/docker --bind /scratch/08134/negin/dc-agent-shared/.docker:/root/.docker:ro --bind /tmp:/tmp \
+apptainer exec --nv --bind /scratch/08134/negin/open-thoughts-agent-shared/docker:/usr/local/bin/docker --bind /scratch/08134/negin/open-thoughts-agent-shared/.docker:/root/.docker:ro --bind /tmp:/tmp \
   ${IMAGE} \
   bash -c "
-  source /scratch/08134/negin/dc-agent-shared/tb-env/bin/activate
+  source /scratch/08134/negin/open-thoughts-agent-shared/tb-env/bin/activate
   export DOCKER_HOST=tcp://127.0.0.1:23753
   docker ps
   rm -f ~/.docker/cli-plugins/docker-compose
@@ -47,4 +47,4 @@ apptainer exec --nv --bind /scratch/08134/negin/dc-agent-shared/docker:/usr/loca
   ## INSTALLING FOR ARM64
   curl -SL https://github.com/docker/buildx/releases/download/v0.11.2/buildx-v0.11.2.linux-arm64 -o ~/.docker/cli-plugins/docker-buildx
   chmod +x ~/.docker/cli-plugins/docker-buildx
-  python /scratch/08134/negin/dc-agent-shared/dc-agent/eval/example_tbench.py"
+  python /scratch/08134/negin/open-thoughts-agent-shared/open-thoughts-agent/eval/example_tbench.py"

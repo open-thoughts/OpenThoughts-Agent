@@ -17,7 +17,7 @@ The Harbor evaluation system evaluates agent performance on coding tasks using v
 ### Required Access
 
 - TACC account with access to the DataComp allocation
-- Access to shared conda environment at `/scratch/08134/negin/dc-agent-shared/SkyRL/envs/tacc_rl_v5`
+- Access to shared conda environment at `/scratch/08134/negin/open-thoughts-agent-shared/SkyRL/envs/tacc_rl_v5`
 
 ### Required Files
 
@@ -39,7 +39,7 @@ export UPLOAD_USERNAME="your_username"
 export UPLOAD_MODE="skip_on_error"  # or "fail_on_error"
 ```
 
-Place this file at: `/scratch/08134/negin/dc-agent-shared/dc-agent/eval/tacc/secret.env`
+Place this file at: `/scratch/08134/negin/open-thoughts-agent-shared/open-thoughts-agent/eval/tacc/secret.env`
 
 ## Environment Setup
 
@@ -72,7 +72,7 @@ FLASHINFER_WORKSPACE_BASE=/scratch/08002/gsmyrnis/flashinfer_cache
 UV_CACHE_DIR=/scratch/10000/eguha3/uv_cache_dir
 
 # Hugging Face cache
-HF_CACHE_DIR=/scratch/08134/negin/dc-agent-shared/.hf_cache
+HF_CACHE_DIR=/scratch/08134/negin/open-thoughts-agent-shared/.hf_cache
 HF_HUB_CACHE=$SCRATCH/hub
 
 # Ray configuration
@@ -84,7 +84,7 @@ RAY_RUNTIME_ENV_HOOK=ray._private.runtime_env.uv_runtime_env_hook.hook
 The script activates the shared conda environment:
 ```bash
 source /scratch/08002/gsmyrnis/miniconda3/etc/profile.d/conda.sh
-conda activate /scratch/08134/negin/dc-agent-shared/SkyRL/envs/tacc_rl_v5
+conda activate /scratch/08134/negin/open-thoughts-agent-shared/SkyRL/envs/tacc_rl_v5
 ```
 
 ## Running Evaluations
@@ -341,13 +341,13 @@ The HF dataset will be at: `mlfoundations-dev/<sanitized_run_tag>`
 **Solutions**:
 - Verify conda environment exists:
   ```bash
-  ls /scratch/08134/negin/dc-agent-shared/SkyRL/envs/tacc_rl_v5
+  ls /scratch/08134/negin/open-thoughts-agent-shared/SkyRL/envs/tacc_rl_v5
   ```
 - Check conda is initialized properly
 - Manually activate environment to test:
   ```bash
   source /scratch/08002/gsmyrnis/miniconda3/etc/profile.d/conda.sh
-  conda activate /scratch/08134/negin/dc-agent-shared/SkyRL/envs/tacc_rl_v5
+  conda activate /scratch/08134/negin/open-thoughts-agent-shared/SkyRL/envs/tacc_rl_v5
   sb --help  # Test if sandbox is available
   ```
 

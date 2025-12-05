@@ -85,7 +85,7 @@ echo -e "CONFIG: $CONFIG\nOUTPUT_DIR: $OUTPUT_DIR"
 export CONFIG OUTPUT_DIR
 
 SINGULARITY_IMAGE="${SCRATCH}/cuda-img/cuda-cudnn-12.8-ubuntu22.sif"
-SINGULARITY_BIND="${SCRATCH}/dc-agent:${SCRATCH}/dc-agent"
+SINGULARITY_BIND="${SCRATCH}/open-thoughts-agent:${SCRATCH}/open-thoughts-agent"
 
 if [[ ! -f "$SINGULARITY_IMAGE" ]]; then
     echo "ERROR: Singularity image not found at $SINGULARITY_IMAGE" >&2

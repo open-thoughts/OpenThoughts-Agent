@@ -3,7 +3,7 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dc-agent"
+name = "open-thoughts-agent"
 version = "0.1.0"
 description = "OT-Agent HPC launch and data tooling"
 requires-python = ">=3.10"

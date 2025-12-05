@@ -74,7 +74,7 @@ def test_dry_run():
             "--dry_run"
         ]
 
-        # Run from the parent directory (dc-agent/train)
+        # Run from the parent directory (open-thoughts-agent/train)
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         result = subprocess.run(cmd, capture_output=True, text=True, cwd=parent_dir)
         

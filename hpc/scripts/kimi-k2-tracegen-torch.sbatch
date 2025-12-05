@@ -16,7 +16,7 @@ usage() {
 Usage: sbatch kimi-k2-tracegen-torch.sbatch [options]
 
 Options (override defaults used by this job):
-  --experiments-dir PATH         Experiments directory (default: $SCRATCH/dc-agent/experiments/kimi-k2-freelancer)
+  --experiments-dir PATH         Experiments directory (default: $SCRATCH/open-thoughts-agent/experiments/kimi-k2-freelancer)
   --datagen-config PATH          Datagen YAML (default: hpc/datagen_yaml/kimi_k2_vllm_serve_tacc_ray.yaml)
   --trace-script PATH            Trace generation script (default: data/freelancer/generate_abstract.py)
   --trace-target-repo ID         Hugging Face repo for traces (default: DCAgent2/kimi-k2-freelancer-traces)
@@ -45,7 +45,7 @@ USAGE
 }
 
 # Defaults
-EXPERIMENTS_DIR_DEFAULT="${SCRATCH:-$HOME}/dc-agent/experiments/kimi-k2-freelancer"
+EXPERIMENTS_DIR_DEFAULT="${SCRATCH:-$HOME}/open-thoughts-agent/experiments/kimi-k2-freelancer"
 DATAGEN_CONFIG_DEFAULT="hpc/datagen_yaml/kimi_k2_vllm_serve_torch_h200.yaml"
 TRACE_SCRIPT_DEFAULT="data/freelancer/generate_abstract.py"
 TRACE_TARGET_REPO_DEFAULT="DCAgent2/kimi-k2-freelancer-traces"
@@ -192,7 +192,7 @@ RUN_SCRIPT_PATH="$REPO_ROOT/hpc/scripts/kimi-k2-tracegen-run.sh"
 
 # Fallback: try SCRATCH location
 if [[ ! -f "$RUN_SCRIPT_PATH" ]]; then
-  RUN_SCRIPT_PATH="${SCRATCH:-$HOME}/dc-agent/hpc/scripts/kimi-k2-tracegen-run.sh"
+  RUN_SCRIPT_PATH="${SCRATCH:-$HOME}/open-thoughts-agent/hpc/scripts/kimi-k2-tracegen-run.sh"
 fi
 
 if [[ ! -f "$RUN_SCRIPT_PATH" ]]; then

@@ -4,7 +4,7 @@ OT-Agent is a highly collaborative project and we welcome many contributors. Bel
 
 ## Clone the repo
 ```
-git clone git@github.com:mlfoundations/dc-agent.git
+git clone git@github.com:mlfoundations/open-thoughts-agent.git
 ```
 
 ## Create a new branch
@@ -24,7 +24,7 @@ git switch -c ryan/contributing-docs
 gh pr create \
   --draft \
   --title "Add contributing.md" \
-  --body "Outline the conventions used for contributing code to dc-agent" 
+  --body "Outline the conventions used for contributing code to open-thoughts-agent" 
 ```
 
 > [!IMPORTANT]

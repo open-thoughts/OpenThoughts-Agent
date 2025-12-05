@@ -28,7 +28,7 @@ VLLM_HOST="127.0.0.1"            # connect via loopback; server binds 0.0.0.0
 
 # Remote Docker VM SSH
 SSH_KEY="./.ssh_wx/docker_vm_key"
-# SSH_KEY="/scratch/08134/negin/dc-agent-shared/.ssh/docker_vm_key"
+# SSH_KEY="/scratch/08134/negin/open-thoughts-agent-shared/.ssh/docker_vm_key"
 SSH_USER_HOST="negin_raoof@34.42.235.32"
 DOCKER_REMOTE_TCP="127.0.0.1:23750"
 DOCKER_LOCAL_TCP="127.0.0.1:23751"
@@ -152,7 +152,7 @@ echo "[INFO] Running Terminal-Bench inside Apptainer..."
 #   --task-id hello-world"
 
 
-OAI_KEY_PATH="/scratch/08134/negin/dc-agent-shared/.ssh_wx/oai_key.txt"
+OAI_KEY_PATH="/scratch/08134/negin/open-thoughts-agent-shared/.ssh_wx/oai_key.txt"
 OAI_KEY=$(cat $OAI_KEY_PATH)
 
 # SG_CMD="source ./tb-env/bin/activate; \

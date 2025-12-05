@@ -5,7 +5,7 @@ each directory name, run filter_latest_episodes.py to produce a JSONL per repo,
 then summarize each JSONL via summarize_conversations.py.
 
 Defaults:
-- root: /scratch/08134/negin/dc-agent-shared/dc-agent/eval/tacc/jobs/to_upload
+- root: /scratch/08134/negin/open-thoughts-agent-shared/open-thoughts-agent/eval/tacc/jobs/to_upload
 - out_dir: ../eval-jsonl
 
 Repo id mapping:
@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Batch filter + summarize across subdirectories")
     p.add_argument(
         "--root",
-        default="/scratch/08134/negin/dc-agent-shared/dc-agent/eval/tacc/jobs/to_upload",
+        default="/scratch/08134/negin/open-thoughts-agent-shared/open-thoughts-agent/eval/tacc/jobs/to_upload",
         help="Root directory containing subdirectories to process",
     )
     p.add_argument(

@@ -59,7 +59,7 @@ def _install_safe_episode_guard() -> None:
 
 
 def _import_export_traces():
-    """Resolve the export_traces helper, preferring the dc-agent wrapper."""
+    """Resolve the export_traces helper, preferring the open-thoughts-agent wrapper."""
     try:
         from database.unified_db.utils import export_traces  # type: ignore
         return export_traces

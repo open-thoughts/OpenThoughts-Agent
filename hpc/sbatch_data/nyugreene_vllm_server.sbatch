@@ -20,7 +20,7 @@ if [ -z "$DCFT_PRIVATE_CANDIDATE" ]; then
     if [ -d "$PWD/hpc/dotenv" ]; then
         DCFT_PRIVATE_CANDIDATE="$PWD"
     else
-        DCFT_PRIVATE_CANDIDATE="/scratch/bf996/dc-agent"
+        DCFT_PRIVATE_CANDIDATE="/scratch/bf996/open-thoughts-agent"
     fi
 fi
 export DCFT_PRIVATE="$DCFT_PRIVATE_CANDIDATE"

@@ -6,7 +6,7 @@ HPC launch is an infrastructure-aware master framework designed to allow a wide 
 
 ## Which HPC Launch do I need?
 
-There are actually two HPC launchers in OT-Agent right now, one for RL and one for SFT, datagen and model consolidation. If you are interested in RL please refer to `dc-agent/rl/hpc`; otherwise, continue here.
+There are actually two HPC launchers in OT-Agent right now, one for RL and one for SFT, datagen and model consolidation. If you are interested in RL please refer to `open-thoughts-agent/rl/hpc`; otherwise, continue here.
 
 ## What job types can I launch with HPC launch?
 
@@ -23,7 +23,7 @@ Please review this checklist before you try to launch a job with HPC launch.
 
 * Am I on a supported cluster for the job type I want to launch?
 * Have I reviewed and installed necessary dependencies for the job type I want to launch?
-* Have I registered all required environment variables? `dc-agent/hpc/dotenv` contains 'starter packs' but you may need to customize or extend this with your own API keys, wandb accounts, et cetera
+* Have I registered all required environment variables? `open-thoughts-agent/hpc/dotenv` contains 'starter packs' but you may need to customize or extend this with your own API keys, wandb accounts, et cetera
 * Have I been added to all of the OT-Agent accounts I will need access to? For training you will need Huggingface, WandB, Supabase, and Github.
 * Have I checked the exact command line arguments in HPC launch for the job type I want? Not all available flags are documented here.
 
@@ -62,7 +62,7 @@ This guide focuses on `python -m hpc.launch`, the entry point used to submit bot
 
 To start a session:
 ```bash
-source /path/to/dc-agent/hpc/dotenv/tacc.env
+source /path/to/open-thoughts-agent/hpc/dotenv/tacc.env
 cd "$DCFT"
 $DCFT_ACTIVATE_ENV
 ```

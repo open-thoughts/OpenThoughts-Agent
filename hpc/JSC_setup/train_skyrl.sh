@@ -192,8 +192,8 @@ ALLOC_CMD=$(cat <<'EOS'
             source /p/project1/ccstdl/nezhurina1/miniconda/miniconda/bin/activate && \
             conda activate /p/project1/ccstdl/envs/marianna/py3.12 && \
             proxychains4 python -m skyrl_train.entrypoints.main_base \
-            data.train_data=['/p/scratch/synthlaion/dc-agent-shared/hf_hub/datasets--mlfoundations-dev--sandboxes-tasks/snapshots/6fdf67053a80836ab1d5007104baded9f3513733'] \
-            data.val_data=['/p/scratch/synthlaion/dc-agent-shared/hf_hub/datasets--mlfoundations-dev--sandboxes-tasks/snapshots/6fdf67053a80836ab1d5007104baded9f3513733'] \
+            data.train_data=['/p/scratch/synthlaion/open-thoughts-agent-shared/hf_hub/datasets--mlfoundations-dev--sandboxes-tasks/snapshots/6fdf67053a80836ab1d5007104baded9f3513733'] \
+            data.val_data=['/p/scratch/synthlaion/open-thoughts-agent-shared/hf_hub/datasets--mlfoundations-dev--sandboxes-tasks/snapshots/6fdf67053a80836ab1d5007104baded9f3513733'] \
             +data.cache_dir=/p/scratch/laionize/marianna/sky-rl/data/gsm8k \
             trainer.algorithm.advantage_estimator=grpo \
             trainer.policy.model.path=/p/data1/mmlaion/marianna/models/Qwen/Qwen2.5-0.5B-Instruct \

@@ -1,0 +1,25 @@
+name: Nightly Submodule Update
+
+on:
+  schedule:
+    - cron: "0 3 * * *"  # 03:00 UTC nightly
+  workflow_dispatch: {}
+
+jobs:
+  update-submodules:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Update submodules
+        run: |
+          git submodule update --init --recursive
+
+      - name: Verify LLaMA-Factory present
+        run: |
+          test -d dcft/train/llamafactory || (echo "llamafactory submodule missing" && exit 1)
+

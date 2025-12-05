@@ -1,0 +1,895 @@
+{
+  "version": "1.0",
+  "dataset": "westenfelder/NL2SH-ALFA",
+  "config": "test",
+  "split": "train",
+  "seed": 7,
+  "total_samples": 100,
+  "skill_coverage": {
+    "xargs": 6,
+    "find": 8,
+    "sort": 6,
+    "ls": 5,
+    "head": 5,
+    "awk": 8,
+    "Bash": 100,
+    "tail": 7,
+    "cut": 6,
+    "uniq": 3,
+    "cat": 8,
+    "paste": 2,
+    "grep": 10,
+    "which": 2,
+    "tr": 2,
+    "tee": 2,
+    "date": 2,
+    "mkdir": 4,
+    "sed": 7,
+    "env": 3,
+    "curl": 3,
+    "apt": 1,
+    "chmod": 2,
+    "openssl": 2,
+    "rm": 3,
+    "jq": 1,
+    "ps": 1,
+    "tar": 3,
+    "ln": 4,
+    "rmdir": 1,
+    "lsof": 1,
+    "base64": 2,
+    "touch": 1,
+    "chown": 1,
+    "mv": 1,
+    "POSIX regular expressions": 1,
+    "cp": 1,
+    "pwd": 1
+  },
+  "unmet_targets": {
+    "rm": 2,
+    "cp": 4,
+    "mv": 4,
+    "touch": 3,
+    "chmod": 2,
+    "rmdir": 2,
+    "POSIX regular expressions": 3,
+    "ps": 2,
+    "date": 2,
+    "which": 1,
+    "lsof": 1,
+    "chown": 1,
+    "curl": 1,
+    "apt": 2,
+    "base64": 1,
+    "tee": 1,
+    "jq": 3
+  },
+  "samples": [
+    {
+      "task_index": 0,
+      "dataset_index": 234,
+      "skills": [
+        "Bash",
+        "awk",
+        "find",
+        "head",
+        "ls",
+        "sort",
+        "xargs"
+      ]
+    },
+    {
+      "task_index": 1,
+      "dataset_index": 235,
+      "skills": [
+        "Bash",
+        "cut",
+        "find",
+        "sort",
+        "tail",
+        "xargs"
+      ]
+    },
+    {
+      "task_index": 2,
+      "dataset_index": 146,
+      "skills": [
+        "Bash",
+        "awk",
+        "find",
+        "sort",
+        "uniq"
+      ]
+    },
+    {
+      "task_index": 3,
+      "dataset_index": 136,
+      "skills": [
+        "Bash",
+        "awk",
+        "cat",
+        "find",
+        "xargs"
+      ]
+    },
+    {
+      "task_index": 4,
+      "dataset_index": 266,
+      "skills": [
+        "Bash",
+        "cut",
+        "grep",
+        "head",
+        "paste"
+      ]
+    },
+    {
+      "task_index": 5,
+      "dataset_index": 261,
+      "skills": [
+        "Bash",
+        "grep",
+        "ls",
+        "which"
+      ]
+    },
+    {
+      "task_index": 6,
+      "dataset_index": 114,
+      "skills": [
+        "Bash",
+        "grep",
+        "head",
+        "sort",
+        "uniq"
+      ]
+    },
+    {
+      "task_index": 7,
+      "dataset_index": 119,
+      "skills": [
+        "Bash",
+        "cut",
+        "head",
+        "tr"
+      ]
+    },
+    {
+      "task_index": 8,
+      "dataset_index": 238,
+      "skills": [
+        "Bash",
+        "awk",
+        "cat",
+        "tail",
+        "xargs"
+      ]
+    },
+    {
+      "task_index": 9,
+      "dataset_index": 32,
+      "skills": [
+        "Bash",
+        "cat",
+        "grep"
+      ]
+    },
+    {
+      "task_index": 10,
+      "dataset_index": 224,
+      "skills": [
+        "Bash",
+        "find",
+        "ls",
+        "sort",
+        "tail"
+      ]
+    },
+    {
+      "task_index": 11,
+      "dataset_index": 191,
+      "skills": [
+        "Bash",
+        "date",
+        "tee"
+      ]
+    },
+    {
+      "task_index": 12,
+      "dataset_index": 233,
+      "skills": [
+        "Bash",
+        "find",
+        "mkdir",
+        "sed",
+        "xargs"
+      ]
+    },
+    {
+      "task_index": 13,
+      "dataset_index": 263,
+      "skills": [
+        "Bash",
+        "env",
+        "sed"
+      ]
+    },
+    {
+      "task_index": 14,
+      "dataset_index": 237,
+      "skills": [
+        "Bash",
+        "cat",
+        "mkdir",
+        "sort",
+        "xargs"
+      ]
+    },
+    {
+      "task_index": 15,
+      "dataset_index": 163,
+      "skills": [
+        "Bash",
+        "grep",
+        "tee"
+      ]
+    },
+    {
+      "task_index": 16,
+      "dataset_index": 166,
+      "skills": [
+        "Bash",
+        "cat",
+        "sed"
+      ]
+    },
+    {
+      "task_index": 17,
+      "dataset_index": 44,
+      "skills": [
+        "Bash",
+        "apt",
+        "curl"
+      ]
+    },
+    {
+      "task_index": 18,
+      "dataset_index": 299,
+      "skills": [
+        "Bash",
+        "paste"
+      ]
+    },
+    {
+      "task_index": 19,
+      "dataset_index": 112,
+      "skills": [
+        "Bash",
+        "chmod",
+        "find"
+      ]
+    },
+    {
+      "task_index": 20,
+      "dataset_index": 292,
+      "skills": [
+        "Bash",
+        "grep",
+        "ls"
+      ]
+    },
+    {
+      "task_index": 21,
+      "dataset_index": 288,
+      "skills": [
+        "Bash",
+        "ls"
+      ]
+    },
+    {
+      "task_index": 22,
+      "dataset_index": 104,
+      "skills": [
+        "Bash",
+        "openssl"
+      ]
+    },
+    {
+      "task_index": 23,
+      "dataset_index": 183,
+      "skills": [
+        "Bash",
+        "find",
+        "rm"
+      ]
+    },
+    {
+      "task_index": 24,
+      "dataset_index": 281,
+      "skills": [
+        "Bash",
+        "jq"
+      ]
+    },
+    {
+      "task_index": 25,
+      "dataset_index": 273,
+      "skills": [
+        "Bash",
+        "awk",
+        "tail"
+      ]
+    },
+    {
+      "task_index": 26,
+      "dataset_index": 19,
+      "skills": [
+        "Bash",
+        "sed"
+      ]
+    },
+    {
+      "task_index": 27,
+      "dataset_index": 25,
+      "skills": [
+        "Bash",
+        "ps"
+      ]
+    },
+    {
+      "task_index": 28,
+      "dataset_index": 257,
+      "skills": [
+        "Bash",
+        "tar"
+      ]
+    },
+    {
+      "task_index": 29,
+      "dataset_index": 190,
+      "skills": [
+        "Bash",
+        "ln"
+      ]
+    },
+    {
+      "task_index": 30,
+      "dataset_index": 11,
+      "skills": [
+        "Bash",
+        "rmdir"
+      ]
+    },
+    {
+      "task_index": 31,
+      "dataset_index": 13,
+      "skills": [
+        "Bash",
+        "env"
+      ]
+    },
+    {
+      "task_index": 32,
+      "dataset_index": 258,
+      "skills": [
+        "Bash",
+        "ln"
+      ]
+    },
+    {
+      "task_index": 33,
+      "dataset_index": 9,
+      "skills": [
+        "Bash",
+        "date"
+      ]
+    },
+    {
+      "task_index": 34,
+      "dataset_index": 165,
+      "skills": [
+        "Bash",
+        "grep",
+        "tar"
+      ]
+    },
+    {
+      "task_index": 35,
+      "dataset_index": 61,
+      "skills": [
+        "Bash",
+        "ln"
+      ]
+    },
+    {
+      "task_index": 36,
+      "dataset_index": 2,
+      "skills": [
+        "Bash",
+        "lsof"
+      ]
+    },
+    {
+      "task_index": 37,
+      "dataset_index": 277,
+      "skills": [
+        "Bash",
+        "tr"
+      ]
+    },
+    {
+      "task_index": 38,
+      "dataset_index": 158,
+      "skills": [
+        "Bash",
+        "rm"
+      ]
+    },
+    {
+      "task_index": 39,
+      "dataset_index": 67,
+      "skills": [
+        "Bash",
+        "uniq"
+      ]
+    },
+    {
+      "task_index": 40,
+      "dataset_index": 38,
+      "skills": [
+        "Bash",
+        "base64"
+      ]
+    },
+    {
+      "task_index": 41,
+      "dataset_index": 64,
+      "skills": [
+        "Bash",
+        "chmod"
+      ]
+    },
+    {
+      "task_index": 42,
+      "dataset_index": 20,
+      "skills": [
+        "Bash",
+        "which"
+      ]
+    },
+    {
+      "task_index": 43,
+      "dataset_index": 43,
+      "skills": [
+        "Bash",
+        "tar"
+      ]
+    },
+    {
+      "task_index": 44,
+      "dataset_index": 4,
+      "skills": [
+        "Bash",
+        "touch"
+      ]
+    },
+    {
+      "task_index": 45,
+      "dataset_index": 5,
+      "skills": [
+        "Bash",
+        "mkdir"
+      ]
+    },
+    {
+      "task_index": 46,
+      "dataset_index": 274,
+      "skills": [
+        "Bash",
+        "awk",
+        "env"
+      ]
+    },
+    {
+      "task_index": 47,
+      "dataset_index": 62,
+      "skills": [
+        "Bash",
+        "chown"
+      ]
+    },
+    {
+      "task_index": 48,
+      "dataset_index": 195,
+      "skills": [
+        "Bash",
+        "mv"
+      ]
+    },
+    {
+      "task_index": 49,
+      "dataset_index": 198,
+      "skills": [
+        "Bash",
+        "curl"
+      ]
+    },
+    {
+      "task_index": 50,
+      "dataset_index": 6,
+      "skills": [
+        "Bash",
+        "rm"
+      ]
+    },
+    {
+      "task_index": 51,
+      "dataset_index": 106,
+      "skills": [
+        "Bash",
+        "curl"
+      ]
+    },
+    {
+      "task_index": 52,
+      "dataset_index": 269,
+      "skills": [
+        "Bash",
+        "POSIX regular expressions",
+        "grep",
+        "head"
+      ]
+    },
+    {
+      "task_index": 53,
+      "dataset_index": 265,
+      "skills": [
+        "Bash",
+        "mkdir"
+      ]
+    },
+    {
+      "task_index": 54,
+      "dataset_index": 39,
+      "skills": [
+        "Bash",
+        "base64"
+      ]
+    },
+    {
+      "task_index": 55,
+      "dataset_index": 37,
+      "skills": [
+        "Bash",
+        "openssl"
+      ]
+    },
+    {
+      "task_index": 56,
+      "dataset_index": 3,
+      "skills": [
+        "Bash",
+        "cp"
+      ]
+    },
+    {
+      "task_index": 57,
+      "dataset_index": 247,
+      "skills": [
+        "Bash",
+        "cut"
+      ]
+    },
+    {
+      "task_index": 58,
+      "dataset_index": 271,
+      "skills": [
+        "Bash",
+        "sed"
+      ]
+    },
+    {
+      "task_index": 59,
+      "dataset_index": 10,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 60,
+      "dataset_index": 74,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 61,
+      "dataset_index": 47,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 62,
+      "dataset_index": 87,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 63,
+      "dataset_index": 103,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 64,
+      "dataset_index": 150,
+      "skills": [
+        "Bash",
+        "ln"
+      ]
+    },
+    {
+      "task_index": 65,
+      "dataset_index": 68,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 66,
+      "dataset_index": 81,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 67,
+      "dataset_index": 296,
+      "skills": [
+        "Bash",
+        "grep"
+      ]
+    },
+    {
+      "task_index": 68,
+      "dataset_index": 8,
+      "skills": [
+        "Bash",
+        "pwd"
+      ]
+    },
+    {
+      "task_index": 69,
+      "dataset_index": 248,
+      "skills": [
+        "Bash",
+        "cut"
+      ]
+    },
+    {
+      "task_index": 70,
+      "dataset_index": 220,
+      "skills": [
+        "Bash",
+        "grep"
+      ]
+    },
+    {
+      "task_index": 71,
+      "dataset_index": 76,
+      "skills": [
+        "Bash",
+        "cat"
+      ]
+    },
+    {
+      "task_index": 72,
+      "dataset_index": 12,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 73,
+      "dataset_index": 242,
+      "skills": [
+        "Bash",
+        "awk"
+      ]
+    },
+    {
+      "task_index": 74,
+      "dataset_index": 42,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 75,
+      "dataset_index": 80,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 76,
+      "dataset_index": 250,
+      "skills": [
+        "Bash",
+        "awk",
+        "tail"
+      ]
+    },
+    {
+      "task_index": 77,
+      "dataset_index": 69,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 78,
+      "dataset_index": 57,
+      "skills": [
+        "Bash",
+        "cat"
+      ]
+    },
+    {
+      "task_index": 79,
+      "dataset_index": 295,
+      "skills": [
+        "Bash",
+        "tail"
+      ]
+    },
+    {
+      "task_index": 80,
+      "dataset_index": 90,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 81,
+      "dataset_index": 18,
+      "skills": [
+        "Bash",
+        "tail"
+      ]
+    },
+    {
+      "task_index": 82,
+      "dataset_index": 272,
+      "skills": [
+        "Bash",
+        "cut"
+      ]
+    },
+    {
+      "task_index": 83,
+      "dataset_index": 79,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 84,
+      "dataset_index": 53,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 85,
+      "dataset_index": 84,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 86,
+      "dataset_index": 16,
+      "skills": [
+        "Bash",
+        "cat"
+      ]
+    },
+    {
+      "task_index": 87,
+      "dataset_index": 41,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 88,
+      "dataset_index": 28,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 89,
+      "dataset_index": 94,
+      "skills": [
+        "Bash",
+        "sed"
+      ]
+    },
+    {
+      "task_index": 90,
+      "dataset_index": 23,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 91,
+      "dataset_index": 254,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 92,
+      "dataset_index": 58,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 93,
+      "dataset_index": 51,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 94,
+      "dataset_index": 279,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 95,
+      "dataset_index": 30,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 96,
+      "dataset_index": 96,
+      "skills": [
+        "Bash",
+        "sed"
+      ]
+    },
+    {
+      "task_index": 97,
+      "dataset_index": 59,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 98,
+      "dataset_index": 264,
+      "skills": [
+        "Bash"
+      ]
+    },
+    {
+      "task_index": 99,
+      "dataset_index": 85,
+      "skills": [
+        "Bash"
+      ]
+    }
+  ]
+}

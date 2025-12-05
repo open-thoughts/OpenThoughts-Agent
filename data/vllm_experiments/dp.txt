@@ -1,0 +1,27 @@
+
+Lmod is automatically replacing "nvidia/24.7" with "gcc/15.1.0".
+
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) openmpi/5.0.5
+
+The following have been reloaded with a version change:
+  1) nvpl/24.7 => nvpl/25.9
+
+Running vLLM on head node: c608-081
+INFO 11-28 10:45:11 [__init__.py:241] Automatically detected platform cuda.
+2025-11-28 10:45:13,735	INFO worker.py:1833 -- Connecting to existing Ray cluster at address: 129.114.17.16:6379...
+2025-11-28 10:45:13,740	INFO worker.py:2004 -- Connected to Ray cluster. View the dashboard at [1m[32mhttp://127.0.0.1:8265 [39m[22m
+/scratch/10000/eguha3/vllm_sandboxes_backup/lib/python3.12/site-packages/ray/_private/worker.py:2052: FutureWarning: Tip: In future versions of Ray, Ray will no longer override accelerator visible devices env var if num_gpus=0 or num_gpus=None (default). To enable this behavior and turn off this error message, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+  warnings.warn(
+Traceback (most recent call last):
+  File "/scratch/10000/eguha3/dc-agent/scripts/vllm/dp_debug.py", line 35, in <module>
+    dp_app = build_openai_dp_app(llm_config)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10000/eguha3/vllm_sandboxes_backup/lib/python3.12/site-packages/ray/llm/_internal/serve/deployments/data_parallel/dp_server.py", line 142, in build_openai_dp_app
+    dp_deployment = build_dp_deployment(llm_config)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10000/eguha3/vllm_sandboxes_backup/lib/python3.12/site-packages/ray/llm/_internal/serve/deployments/data_parallel/dp_server.py", line 118, in build_dp_deployment
+    raise ValueError(
+ValueError: data_parallel_size should be greater than 1 for DP deployment.
+srun: error: c608-081: task 0: Exited with exit code 1

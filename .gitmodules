@@ -1,0 +1,3 @@
+[submodule "sft/llamafactory"]
+	path = sft/llamafactory
+	url = https://github.com/mlfoundations/llama-factory

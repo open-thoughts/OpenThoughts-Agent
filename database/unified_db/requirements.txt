@@ -1,0 +1,17 @@
+# Essential dependencies for DC-Agents Dataset Registration
+
+# Database and API
+supabase==2.22.3
+
+# Data processing
+pandas>=2.0.0
+
+# HuggingFace integration
+datasets>=2.0.0
+huggingface_hub>=0.20.0
+
+# Data validation
+pydantic>=2.0.0,<3.0.0
+
+# Environment management
+python-dotenv>=1.0.0

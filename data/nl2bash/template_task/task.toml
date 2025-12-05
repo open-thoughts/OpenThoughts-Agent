@@ -1,0 +1,15 @@
+version = "1.0"
+
+[metadata]
+author_name = "nl2bash-teacher"
+author_email = "research@ot-agent.invalid"
+difficulty = "medium"
+category = "terminal-automation"
+tags = ["nl2bash", "synthetic"]
+
+[verifier]
+restart_environment = false
+timeout_sec = 600.0
+
+[agent]
+timeout_sec = 600.0

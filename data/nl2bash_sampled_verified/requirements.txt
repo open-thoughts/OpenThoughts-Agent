@@ -1,0 +1,10 @@
+# Core deps used by nl2bash generation
+datasets
+huggingface_hub
+pyarrow
+google-cloud-storage
+supabase
+tqdm
+
+# Local sandboxes framework (adjust path if different on your machine)
+-e /Users/dzorlu/src/sandboxes

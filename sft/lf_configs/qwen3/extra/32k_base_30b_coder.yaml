@@ -1,0 +1,46 @@
+### HPC Launch Settings
+global_batch_size: 64
+# gradient_accumulation_steps = global_batch_size // (num_nodes * gpus_per_node)
+
+### model
+model_name_or_path: Qwen/Qwen3-Coder-30B-A3B-Instruct
+trust_remote_code: true
+attn: fa2
+enable_liger_kernel: true
+optim: adamw_torch_fused
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: sft/llamafactory/examples/deepspeed/ds_z3_offload_nomat_config.json
+include_mfu: true
+
+### dataset
+template: qwen3
+cutoff_len: 32768
+overwrite_cache: true
+preprocessing_num_workers: 16
+dataloader_persistent_workers: true
+dataloader_pin_memory: true
+dataloader_num_workers: 4
+
+### output
+logging_steps: 5
+save_strategy: "steps"
+save_steps: 100
+save_total_limit: 1
+load_best_model_at_end: false
+logging_strategy: "steps"   # keep as you like
+plot_loss: true
+
+### train
+learning_rate: 4.0e-5
+num_train_epochs: 5.0
+max_grad_norm: 1.0e-4
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+pure_bf16: false
+gradient_checkpointing: true
+ddp_timeout: 180000000

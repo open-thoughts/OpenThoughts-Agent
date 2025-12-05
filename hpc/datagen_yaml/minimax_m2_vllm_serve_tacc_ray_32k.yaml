@@ -1,0 +1,43 @@
+engine:
+  type: vllm_local
+  model: QuantTrio/MiniMax-M2-AWQ
+  max_output_tokens: 8192
+  healthcheck_interval: 300
+  vllm_local: {}
+backend:
+  type: ray
+  wait_for_endpoint: true
+  tensor_parallel_size: 1
+  pipeline_parallel_size: 2
+  data_parallel_size: 4
+  healthcheck_max_attempts: 120
+  healthcheck_retry_delay: 15
+vllm_server:
+  model_path: QuantTrio/MiniMax-M2-AWQ
+  num_replicas: 1
+  tensor_parallel_size: 1
+  pipeline_parallel_size: 2
+  data_parallel_size: 4
+  time_limit: '24:00:00'
+  max_model_len: 32768
+  max_num_seqs: 24
+  gpu_memory_utilization: 0.85
+  swap_space: 12
+  enable_expert_parallel: true
+  enable_auto_tool_choice: true
+  tool_call_parser: minimax_m2
+  reasoning_parser: minimax_m2
+  trust_remote_code: true
+  extra_args:
+  - --dtype
+  - bfloat16
+  - --kv-cache-dtype
+  - fp8
+  - --block-size
+  - '16'
+  - --enable-chunked-prefill
+  - --max-num-partial-prefills
+  - '1'
+  - --enable-prefix-caching
+  - --all2all-backend
+  - pplx

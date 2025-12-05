@@ -1,0 +1,500 @@
+{"prompt": "Write a Python function to calculate graph algorithms.", "prompt_length": 13, "expected_output_length": 84, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between backpropagation and attention mechanisms?", "prompt_length": 18, "expected_output_length": 121, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about GraphQL.", "prompt_length": 9, "expected_output_length": 65, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of generative models in simple terms.", "prompt_length": 14, "expected_output_length": 135, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between attention mechanisms and MapReduce?", "prompt_length": 16, "expected_output_length": 101, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between consensus algorithms and neural networks?", "prompt_length": 18, "expected_output_length": 50, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between consensus algorithms and CAP theorem?", "prompt_length": 17, "expected_output_length": 82, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate graph algorithms.", "prompt_length": 13, "expected_output_length": 56, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between neural networks and CAP theorem?", "prompt_length": 15, "expected_output_length": 142, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Python decorators.", "prompt_length": 12, "expected_output_length": 143, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate graph algorithms.", "prompt_length": 13, "expected_output_length": 57, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate LRU cache.", "prompt_length": 11, "expected_output_length": 89, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate string matching.", "prompt_length": 13, "expected_output_length": 101, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of neural networks, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 40, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "What is the difference between machine learning and neural networks?", "prompt_length": 17, "expected_output_length": 57, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Python decorators.", "prompt_length": 12, "expected_output_length": 72, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about descriptors.", "prompt_length": 10, "expected_output_length": 58, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary search.", "prompt_length": 12, "expected_output_length": 127, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between distributed computing and regularization?", "prompt_length": 18, "expected_output_length": 82, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements string matching. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 39, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "What is the difference between MapReduce and reinforcement learning?", "prompt_length": 17, "expected_output_length": 137, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of cross-validation in simple terms.", "prompt_length": 14, "expected_output_length": 76, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast REST APIs and Python decorators. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 36, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of backpropagation in simple terms.", "prompt_length": 13, "expected_output_length": 114, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Kubernetes.", "prompt_length": 10, "expected_output_length": 77, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between reinforcement learning and attention mechanisms?", "prompt_length": 19, "expected_output_length": 138, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between MapReduce and MapReduce?", "prompt_length": 13, "expected_output_length": 63, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate breadth-first search.", "prompt_length": 14, "expected_output_length": 119, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Python decorators.", "prompt_length": 12, "expected_output_length": 142, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast metaclasses and Kubernetes. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 34, "expected_output_length": 159, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Python decorators.", "prompt_length": 12, "expected_output_length": 62, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about microservices.", "prompt_length": 11, "expected_output_length": 95, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Kubernetes.", "prompt_length": 10, "expected_output_length": 135, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transformers and backpropagation?", "prompt_length": 16, "expected_output_length": 70, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate hash table.", "prompt_length": 12, "expected_output_length": 122, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between regularization and neural networks?", "prompt_length": 16, "expected_output_length": 132, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of backpropagation, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 40, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about context managers.", "prompt_length": 12, "expected_output_length": 113, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between cross-validation and MapReduce?", "prompt_length": 15, "expected_output_length": 61, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between gradient descent and transformers?", "prompt_length": 16, "expected_output_length": 60, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary search.", "prompt_length": 12, "expected_output_length": 67, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between CAP theorem and transformers?", "prompt_length": 15, "expected_output_length": 56, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between neural networks and generative models?", "prompt_length": 17, "expected_output_length": 139, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about serverless architecture.", "prompt_length": 13, "expected_output_length": 58, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate fibonacci numbers.", "prompt_length": 13, "expected_output_length": 123, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate dynamic programming solution.", "prompt_length": 16, "expected_output_length": 99, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements hash table. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 38, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "What is the difference between CAP theorem and regularization?", "prompt_length": 15, "expected_output_length": 146, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about descriptors.", "prompt_length": 10, "expected_output_length": 137, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast Python decorators and test automation. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 37, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of consensus algorithms in simple terms.", "prompt_length": 15, "expected_output_length": 131, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about context managers.", "prompt_length": 12, "expected_output_length": 123, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of cross-validation in simple terms.", "prompt_length": 14, "expected_output_length": 147, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about metaclasses.", "prompt_length": 10, "expected_output_length": 91, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate string matching.", "prompt_length": 13, "expected_output_length": 93, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Python decorators.", "prompt_length": 12, "expected_output_length": 68, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of attention mechanisms in simple terms.", "prompt_length": 15, "expected_output_length": 87, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transfer learning and machine learning?", "prompt_length": 17, "expected_output_length": 149, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of machine learning in simple terms.", "prompt_length": 14, "expected_output_length": 52, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of machine learning in simple terms.", "prompt_length": 14, "expected_output_length": 96, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary tree traversal.", "prompt_length": 14, "expected_output_length": 137, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast Python decorators and Docker containers. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 38, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about context managers.", "prompt_length": 12, "expected_output_length": 81, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about async/await.", "prompt_length": 10, "expected_output_length": 122, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Docker containers.", "prompt_length": 12, "expected_output_length": 102, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of cross-validation in simple terms.", "prompt_length": 14, "expected_output_length": 132, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between MapReduce and consensus algorithms?", "prompt_length": 16, "expected_output_length": 82, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate linked list reversal.", "prompt_length": 14, "expected_output_length": 132, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about REST APIs.", "prompt_length": 10, "expected_output_length": 104, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of gradient descent in simple terms.", "prompt_length": 14, "expected_output_length": 59, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about context managers.", "prompt_length": 12, "expected_output_length": 112, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transformers in simple terms.", "prompt_length": 13, "expected_output_length": 138, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between reinforcement learning and backpropagation?", "prompt_length": 18, "expected_output_length": 59, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about test automation.", "prompt_length": 11, "expected_output_length": 68, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of neural networks in simple terms.", "prompt_length": 13, "expected_output_length": 90, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate hash table.", "prompt_length": 12, "expected_output_length": 85, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transfer learning and distributed computing?", "prompt_length": 18, "expected_output_length": 55, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate merge sort.", "prompt_length": 12, "expected_output_length": 88, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about async/await.", "prompt_length": 10, "expected_output_length": 116, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between distributed computing and transformers?", "prompt_length": 17, "expected_output_length": 77, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast async/await and async/await. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 35, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of consensus algorithms, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 41, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transformers and regularization?", "prompt_length": 15, "expected_output_length": 90, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Docker containers.", "prompt_length": 12, "expected_output_length": 125, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate graph algorithms.", "prompt_length": 13, "expected_output_length": 50, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate recursive backtracking.", "prompt_length": 15, "expected_output_length": 55, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements recursive backtracking. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 41, "expected_output_length": 187, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "What is the difference between reinforcement learning and cross-validation?", "prompt_length": 18, "expected_output_length": 99, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between backpropagation and generative models?", "prompt_length": 17, "expected_output_length": 91, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate recursive backtracking.", "prompt_length": 15, "expected_output_length": 79, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about context managers.", "prompt_length": 12, "expected_output_length": 64, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between regularization and distributed computing?", "prompt_length": 18, "expected_output_length": 51, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of consensus algorithms in simple terms.", "prompt_length": 15, "expected_output_length": 114, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate graph algorithms.", "prompt_length": 13, "expected_output_length": 55, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate linked list reversal.", "prompt_length": 14, "expected_output_length": 139, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of CAP theorem in simple terms.", "prompt_length": 12, "expected_output_length": 77, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of reinforcement learning in simple terms.", "prompt_length": 15, "expected_output_length": 135, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements recursive backtracking. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 41, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of distributed computing in simple terms.", "prompt_length": 15, "expected_output_length": 134, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate linked list reversal.", "prompt_length": 14, "expected_output_length": 86, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of attention mechanisms in simple terms.", "prompt_length": 15, "expected_output_length": 147, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast GraphQL and generators. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 33, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about type hints.", "prompt_length": 10, "expected_output_length": 99, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements LRU cache. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 37, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate matrix operations.", "prompt_length": 13, "expected_output_length": 143, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transfer learning in simple terms.", "prompt_length": 14, "expected_output_length": 112, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transformers and reinforcement learning?", "prompt_length": 17, "expected_output_length": 133, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of cross-validation in simple terms.", "prompt_length": 14, "expected_output_length": 50, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about microservices.", "prompt_length": 11, "expected_output_length": 85, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about metaclasses.", "prompt_length": 10, "expected_output_length": 99, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transfer learning in simple terms.", "prompt_length": 14, "expected_output_length": 70, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transfer learning and reinforcement learning?", "prompt_length": 19, "expected_output_length": 58, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about CI/CD pipelines.", "prompt_length": 11, "expected_output_length": 91, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate graph algorithms.", "prompt_length": 13, "expected_output_length": 78, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between cross-validation and backpropagation?", "prompt_length": 17, "expected_output_length": 140, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of MapReduce in simple terms.", "prompt_length": 12, "expected_output_length": 137, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transfer learning in simple terms.", "prompt_length": 14, "expected_output_length": 112, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between neural networks and CAP theorem?", "prompt_length": 15, "expected_output_length": 146, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast serverless architecture and Kubernetes. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 37, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate fibonacci numbers.", "prompt_length": 13, "expected_output_length": 52, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of backpropagation in simple terms.", "prompt_length": 13, "expected_output_length": 127, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of MapReduce in simple terms.", "prompt_length": 12, "expected_output_length": 51, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transfer learning in simple terms.", "prompt_length": 14, "expected_output_length": 148, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of regularization in simple terms.", "prompt_length": 13, "expected_output_length": 84, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of neural networks in simple terms.", "prompt_length": 13, "expected_output_length": 100, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between consensus algorithms and neural networks?", "prompt_length": 18, "expected_output_length": 57, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about microservices.", "prompt_length": 11, "expected_output_length": 145, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of backpropagation in simple terms.", "prompt_length": 13, "expected_output_length": 123, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about serverless architecture.", "prompt_length": 13, "expected_output_length": 146, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about type hints.", "prompt_length": 10, "expected_output_length": 88, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about metaclasses.", "prompt_length": 10, "expected_output_length": 85, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of backpropagation in simple terms.", "prompt_length": 13, "expected_output_length": 108, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between neural networks and machine learning?", "prompt_length": 17, "expected_output_length": 97, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate breadth-first search.", "prompt_length": 14, "expected_output_length": 79, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of generative models in simple terms.", "prompt_length": 14, "expected_output_length": 52, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of consensus algorithms in simple terms.", "prompt_length": 15, "expected_output_length": 122, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between regularization and reinforcement learning?", "prompt_length": 18, "expected_output_length": 57, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Python decorators.", "prompt_length": 12, "expected_output_length": 101, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast serverless architecture and generators. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 37, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "What is the difference between MapReduce and machine learning?", "prompt_length": 15, "expected_output_length": 110, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast context managers and descriptors. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 36, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about context managers.", "prompt_length": 12, "expected_output_length": 111, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of machine learning in simple terms.", "prompt_length": 14, "expected_output_length": 87, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate dynamic programming solution.", "prompt_length": 16, "expected_output_length": 53, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about context managers.", "prompt_length": 12, "expected_output_length": 141, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between regularization and MapReduce?", "prompt_length": 15, "expected_output_length": 115, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of gradient descent in simple terms.", "prompt_length": 14, "expected_output_length": 65, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate depth-first search.", "prompt_length": 14, "expected_output_length": 57, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of machine learning, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 40, "expected_output_length": 152, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about context managers.", "prompt_length": 12, "expected_output_length": 80, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate graph algorithms.", "prompt_length": 13, "expected_output_length": 50, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of gradient descent in simple terms.", "prompt_length": 14, "expected_output_length": 104, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Docker containers.", "prompt_length": 12, "expected_output_length": 67, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between attention mechanisms and attention mechanisms?", "prompt_length": 19, "expected_output_length": 131, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between machine learning and transfer learning?", "prompt_length": 17, "expected_output_length": 132, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements LRU cache. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 37, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of gradient descent in simple terms.", "prompt_length": 14, "expected_output_length": 84, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of generative models in simple terms.", "prompt_length": 14, "expected_output_length": 101, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of distributed computing in simple terms.", "prompt_length": 15, "expected_output_length": 84, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate hash table.", "prompt_length": 12, "expected_output_length": 67, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate breadth-first search.", "prompt_length": 14, "expected_output_length": 108, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate matrix operations.", "prompt_length": 13, "expected_output_length": 100, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate fibonacci numbers.", "prompt_length": 13, "expected_output_length": 142, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate depth-first search.", "prompt_length": 14, "expected_output_length": 67, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary tree traversal.", "prompt_length": 14, "expected_output_length": 140, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary search.", "prompt_length": 12, "expected_output_length": 102, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of regularization in simple terms.", "prompt_length": 13, "expected_output_length": 71, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of cross-validation, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 40, "expected_output_length": 173, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of generative models in simple terms.", "prompt_length": 14, "expected_output_length": 103, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of attention mechanisms, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 41, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of machine learning in simple terms.", "prompt_length": 14, "expected_output_length": 58, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transformers in simple terms.", "prompt_length": 13, "expected_output_length": 62, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of neural networks in simple terms.", "prompt_length": 13, "expected_output_length": 85, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of distributed computing in simple terms.", "prompt_length": 15, "expected_output_length": 150, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about GraphQL.", "prompt_length": 9, "expected_output_length": 133, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about REST APIs.", "prompt_length": 10, "expected_output_length": 74, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of backpropagation in simple terms.", "prompt_length": 13, "expected_output_length": 120, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between consensus algorithms and neural networks?", "prompt_length": 18, "expected_output_length": 92, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate depth-first search.", "prompt_length": 14, "expected_output_length": 74, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary search.", "prompt_length": 12, "expected_output_length": 103, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of consensus algorithms in simple terms.", "prompt_length": 15, "expected_output_length": 125, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate fibonacci numbers.", "prompt_length": 13, "expected_output_length": 117, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate graph algorithms.", "prompt_length": 13, "expected_output_length": 75, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about CI/CD pipelines.", "prompt_length": 11, "expected_output_length": 121, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of cross-validation in simple terms.", "prompt_length": 14, "expected_output_length": 75, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Kubernetes.", "prompt_length": 10, "expected_output_length": 92, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between MapReduce and generative models?", "prompt_length": 15, "expected_output_length": 149, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of gradient descent in simple terms.", "prompt_length": 14, "expected_output_length": 139, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about generators.", "prompt_length": 10, "expected_output_length": 141, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Kubernetes.", "prompt_length": 10, "expected_output_length": 138, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between consensus algorithms and CAP theorem?", "prompt_length": 17, "expected_output_length": 143, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of backpropagation in simple terms.", "prompt_length": 13, "expected_output_length": 128, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of attention mechanisms, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 41, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of MapReduce in simple terms.", "prompt_length": 12, "expected_output_length": 106, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of MapReduce in simple terms.", "prompt_length": 12, "expected_output_length": 144, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of consensus algorithms in simple terms.", "prompt_length": 15, "expected_output_length": 75, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about test automation.", "prompt_length": 11, "expected_output_length": 67, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about test automation.", "prompt_length": 11, "expected_output_length": 90, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of distributed computing in simple terms.", "prompt_length": 15, "expected_output_length": 89, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between neural networks and gradient descent?", "prompt_length": 17, "expected_output_length": 125, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between gradient descent and consensus algorithms?", "prompt_length": 18, "expected_output_length": 94, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate linked list reversal.", "prompt_length": 14, "expected_output_length": 57, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of reinforcement learning in simple terms.", "prompt_length": 15, "expected_output_length": 95, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transformers in simple terms.", "prompt_length": 13, "expected_output_length": 146, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate merge sort.", "prompt_length": 12, "expected_output_length": 110, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Kubernetes.", "prompt_length": 10, "expected_output_length": 125, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate recursive backtracking.", "prompt_length": 15, "expected_output_length": 69, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about descriptors.", "prompt_length": 10, "expected_output_length": 86, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about descriptors.", "prompt_length": 10, "expected_output_length": 127, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate depth-first search.", "prompt_length": 14, "expected_output_length": 120, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of gradient descent in simple terms.", "prompt_length": 14, "expected_output_length": 60, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about async/await.", "prompt_length": 10, "expected_output_length": 69, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between machine learning and CAP theorem?", "prompt_length": 16, "expected_output_length": 134, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate dynamic programming solution.", "prompt_length": 16, "expected_output_length": 140, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate dynamic programming solution.", "prompt_length": 16, "expected_output_length": 82, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of gradient descent in simple terms.", "prompt_length": 14, "expected_output_length": 62, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate depth-first search.", "prompt_length": 14, "expected_output_length": 90, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate hash table.", "prompt_length": 12, "expected_output_length": 119, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transfer learning and cross-validation?", "prompt_length": 17, "expected_output_length": 111, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements string matching. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 39, "expected_output_length": 232, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Docker containers.", "prompt_length": 12, "expected_output_length": 131, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transformers and attention mechanisms?", "prompt_length": 17, "expected_output_length": 131, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between regularization and generative models?", "prompt_length": 17, "expected_output_length": 110, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of distributed computing in simple terms.", "prompt_length": 15, "expected_output_length": 131, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about serverless architecture.", "prompt_length": 13, "expected_output_length": 74, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements linked list reversal. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 40, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "What is the difference between MapReduce and cross-validation?", "prompt_length": 15, "expected_output_length": 124, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transformers in simple terms.", "prompt_length": 13, "expected_output_length": 149, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of MapReduce in simple terms.", "prompt_length": 12, "expected_output_length": 108, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transfer learning in simple terms.", "prompt_length": 14, "expected_output_length": 143, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transformers in simple terms.", "prompt_length": 13, "expected_output_length": 80, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of CAP theorem in simple terms.", "prompt_length": 12, "expected_output_length": 109, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transfer learning in simple terms.", "prompt_length": 14, "expected_output_length": 81, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transformers and machine learning?", "prompt_length": 16, "expected_output_length": 91, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary tree traversal.", "prompt_length": 14, "expected_output_length": 111, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about GraphQL.", "prompt_length": 9, "expected_output_length": 115, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of generative models in simple terms.", "prompt_length": 14, "expected_output_length": 55, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary search.", "prompt_length": 12, "expected_output_length": 132, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of machine learning, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 40, "expected_output_length": 202, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast generators and GraphQL. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 33, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "What is the difference between neural networks and gradient descent?", "prompt_length": 17, "expected_output_length": 132, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of consensus algorithms in simple terms.", "prompt_length": 15, "expected_output_length": 144, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about coroutines.", "prompt_length": 10, "expected_output_length": 132, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about metaclasses.", "prompt_length": 10, "expected_output_length": 147, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of distributed computing in simple terms.", "prompt_length": 15, "expected_output_length": 82, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of neural networks in simple terms.", "prompt_length": 13, "expected_output_length": 77, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate breadth-first search.", "prompt_length": 14, "expected_output_length": 79, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about GraphQL.", "prompt_length": 9, "expected_output_length": 137, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of machine learning in simple terms.", "prompt_length": 14, "expected_output_length": 118, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of generative models, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 41, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "What is the difference between generative models and neural networks?", "prompt_length": 17, "expected_output_length": 82, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about CI/CD pipelines.", "prompt_length": 11, "expected_output_length": 146, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate matrix operations.", "prompt_length": 13, "expected_output_length": 81, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between gradient descent and attention mechanisms?", "prompt_length": 18, "expected_output_length": 92, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about GraphQL.", "prompt_length": 9, "expected_output_length": 102, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of backpropagation in simple terms.", "prompt_length": 13, "expected_output_length": 113, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate hash table.", "prompt_length": 12, "expected_output_length": 137, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between reinforcement learning and MapReduce?", "prompt_length": 17, "expected_output_length": 97, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of backpropagation in simple terms.", "prompt_length": 13, "expected_output_length": 74, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of CAP theorem in simple terms.", "prompt_length": 12, "expected_output_length": 50, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate string matching.", "prompt_length": 13, "expected_output_length": 70, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between backpropagation and MapReduce?", "prompt_length": 15, "expected_output_length": 130, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of backpropagation in simple terms.", "prompt_length": 13, "expected_output_length": 108, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about descriptors.", "prompt_length": 10, "expected_output_length": 70, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of consensus algorithms in simple terms.", "prompt_length": 15, "expected_output_length": 115, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of MapReduce in simple terms.", "prompt_length": 12, "expected_output_length": 148, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Kubernetes.", "prompt_length": 10, "expected_output_length": 149, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of backpropagation in simple terms.", "prompt_length": 13, "expected_output_length": 150, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast metaclasses and microservices. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 35, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of gradient descent in simple terms.", "prompt_length": 14, "expected_output_length": 97, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of CAP theorem in simple terms.", "prompt_length": 12, "expected_output_length": 140, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about test automation.", "prompt_length": 11, "expected_output_length": 89, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate graph algorithms.", "prompt_length": 13, "expected_output_length": 133, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of generative models in simple terms.", "prompt_length": 14, "expected_output_length": 83, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of MapReduce, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 39, "expected_output_length": 197, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about GraphQL.", "prompt_length": 9, "expected_output_length": 127, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate dynamic programming solution.", "prompt_length": 16, "expected_output_length": 130, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate depth-first search.", "prompt_length": 14, "expected_output_length": 91, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of cross-validation in simple terms.", "prompt_length": 14, "expected_output_length": 112, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about CI/CD pipelines.", "prompt_length": 11, "expected_output_length": 83, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of regularization in simple terms.", "prompt_length": 13, "expected_output_length": 79, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between regularization and backpropagation?", "prompt_length": 16, "expected_output_length": 74, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Docker containers.", "prompt_length": 12, "expected_output_length": 87, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate breadth-first search.", "prompt_length": 14, "expected_output_length": 103, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of attention mechanisms in simple terms.", "prompt_length": 15, "expected_output_length": 133, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about microservices.", "prompt_length": 11, "expected_output_length": 82, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about serverless architecture.", "prompt_length": 13, "expected_output_length": 75, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between gradient descent and cross-validation?", "prompt_length": 17, "expected_output_length": 150, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate string matching.", "prompt_length": 13, "expected_output_length": 98, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of gradient descent in simple terms.", "prompt_length": 14, "expected_output_length": 60, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between MapReduce and machine learning?", "prompt_length": 15, "expected_output_length": 130, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between reinforcement learning and transfer learning?", "prompt_length": 19, "expected_output_length": 62, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transfer learning and neural networks?", "prompt_length": 17, "expected_output_length": 135, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between gradient descent and transformers?", "prompt_length": 16, "expected_output_length": 116, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about microservices.", "prompt_length": 11, "expected_output_length": 132, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of MapReduce in simple terms.", "prompt_length": 12, "expected_output_length": 54, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of cross-validation in simple terms.", "prompt_length": 14, "expected_output_length": 105, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast CI/CD pipelines and REST APIs. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 35, "expected_output_length": 234, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transformers in simple terms.", "prompt_length": 13, "expected_output_length": 125, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between CAP theorem and transformers?", "prompt_length": 15, "expected_output_length": 136, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Kubernetes.", "prompt_length": 10, "expected_output_length": 96, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of distributed computing, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 42, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate matrix operations.", "prompt_length": 13, "expected_output_length": 146, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate linked list reversal.", "prompt_length": 14, "expected_output_length": 138, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of generative models, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 41, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about REST APIs.", "prompt_length": 10, "expected_output_length": 117, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between machine learning and transformers?", "prompt_length": 16, "expected_output_length": 61, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about REST APIs.", "prompt_length": 10, "expected_output_length": 54, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transformers in simple terms.", "prompt_length": 13, "expected_output_length": 120, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transfer learning and generative models?", "prompt_length": 17, "expected_output_length": 113, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transfer learning in simple terms.", "prompt_length": 14, "expected_output_length": 127, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of distributed computing, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 42, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of reinforcement learning in simple terms.", "prompt_length": 15, "expected_output_length": 71, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate hash table.", "prompt_length": 12, "expected_output_length": 102, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between reinforcement learning and generative models?", "prompt_length": 19, "expected_output_length": 52, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transfer learning in simple terms.", "prompt_length": 14, "expected_output_length": 109, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of backpropagation in simple terms.", "prompt_length": 13, "expected_output_length": 114, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about descriptors.", "prompt_length": 10, "expected_output_length": 89, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transformers in simple terms.", "prompt_length": 13, "expected_output_length": 96, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transfer learning in simple terms.", "prompt_length": 14, "expected_output_length": 94, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about metaclasses.", "prompt_length": 10, "expected_output_length": 69, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of CAP theorem in simple terms.", "prompt_length": 12, "expected_output_length": 146, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between MapReduce and consensus algorithms?", "prompt_length": 16, "expected_output_length": 89, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between MapReduce and transfer learning?", "prompt_length": 15, "expected_output_length": 126, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transformers in simple terms.", "prompt_length": 13, "expected_output_length": 103, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate LRU cache.", "prompt_length": 11, "expected_output_length": 95, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about async/await.", "prompt_length": 10, "expected_output_length": 116, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast REST APIs and context managers. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 35, "expected_output_length": 234, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of MapReduce in simple terms.", "prompt_length": 12, "expected_output_length": 64, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary search.", "prompt_length": 12, "expected_output_length": 111, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of machine learning in simple terms.", "prompt_length": 14, "expected_output_length": 149, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast metaclasses and async/await. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 35, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "What is the difference between generative models and attention mechanisms?", "prompt_length": 18, "expected_output_length": 130, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Docker containers.", "prompt_length": 12, "expected_output_length": 128, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of generative models in simple terms.", "prompt_length": 14, "expected_output_length": 51, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate string matching.", "prompt_length": 13, "expected_output_length": 134, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of regularization in simple terms.", "prompt_length": 13, "expected_output_length": 88, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transfer learning in simple terms.", "prompt_length": 14, "expected_output_length": 111, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about coroutines.", "prompt_length": 10, "expected_output_length": 131, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about descriptors.", "prompt_length": 10, "expected_output_length": 59, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast microservices and GraphQL. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 34, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast Kubernetes and context managers. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 36, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transformers and consensus algorithms?", "prompt_length": 17, "expected_output_length": 113, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about serverless architecture.", "prompt_length": 13, "expected_output_length": 146, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about coroutines.", "prompt_length": 10, "expected_output_length": 145, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between reinforcement learning and cross-validation?", "prompt_length": 18, "expected_output_length": 77, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between regularization and MapReduce?", "prompt_length": 15, "expected_output_length": 79, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate breadth-first search.", "prompt_length": 14, "expected_output_length": 56, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between attention mechanisms and neural networks?", "prompt_length": 18, "expected_output_length": 61, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements fibonacci numbers. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 39, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about serverless architecture.", "prompt_length": 13, "expected_output_length": 56, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate graph algorithms.", "prompt_length": 13, "expected_output_length": 52, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate recursive backtracking.", "prompt_length": 15, "expected_output_length": 83, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about context managers.", "prompt_length": 12, "expected_output_length": 124, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements linked list reversal. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 40, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "What is the difference between generative models and backpropagation?", "prompt_length": 17, "expected_output_length": 60, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate LRU cache.", "prompt_length": 11, "expected_output_length": 150, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate merge sort.", "prompt_length": 12, "expected_output_length": 56, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of backpropagation in simple terms.", "prompt_length": 13, "expected_output_length": 121, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between generative models and attention mechanisms?", "prompt_length": 18, "expected_output_length": 97, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between distributed computing and cross-validation?", "prompt_length": 18, "expected_output_length": 127, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate graph algorithms.", "prompt_length": 13, "expected_output_length": 50, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between neural networks and neural networks?", "prompt_length": 16, "expected_output_length": 60, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about serverless architecture.", "prompt_length": 13, "expected_output_length": 85, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of gradient descent in simple terms.", "prompt_length": 14, "expected_output_length": 134, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of MapReduce in simple terms.", "prompt_length": 12, "expected_output_length": 93, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements matrix operations. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 39, "expected_output_length": 205, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate depth-first search.", "prompt_length": 14, "expected_output_length": 65, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between CAP theorem and gradient descent?", "prompt_length": 16, "expected_output_length": 92, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary search.", "prompt_length": 12, "expected_output_length": 105, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate fibonacci numbers.", "prompt_length": 13, "expected_output_length": 147, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between machine learning and neural networks?", "prompt_length": 17, "expected_output_length": 141, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about async/await.", "prompt_length": 10, "expected_output_length": 147, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about CI/CD pipelines.", "prompt_length": 11, "expected_output_length": 149, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about test automation.", "prompt_length": 11, "expected_output_length": 88, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of reinforcement learning, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 42, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about metaclasses.", "prompt_length": 10, "expected_output_length": 138, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Docker containers.", "prompt_length": 12, "expected_output_length": 123, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of consensus algorithms in simple terms.", "prompt_length": 15, "expected_output_length": 128, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transformers and regularization?", "prompt_length": 15, "expected_output_length": 74, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate linked list reversal.", "prompt_length": 14, "expected_output_length": 139, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate merge sort.", "prompt_length": 12, "expected_output_length": 113, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between attention mechanisms and generative models?", "prompt_length": 18, "expected_output_length": 71, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary tree traversal.", "prompt_length": 14, "expected_output_length": 54, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transformers and transformers?", "prompt_length": 15, "expected_output_length": 56, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between MapReduce and backpropagation?", "prompt_length": 15, "expected_output_length": 57, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Kubernetes.", "prompt_length": 10, "expected_output_length": 115, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about test automation.", "prompt_length": 11, "expected_output_length": 63, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between CAP theorem and regularization?", "prompt_length": 15, "expected_output_length": 125, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary search.", "prompt_length": 12, "expected_output_length": 77, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between generative models and MapReduce?", "prompt_length": 15, "expected_output_length": 115, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of distributed computing in simple terms.", "prompt_length": 15, "expected_output_length": 59, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate graph algorithms.", "prompt_length": 13, "expected_output_length": 141, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast context managers and generators. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 36, "expected_output_length": 178, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Python decorators.", "prompt_length": 12, "expected_output_length": 138, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary tree traversal.", "prompt_length": 14, "expected_output_length": 88, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements recursive backtracking. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 41, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate graph algorithms.", "prompt_length": 13, "expected_output_length": 99, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about CI/CD pipelines.", "prompt_length": 11, "expected_output_length": 142, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between reinforcement learning and transfer learning?", "prompt_length": 19, "expected_output_length": 120, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate breadth-first search.", "prompt_length": 14, "expected_output_length": 105, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of CAP theorem in simple terms.", "prompt_length": 12, "expected_output_length": 87, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between cross-validation and attention mechanisms?", "prompt_length": 18, "expected_output_length": 106, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transformers and transfer learning?", "prompt_length": 16, "expected_output_length": 138, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about REST APIs.", "prompt_length": 10, "expected_output_length": 75, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate depth-first search.", "prompt_length": 14, "expected_output_length": 117, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about generators.", "prompt_length": 10, "expected_output_length": 127, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements LRU cache. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 37, "expected_output_length": 234, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about REST APIs.", "prompt_length": 10, "expected_output_length": 132, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about descriptors.", "prompt_length": 10, "expected_output_length": 66, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate graph algorithms.", "prompt_length": 13, "expected_output_length": 85, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about GraphQL.", "prompt_length": 9, "expected_output_length": 139, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about descriptors.", "prompt_length": 10, "expected_output_length": 63, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between MapReduce and transformers?", "prompt_length": 14, "expected_output_length": 63, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of consensus algorithms in simple terms.", "prompt_length": 15, "expected_output_length": 111, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate LRU cache.", "prompt_length": 11, "expected_output_length": 70, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary tree traversal.", "prompt_length": 14, "expected_output_length": 50, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between reinforcement learning and transfer learning?", "prompt_length": 19, "expected_output_length": 100, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate linked list reversal.", "prompt_length": 14, "expected_output_length": 140, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate LRU cache.", "prompt_length": 11, "expected_output_length": 99, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about generators.", "prompt_length": 10, "expected_output_length": 108, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Docker containers.", "prompt_length": 12, "expected_output_length": 107, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of MapReduce in simple terms.", "prompt_length": 12, "expected_output_length": 56, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about descriptors.", "prompt_length": 10, "expected_output_length": 61, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary tree traversal.", "prompt_length": 14, "expected_output_length": 74, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between cross-validation and reinforcement learning?", "prompt_length": 18, "expected_output_length": 96, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements LRU cache. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 37, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of attention mechanisms in simple terms.", "prompt_length": 15, "expected_output_length": 86, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of gradient descent in simple terms.", "prompt_length": 14, "expected_output_length": 105, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between generative models and attention mechanisms?", "prompt_length": 18, "expected_output_length": 129, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements fibonacci numbers. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 39, "expected_output_length": 248, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate recursive backtracking.", "prompt_length": 15, "expected_output_length": 145, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between regularization and transfer learning?", "prompt_length": 17, "expected_output_length": 53, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between reinforcement learning and distributed computing?", "prompt_length": 20, "expected_output_length": 71, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of CAP theorem in simple terms.", "prompt_length": 12, "expected_output_length": 61, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of generative models in simple terms.", "prompt_length": 14, "expected_output_length": 87, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of regularization in simple terms.", "prompt_length": 13, "expected_output_length": 78, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Docker containers.", "prompt_length": 12, "expected_output_length": 112, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate linked list reversal.", "prompt_length": 14, "expected_output_length": 55, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of regularization in simple terms.", "prompt_length": 13, "expected_output_length": 127, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between consensus algorithms and machine learning?", "prompt_length": 18, "expected_output_length": 98, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate string matching.", "prompt_length": 13, "expected_output_length": 88, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about microservices.", "prompt_length": 11, "expected_output_length": 120, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of generative models in simple terms.", "prompt_length": 14, "expected_output_length": 102, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate fibonacci numbers.", "prompt_length": 13, "expected_output_length": 125, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a detailed Python class that implements merge sort. Include error handling, type hints, and docstrings. Make sure the code follows best practices.", "prompt_length": 38, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "What is the difference between MapReduce and cross-validation?", "prompt_length": 15, "expected_output_length": 96, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of neural networks in simple terms.", "prompt_length": 13, "expected_output_length": 96, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between regularization and cross-validation?", "prompt_length": 16, "expected_output_length": 141, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about microservices.", "prompt_length": 11, "expected_output_length": 142, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of reinforcement learning in simple terms.", "prompt_length": 15, "expected_output_length": 69, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of attention mechanisms, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 41, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary search.", "prompt_length": 12, "expected_output_length": 101, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between MapReduce and distributed computing?", "prompt_length": 16, "expected_output_length": 64, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between neural networks and cross-validation?", "prompt_length": 17, "expected_output_length": 148, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of neural networks in simple terms.", "prompt_length": 13, "expected_output_length": 107, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Provide a comprehensive explanation of neural networks, including its history, applications, advantages, and disadvantages. Use examples to illustrate key points.", "prompt_length": 40, "expected_output_length": 225, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate string matching.", "prompt_length": 13, "expected_output_length": 92, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about REST APIs.", "prompt_length": 10, "expected_output_length": 71, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate hash table.", "prompt_length": 12, "expected_output_length": 118, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of generative models in simple terms.", "prompt_length": 14, "expected_output_length": 120, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about async/await.", "prompt_length": 10, "expected_output_length": 85, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between attention mechanisms and CAP theorem?", "prompt_length": 17, "expected_output_length": 86, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of MapReduce in simple terms.", "prompt_length": 12, "expected_output_length": 81, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between neural networks and generative models?", "prompt_length": 17, "expected_output_length": 67, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Compare and contrast generators and Python decorators. Discuss their similarities, differences, use cases, and when to choose one over the other.", "prompt_length": 36, "expected_output_length": 256, "metadata": {"category": "medium", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about microservices.", "prompt_length": 11, "expected_output_length": 129, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about generators.", "prompt_length": 10, "expected_output_length": 69, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about CI/CD pipelines.", "prompt_length": 11, "expected_output_length": 128, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between regularization and distributed computing?", "prompt_length": 18, "expected_output_length": 125, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between backpropagation and generative models?", "prompt_length": 17, "expected_output_length": 146, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between generative models and reinforcement learning?", "prompt_length": 19, "expected_output_length": 121, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about Kubernetes.", "prompt_length": 10, "expected_output_length": 54, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate recursive backtracking.", "prompt_length": 15, "expected_output_length": 110, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about serverless architecture.", "prompt_length": 13, "expected_output_length": 142, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between attention mechanisms and consensus algorithms?", "prompt_length": 19, "expected_output_length": 117, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between consensus algorithms and consensus algorithms?", "prompt_length": 19, "expected_output_length": 106, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between distributed computing and distributed computing?", "prompt_length": 19, "expected_output_length": 143, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate recursive backtracking.", "prompt_length": 15, "expected_output_length": 129, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary search.", "prompt_length": 12, "expected_output_length": 112, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between transfer learning and distributed computing?", "prompt_length": 18, "expected_output_length": 83, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of generative models in simple terms.", "prompt_length": 14, "expected_output_length": 92, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate string matching.", "prompt_length": 13, "expected_output_length": 110, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of transfer learning in simple terms.", "prompt_length": 14, "expected_output_length": 136, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between CAP theorem and generative models?", "prompt_length": 16, "expected_output_length": 137, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about descriptors.", "prompt_length": 10, "expected_output_length": 78, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about microservices.", "prompt_length": 11, "expected_output_length": 82, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about REST APIs.", "prompt_length": 10, "expected_output_length": 115, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of attention mechanisms in simple terms.", "prompt_length": 15, "expected_output_length": 134, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate fibonacci numbers.", "prompt_length": 13, "expected_output_length": 74, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between gradient descent and backpropagation?", "prompt_length": 17, "expected_output_length": 102, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate binary tree traversal.", "prompt_length": 14, "expected_output_length": 138, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Summarize the key points about coroutines.", "prompt_length": 10, "expected_output_length": 139, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate fibonacci numbers.", "prompt_length": 13, "expected_output_length": 79, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate linked list reversal.", "prompt_length": 14, "expected_output_length": 132, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of MapReduce in simple terms.", "prompt_length": 12, "expected_output_length": 115, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate graph algorithms.", "prompt_length": 13, "expected_output_length": 70, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Explain the concept of generative models in simple terms.", "prompt_length": 14, "expected_output_length": 102, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "Write a Python function to calculate linked list reversal.", "prompt_length": 14, "expected_output_length": 69, "metadata": {"category": "short", "template_type": "synthetic"}}
+{"prompt": "What is the difference between neural networks and transfer learning?", "prompt_length": 17, "expected_output_length": 58, "metadata": {"category": "short", "template_type": "synthetic"}}

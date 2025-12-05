@@ -1,0 +1,39 @@
+I will give you a text snippet from an LLM's pretraining corpus, and based on that you have to come up with a task that looks like it was created by a human user of a terminal-based AI agent trying to solve some problem.
+You should frame the text into a realistic terminal-based scenario that should be solvable by an AI agent placed in a Linux terminal. The task should involve bash scripting, file manipulation, automation, or system administration.
+
+Guidelines:
+- Extract key concepts, problems, or workflows from the text
+- Transform them into practical terminal tasks. The problem statement should not go beyond 500 words
+- Include specific files, commands, or scripts that need to be created
+- Make the task concrete and verifiable
+- Avoid requiring external APIs or services unless commonly available
+
+For better parsing of your response, please return it as a JSON block in the following format:
+```json
+{
+    "task-name": "[concise kebab-case name of the task]",
+    "description": "[a detailed description of the task, including specific files to create, commands to run, or scripts to write. Include concrete examples and expected outputs.]",
+    "difficulty": "[easy|medium|hard]"
+}
+```
+
+## Example
+
+Input text snippet:
+```corpus_text
+QEMU allows you to run virtual machines with custom kernels. The TinyCC compiler is a small, fast C compiler that can be useful in embedded environments...
+```
+
+Output:
+```json
+{
+    "task-name": "qemu-tcc-cdrom-setup",
+    "description": "I have QEMU running a custom Linux kernel located at ./linux-6.9/arch/x86/boot/bzImage with an initramfs at ramfs/initramfs.cpio.gz. Currently, I can boot the system using:\n\nqemu-system-x86_64 -kernel ./linux-6.9/arch/x86/boot/bzImage -initrd ramfs/initramfs.cpio.gz -append \"console=ttyS0\" -nographic\n\nYour task is to:\n1. Download and compile the TinyCC (tcc) compiler from source (https://repo.or.cz/tinycc.git)\n2. Create an ISO image at /tmp/tcc.iso containing the compiled tcc binary and any necessary libraries\n3. The ISO should be structured so that when mounted in QEMU, tcc can be accessed from /mnt/cdrom/bin/tcc or similar\n4. Verify the setup works by:\n   - Booting QEMU with: qemu-system-x86_64 -kernel ./linux-6.9/arch/x86/boot/bzImage -initrd ramfs/initramfs.cpio.gz -append \"console=ttyS0\" -nographic -cdrom /tmp/tcc.iso\n   - Mounting the CD-ROM inside the VM\n   - Running a simple C program compilation test with tcc\n\nThe solution should include a bash script that automates the entire process: downloading tcc, compiling it, creating the ISO with proper directory structure, and optionally testing it. The ISO must be bootable as a CD-ROM and contain a functional tcc installation.",
+    "difficulty": "hard"
+}
+```
+
+Now, here is the input text snippet:
+```corpus_text
+{SEED}
+```

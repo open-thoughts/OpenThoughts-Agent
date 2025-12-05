@@ -1,0 +1,11 @@
+# Requirements for vLLM experiment framework
+
+# Core dependencies
+vllm>=0.9.0
+pandas>=2.0.0
+numpy>=1.24.0
+aiohttp>=3.8.0
+
+# Optional but recommended
+ray>=2.9.0
+torch>=2.0.0

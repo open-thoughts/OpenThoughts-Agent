@@ -1,0 +1,15 @@
+engine:
+  type: anthropic
+  model: claude-opus-4-5-20251101
+  max_output_tokens: 65536
+  healthcheck_interval: 300
+  request_params:
+    temperature: 1.0
+  anthropic:
+    api_key_env: ANTHROPIC_API_KEY
+backend:
+  type: none
+extra_agent_kwargs:
+  max_thinking_tokens: 8192
+  temperature: 1.0
+vllm_server: null

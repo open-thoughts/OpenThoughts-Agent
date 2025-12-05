@@ -1,0 +1,12 @@
+engine:
+  type: anthropic
+  model: claude-3-5-sonnet-20241022
+  max_output_tokens: 65536
+  healthcheck_interval: 300
+  request_params:
+    temperature: 0.2
+  anthropic:
+    api_key_env: ANTHROPIC_API_KEY
+backend:
+  type: none
+vllm_server: null

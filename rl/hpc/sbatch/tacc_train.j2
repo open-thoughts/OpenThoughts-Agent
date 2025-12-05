@@ -1,0 +1,56 @@
+#!/bin/bash
+#SBATCH -p {{ partition }}
+#SBATCH --time={{ time_limit }}
+#SBATCH --nodes {{ num_nodes }}
+#SBATCH --ntasks-per-node 1
+#SBATCH --cpus-per-task={{ cpus_per_node }}
+#SBATCH --exclude={{ node_exclusion_list }}
+#SBATCH --account {{ account }}
+#SBATCH --output={{ experiments_dir }}/logs/%x_%j.out
+#SBATCH --job-name={{ job_name }}
+
+module purge
+module load gcc/15.1.0
+module load cuda/12.8
+module load tacc-apptainer
+
+# Set up environment variables
+export VLLM_USE_V1=1
+export RAY_RUNTIME_ENV_HOOK=ray._private.runtime_env.uv_runtime_env_hook.hook
+export RAY_ADDRESS=$RAY_ADDRESS
+export VLLM_CACHE_ROOT={{ vllm_cache_root }}
+export VLLM_CONFIG_ROOT={{ vllm_config_root }}
+export TRITON_DUMP_DIR={{ triton_dump_dir }}
+export TRITON_OVERRIDE_DIR={{ triton_override_dir }}
+export TRITON_CACHE_DIR={{ triton_cache_dir }}
+export FLASHINFER_WORKSPACE_BASE={{ flashinfer_workspace_base }}
+export UV_CACHE_DIR={{ uv_cache_dir }}
+export HYDRA_FULL_ERROR=1
+
+# Load secret environment variables
+source {{ secret_env_path }}
+
+# Fix library path issues
+ln -s /home1/apps/gcc/15.1.0/lib64/libstdc++.so.6 {{ conda_env_path }}/lib/libstdc++.so.6
+export LD_LIBRARY_PATH=/home1/apps/gcc/15.1.0/lib64:{{ conda_env_path }}/lib/python3.12/site-packages/torch/lib:$LD_LIBRARY_PATH
+
+# Activate conda environment
+source {{ conda_activate_path }}
+conda activate {{ conda_env_path }}
+echo "CONDA ENV PATH: "
+echo {{ conda_env_path }}
+
+# Custom PYTHONPATH (e.g. Harbor)
+export PYTHONPATH={{ extra_pythonpath }}:$PYTHONPATH
+
+# SkyRL paths
+export SKYRL_HOME={{ skyrl_home }}
+cd "$SKYRL_HOME/skyrl-train"
+
+# Set up Ray server
+bash {{ dc_agent_path }}/eval/tacc/start_ray_server.sh
+
+sleep 30
+
+# Run SkyRL command
+{{ skyrl_command_string }}

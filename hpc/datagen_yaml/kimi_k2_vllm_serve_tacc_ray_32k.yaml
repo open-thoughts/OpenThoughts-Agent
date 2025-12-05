@@ -1,0 +1,38 @@
+engine:
+  type: vllm_local
+  model: moonshotai/Kimi-K2-Thinking
+  max_output_tokens: 8192
+  healthcheck_interval: 300
+  vllm_local: {}
+backend:
+  type: ray
+  wait_for_endpoint: true
+  tensor_parallel_size: 1
+  pipeline_parallel_size: 16
+  ray_cgraph_max_inflight_executions: 12
+  healthcheck_max_attempts: 160
+  healthcheck_retry_delay: 15
+vllm_server:
+  model_path: moonshotai/Kimi-K2-Thinking
+  num_replicas: 1
+  tensor_parallel_size: 1
+  pipeline_parallel_size: 16
+  time_limit: '24:00:00'
+  max_model_len: 32768
+  max_num_seqs: 12
+  gpu_memory_utilization: 0.89
+  swap_space: 16
+  enable_expert_parallel: true
+  enable_auto_tool_choice: true
+  tool_call_parser: kimi_k2
+  reasoning_parser: kimi_k2
+  trust_remote_code: true
+  extra_args:
+  - --dtype
+  - bfloat16
+  - --quantization
+  - compressed-tensors
+  - --kv-cache-dtype
+  - fp8
+
+

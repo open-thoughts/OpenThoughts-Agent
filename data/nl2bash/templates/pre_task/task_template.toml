@@ -1,0 +1,15 @@
+version = "1.0"
+
+[metadata]
+author_name = "dc-agent"
+author_email = "research@dc-agent.invalid"
+difficulty = "hard"
+category = "terminal-automation"
+tags = ["nl2bash", "teacher", "task-synthesis"]
+
+[agent]
+timeout_sec = 900.0
+
+[verifier]
+restart_environment = false
+timeout_sec = 900.0

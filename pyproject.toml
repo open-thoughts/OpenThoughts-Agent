@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dc-agent"
+version = "0.1.0"
+description = "OT-Agent HPC launch and data tooling"
+requires-python = ">=3.10"
+dependencies = [
+    # Core HPC + data infrastructure deps
+    "pydantic>=2.0.0,<3.0.0",
+    "pyyaml",
+    "omegaconf",
+    "wandb",
+    "huggingface_hub>=0.20.0",
+    "datasets>=2.0.0",
+    "supabase==2.22.3",
+    "python-dotenv>=1.0.0",
+    "harbor",
+    "google-cloud-storage",
+    "h5py",
+    "certifi",
+    "rapidfuzz",
+]
+
+[project.optional-dependencies]
+datagen = [
+    "ray>=2.50.0",
+    "vllm==0.11.2",
+]
+datagen-swesmith = [
+    "swesmith",
+]
+rl = [
+    "skyrl @ git+https://github.com/mlfoundations/skyrl.git",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "data",
+    "data.*",
+    "database",
+    "database.*",
+    "sft",
+    "sft.*",
+    "eval",
+    "eval.*",
+    "hpc",
+    "hpc.*",
+    "rl",
+    "rl.*",
+    "scripts",
+    "scripts.*",
+    "train",
+    "train.*",
+]
+exclude = [
+    "docs*",
+    "notes*",
+    "wheels*",
+    "tmp*",
+]

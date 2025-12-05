@@ -1,0 +1,10 @@
+engine:
+  type: gemini_openai
+  model: gemini/gemini-3-pro-preview
+  max_output_tokens: 512000
+  healthcheck_interval: 300
+  request_params:
+    temperature: 0.2
+backend:
+  type: none
+vllm_server: null

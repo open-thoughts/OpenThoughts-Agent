@@ -1,0 +1,72 @@
+{
+  "vista": [
+    {
+      "cluster": "vista",
+      "path": "hpc/sbatch_data/vista_vllm_server.sbatch"
+    },
+    {
+      "cluster": "vista",
+      "path": "hpc/sbatch_data/vista_datagen.sbatch"
+    },
+    {
+      "cluster": "vista",
+      "path": "hpc/sbatch_data/vista_datatrace.sbatch"
+    }
+  ],
+  "oumi": [
+    {
+      "cluster": "oumi",
+      "path": "hpc/sbatch_data/oumi_vllm_server.sbatch"
+    },
+    {
+      "cluster": "oumi",
+      "path": "hpc/sbatch_data/oumi_datagen.sbatch"
+    },
+    {
+      "cluster": "oumi",
+      "path": "hpc/sbatch_data/oumi_datatrace.sbatch"
+    }
+  ],
+  "nyugreene": [
+    {
+      "cluster": "nyugreene",
+      "path": "hpc/sbatch_data/nyugreene_vllm_server.sbatch"
+    },
+    {
+      "cluster": "nyugreene",
+      "path": "hpc/sbatch_data/nyugreene_datagen.sbatch"
+    },
+    {
+      "cluster": "nyugreene",
+      "path": "hpc/sbatch_data/nyugreene_datatrace.sbatch"
+    }
+  ],
+  "nyutorch": [
+    {
+      "cluster": "nyutorch",
+      "path": "hpc/sbatch_data/nyutorch_vllm_server.sbatch"
+    },
+    {
+      "cluster": "nyutorch",
+      "path": "hpc/sbatch_data/nyutorch_datagen.sbatch"
+    },
+    {
+      "cluster": "nyutorch",
+      "path": "hpc/sbatch_data/nyutorch_datatrace.sbatch"
+    }
+  ],
+  "perlmutter": [
+    {
+      "cluster": "perlmutter",
+      "path": "hpc/sbatch_data/perlmutter_vllm_server.sbatch"
+    },
+    {
+      "cluster": "perlmutter",
+      "path": "hpc/sbatch_data/perlmutter_datagen.sbatch"
+    },
+    {
+      "cluster": "perlmutter",
+      "path": "hpc/sbatch_data/perlmutter_datatrace.sbatch"
+    }
+  ]
+}

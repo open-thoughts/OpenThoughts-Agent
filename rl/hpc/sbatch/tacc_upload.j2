@@ -1,0 +1,86 @@
+#!/bin/bash
+#SBATCH -p gg
+#SBATCH --time=02:00:00
+#SBATCH --nodes 1
+#SBATCH --ntasks-per-node 1
+#SBATCH --cpus-per-task=4
+#SBATCH --account {{ account }}
+#SBATCH --output={{ logs_dir }}/upload_%x_%j.out
+#SBATCH --job-name={{ job_name }}_upload
+
+module purge
+module load gcc/15.1.0
+module load cuda/12.8
+
+# Set up environment variables
+export UV_CACHE_DIR={{ uv_cache_dir }}
+
+# Load secret environment variables
+source {{ secret_env_path }}
+
+# Activate conda environment
+source {{ conda_activate_path }}
+conda activate {{ conda_env_path }}
+
+echo "=========================================="
+echo "Starting HuggingFace Upload from Compute Node"
+echo "=========================================="
+echo "Model path: {{ model_path }}"
+echo "Repository: {{ repo_name }}"
+echo "Job ID: $SLURM_JOB_ID"
+echo "Node: $SLURM_NODELIST"
+echo "=========================================="
+
+# Run upload script using Python
+python << 'UPLOAD_SCRIPT'
+import sys
+import os
+import time
+
+# Add the hpc directory to path so we can import watchdog functions
+hpc_path = "{{ dc_agent_path }}/rl/hpc"
+if hpc_path not in sys.path:
+    sys.path.insert(0, hpc_path)
+
+from launch_utils.watchdog import _copy_final_checkpoint_policy, _upload_to_huggingface
+
+model_path = "{{ model_path }}"
+repo_name = "{{ repo_name }}"
+hf_token = "{{ hf_token }}"
+
+print("\nStarting upload process...")
+print(f"Model path: {model_path}")
+print(f"Repository: {repo_name}")
+
+# Wait a bit for any final file writes from training job
+print("\nWaiting 60 seconds for final file operations to complete...")
+time.sleep(60)
+
+# Copy final checkpoint policy files
+print("\nCopying final checkpoint policy files...")
+copy_success = _copy_final_checkpoint_policy(model_path)
+if not copy_success:
+    print("Warning: Failed to copy final checkpoint policy files, proceeding with upload anyway")
+
+# Upload to HuggingFace
+print("\nUploading to HuggingFace...")
+success = _upload_to_huggingface(
+    model_path=model_path,
+    repo_name=repo_name,
+    hf_token=hf_token if hf_token else None
+)
+
+if success:
+    print("\n" + "=" * 50)
+    print("✓ Upload completed successfully!")
+    print(f"✓ Model available at: https://huggingface.co/{repo_name}")
+    print("=" * 50)
+    sys.exit(0)
+else:
+    print("\n" + "=" * 50)
+    print("✗ Upload failed!")
+    print("=" * 50)
+    sys.exit(1)
+UPLOAD_SCRIPT
+
+echo "Upload script finished with exit code: $?"

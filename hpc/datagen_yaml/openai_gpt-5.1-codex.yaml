@@ -1,0 +1,14 @@
+engine:
+  type: openai
+  model: gpt-5.1-codex
+  max_output_tokens: 500000
+  healthcheck_interval: 300
+  request_params:
+    temperature: 0.1
+  openai:
+    api_key_env: OPENAI_API_KEY
+backend:
+  type: none
+extra_agent_kwargs:
+  reasoning_effort: medium
+vllm_server: null

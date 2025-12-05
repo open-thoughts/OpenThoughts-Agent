@@ -1,0 +1,25 @@
+You are tasked with creating the setup for a novel task for benchmarking terminal-based AI agents.  
+The task must follow the format and structure of existing tasks in terminal-bench.
+
+Each task in terminal-bench resides in its own directory and includes several key files:
+- instruction.md: Clear, self-contained task description that an AI agent will read
+- task.toml: Metadata (category, difficulty, author, tags)
+- task-deps/: Directory containing any auxiliary files needed and described in the instruction.md
+
+--- EXAMPLE TASK ---
+```json
+{EXAMPLE}
+```
+
+
+Here is the task name and a description I have in mind:
+TASK NAME: {TASK_NAME}
+DESCRIPTION: {DESCRIPTION}
+
+You should design a novel, challenging task and place it in a directory named after the task.
+
+While creating the task please ensure the following 4 requirements (VERY IMPORTANT):
+- There should be a valid solution script that can solve the task in a Docker container
+- Tasks can verified without using any external resources such as starting up a VM, hosting an endpoint, etc
+- Instructions are clear enough for an AI agent to understand
+- Task difficulty matches the complexity rating

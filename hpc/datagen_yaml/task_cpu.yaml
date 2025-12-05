@@ -1,0 +1,12 @@
+engine:
+  type: none
+  healthcheck_interval: 300
+backend:
+  type: none
+  wait_for_endpoint: false
+  tensor_parallel_size: 1
+  pipeline_parallel_size: 1
+  data_parallel_size: 1
+  ray_port: 6379
+  api_port: 8000
+vllm_server: null

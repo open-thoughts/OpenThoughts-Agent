@@ -1,0 +1,78 @@
+# Harbor job configuration for API evaluation trace generation.
+
+job_name: api-eval-trace-job
+jobs_dir: trace_jobs
+n_attempts: 1
+timeout_multiplier: 1.0
+debug: false
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 24
+  quiet: false
+  adaptive_concurrency:
+    enabled: false
+    algorithm: gradient2
+    min_limit: null
+    max_limit: null
+    metrics_endpoint: null
+    metrics_timeout_sec: 10.0
+    poll_interval_sec: 120.0
+    window_size: 5
+    queue_p95_drop_threshold: null
+    algorithm_kwargs: {}
+  retry:
+    max_retries: 0
+    include_exceptions: null
+    exclude_exceptions:
+      - AgentTimeoutError
+      - VerifierTimeoutError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - VerifierOutputParseError
+    wait_multiplier: 1.0
+    min_wait_sec: 1.0
+    max_wait_sec: 60.0
+  kwargs: {}
+
+environment:
+  type: daytona
+  force_build: true
+  delete: true
+  override_cpus: 1
+  override_memory_mb: 2048
+  override_storage_mb: 2048
+  kwargs: {}
+
+verifier:
+  override_timeout_sec: 1800
+  max_timeout_sec: 900
+  disable: false
+
+metrics: []
+
+agents:
+  - name: terminus-2
+    import_path: null
+    model_name: placeholder/override-at-runtime
+    override_timeout_sec: 1800
+    max_timeout_sec: null
+    kwargs:
+      max_episodes: 32
+      collect_rollout_details: false
+      collect_engine_metrics: true
+      metrics_endpoint: https://replace-with-api-host/metrics
+      metrics_timeout_sec: 10
+      model_info:
+        max_input_tokens: 131000
+        max_output_tokens: 16000
+        input_cost_per_token: 0
+        output_cost_per_token: 0
+
+      trajectory_configs:
+        raw_content: true
+        linear_history: true
+datasets:
+  - path: /replace/with/tasks/path
+
+tasks: []

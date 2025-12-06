@@ -48,7 +48,7 @@ export SKYRL_HOME={{ skyrl_home }}
 cd "$SKYRL_HOME/skyrl-train"
 
 # Set up Ray server
-bash {{ dc_agent_path }}/eval/tacc/start_ray_server.sh
+bash {{ ot_agent_path }}/eval/tacc/start_ray_server.sh
 
 sleep 30
 

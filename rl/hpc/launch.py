@@ -38,9 +38,9 @@ except ImportError:
 
 # Import parquet converter
 import sys
-# Get to dc-agent root (two levels up from hpc/launch.py)
-dc_agent_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, dc_agent_root)
+# Get to ot-agent root (two levels up from hpc/launch.py)
+ot_agent_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ot_agent_root)
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -108,7 +108,7 @@ def construct_sbatch_script(exp_args):
         "extra_pythonpath": os.environ.get("EXTRA_PYTHONPATH", ""),  # TODO(Charlie): handle when it is not provided. This is optional.
         "conda_env_path": os.environ.get("CONDA_ENV_PATH", ""),
         "skyrl_home": os.environ.get("SKYRL_HOME", ""),
-        "dc_agent_path": os.environ.get("DC_AGENT", "/scratch/08134/negin/dc-agent-shared/dc-agent"),
+        "ot_agent_path": os.environ.get("OT_AGENT", "/scratch/08134/negin/dc-agent-shared/dc-agent"),
     }
     # assert that all the directories exists to prevent erroring out on compute node after queuing
     for key, value in tacc_vars.items():

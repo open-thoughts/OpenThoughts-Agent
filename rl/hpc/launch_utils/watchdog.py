@@ -15,9 +15,9 @@ from jinja2 import Environment, FileSystemLoader
 # Add OpenThoughts-Agent root to path for database imports
 # watchdog.py is at: OpenThoughts-Agent/rl/hpc/launch_utils/watchdog.py
 # So we need to go up 3 levels to get to OpenThoughts-Agent root
-DC_AGENT_ROOT = Path(__file__).resolve().parents[3]
-if str(DC_AGENT_ROOT) not in sys.path:
-    sys.path.insert(0, str(DC_AGENT_ROOT))
+OT_AGENT_ROOT = Path(__file__).resolve().parents[3]
+if str(OT_AGENT_ROOT) not in sys.path:
+    sys.path.insert(0, str(OT_AGENT_ROOT))
 
 try:
     from huggingface_hub import HfApi, login
@@ -398,7 +398,7 @@ def _submit_upload_job(model_path, repo_name, hf_token, exp_args):
         "conda_env_path": os.environ.get("CONDA_ENV_PATH", ""),
         "secret_env_path": os.environ.get("SECRET_ENV_PATH", ""),
         "uv_cache_dir": os.environ.get("UV_CACHE_DIR", ""),
-        "dc_agent_path": os.environ.get("DC_AGENT", exp_args.get("dc_agent_path")),
+        "ot_agent_path": os.environ.get("OT_AGENT", exp_args.get("ot_agent_path")),
         "model_path": model_path,
         "repo_name": repo_name,
         "hf_token": hf_token or os.environ.get("HF_TOKEN", ""),

@@ -22,9 +22,9 @@ try:
     import sys
     from pathlib import Path
     # Get the OpenThoughts-Agent root directory (3 levels up from this file)
-    dc_agent_root = Path(__file__).resolve().parents[3]
-    if str(dc_agent_root) not in sys.path:
-        sys.path.insert(0, str(dc_agent_root))
+    ot_agent_root = Path(__file__).resolve().parents[3]
+    if str(ot_agent_root) not in sys.path:
+        sys.path.insert(0, str(ot_agent_root))
 
     from scripts.harbor.tasks_parquet_converter import from_parquet
     PARQUET_CONVERTER_AVAILABLE = True

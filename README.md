@@ -2,7 +2,7 @@
   <img src="assets/ota-logo.png" alt="OT-Agent Logo" width="480">
 </p>
 
-# OpenThoughts-Agent: Data Recipes for Training Agentic Models
+# OpenThoughts-Agent: Data Recipes for Agentic Models
 
 Welcome to OpenThoughts-Agent (OT-Agent for short), a large-scale research project dedicated to creating the best tooling and finding the best data for training small agentic models.
 

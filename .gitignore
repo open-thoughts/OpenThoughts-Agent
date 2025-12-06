@@ -217,6 +217,7 @@ __marimo__/
 
 # Logs
 experiments/logs/
+rl/experiments/sbatch_scripts/
 *.out
 daytona_parallel_results_*.json
 

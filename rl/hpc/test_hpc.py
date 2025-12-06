@@ -45,7 +45,7 @@ def test_environment_setup():
         print("✓ Environment variables loaded")
         
         # Check some key variables
-        key_vars = ['OT_AGENT', 'OT_AGENT_TRAIN', 'SKYRL_HOME']
+        key_vars = ['OT_AGENT', 'OT_AGENT_RL', 'SKYRL_HOME']
         for var in key_vars:
             if var in os.environ:
                 print(f"  {var}: {os.environ[var]}")

@@ -7,13 +7,13 @@
 NUM_NODES=2  # In TACC, number of nodes = number of GPUs
 LOGGER="wandb"  # wandb for logging into WANDB, console for printing to stdout
 RUN_NAME="gsm8k_test"  # The name of this run (fed to `-S trainer.run_name` for WANDB logging and various other places)
-DATA_DIR="/scratch/08134/negin/OpenThoughts-Agent-shared/SkyRL/skyrl-train/data_rl/gsm8k"  # can also be HF dataset name
+DATA_DIR="/scratch/08134/negin/dc-agent-shared/SkyRL/skyrl-train/data_rl/gsm8k"  # can also be HF dataset name
 MODEL_PATH="Qwen/Qwen2.5-1.5B-Instruct"  # base model to start the RL from
 
 # We will dump the following in the export path: SkyRL dumped eval output, and model checkpoints
 # Note that this differs from the EXPERIMENTS_DIR specified in {hpc_name}.env, which is where we
 # dump the sbatch scripts and SLURM `.out` logs.
-SKYRL_EXPORT_PATH="/scratch/08134/negin/OpenThoughts-Agent-shared/sandboxes/exports/$RUN_NAME"
+SKYRL_EXPORT_PATH="/scratch/08134/negin/dc-agent-shared/sandboxes/exports/$RUN_NAME"
 
 MAX_RESTARTS=2
 

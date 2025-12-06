@@ -30,17 +30,6 @@ fi
 
 pip install huggingface_hub datasets Jinja2
 source hpc/scripts/common.sh  # Load common functions
-if [ -n "${OT_AGENT_SECRET_ENV:-}" ]; then
-    if [ -f "${OT_AGENT_SECRET_ENV}" ]; then
-        echo "Sourcing secrets from ${OT_AGENT_SECRET_ENV}"
-        # shellcheck disable=SC1090
-        source "${OT_AGENT_SECRET_ENV}"
-    else
-        echo "Warning: OT_AGENT_SECRET_ENV points to '${OT_AGENT_SECRET_ENV}', but the file does not exist." >&2
-    fi
-else
-    echo "Warning: OT_AGENT_SECRET_ENV is not set. Secrets (DAYTONA_API_KEY, HF_TOKEN, etc.) must be exported manually." >&2
-fi
 
 echo "✓ Environment loaded"
 # Test the setup

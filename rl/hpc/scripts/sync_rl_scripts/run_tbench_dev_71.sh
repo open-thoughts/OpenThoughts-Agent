@@ -11,7 +11,7 @@ MODEL_PATH="Qwen/Qwen3-8B"  # base model to start the RL from
 # dump the sbatch scripts and SLURM `.out` logs.
 SKYRL_CKPT_PATH=$SCRATCH/skyrl_exports/$RUN_NAME/ckpts
 SKYRL_EXPORT_PATH=$SCRATCH/skyrl_exports/$RUN_NAME/exports
-SANDBOXES_DIR="/scratch/08134/negin/OpenThoughts-Agent-shared/sandboxes/run"
+SANDBOXES_DIR="/scratch/08134/negin/dc-agent-shared/sandboxes/run"
 
 # We set train_batch_size and mini_batch_size to the same value for on-policy
 TRAIN_AND_MINI_BATCH_SIZE=64

@@ -222,6 +222,10 @@ python -m hpc.launch \
 
 To learn more about the details of how HPC Launch works, please refer to `hpc/README.md`.
 
+#### Tutorial Notebook
+
+For non-HPC users, we provided a tutorial notebook under `notebook/datagen_sft_tutorial.ipynb` with an example of how we generate data from the inferredbugs dataset and perform SFT.
+
 ### Notes on Container Management
 
 OT-Agent relies on [Harbor](https://github.com/laude-institute/harbor) to launch containerized tools for datagen and eval. Harbor supports multiple backends (Docker, Daytona, Modal, e2b, etc.), but most HPC centers either forbid Docker outright or only allow Apptainer/Singularity. In practice this means:

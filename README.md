@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/ota-logo.png" alt="OT-Agent Logo" width="480">
+  <img src="assets/ot-agent-logo.png" alt="OT-Agent Logo" width="480">
 </p>
 
-# OT-Agent: Data Recipes for Training Agentic Models
+# OpenThoughts-Agent: Data Recipes for Agentic Models
 
 Welcome to OpenThoughts-Agent (OT-Agent for short), a large-scale research project dedicated to creating the best tooling and finding the best data for training small agentic models.
 
@@ -12,7 +12,7 @@ Welcome to OpenThoughts-Agent (OT-Agent for short), a large-scale research proje
 
 [Leaderboard](https://ot-agent-leaderboard.replit.app/)
 
-[Trace Viewer](https://dcagents-trace-viewer.replit.app/)
+[Trace Viewer](https://ot-agent-trace-viewer.replit.app/)
 
 [Notebook](/notebook/datagen_sft_tutorial.ipynb)
 
@@ -223,6 +223,10 @@ python -m hpc.launch \
 #### Learn More about HPC Launch
 
 To learn more about the details of how HPC Launch works, please refer to `hpc/README.md`.
+
+#### Tutorial Notebook
+
+For non-HPC users, we provided a tutorial notebook under `notebook/datagen_sft_tutorial.ipynb` with an example of how we generate data from the inferredbugs dataset and perform SFT.
 
 ### Notes on Container Management
 

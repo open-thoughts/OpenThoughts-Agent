@@ -247,6 +247,9 @@ google_application_credentials.json
 # Daytona
 daytona-linux-arm64.1
 
+# Local proxychains-ng clone (JSC setup helper)
+proxychains-ng/
+
 # Secrets and environment files
 secret.env
 
@@ -258,6 +261,7 @@ run_all.txt
 
 # hpc dotenv secrets
 train/hpc/dotenv/secret.env
+rl/hpc/dotenv/secret.env
 
 # Claude
 CLAUDE.md

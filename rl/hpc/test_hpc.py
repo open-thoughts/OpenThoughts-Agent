@@ -56,6 +56,26 @@ def test_environment_setup():
         print(f"✗ Environment setup failed: {e}")
         return False
 
+def test_jsc_template_exists():
+    """Lightweight check that JSC sbatch template is wired when on a JSC cluster."""
+    print("\nTesting JSC sbatch template wiring...")
+    try:
+        hpc = detect_hpc()
+        if not hpc.name.startswith("jsc_"):
+            print("  Skipping: not on a JSC cluster (detected:", hpc.name, ")")
+            return True
+        set_environment(hpc)
+        path = hpc.train_sbatch_jinja_path
+        print(f"  JSC sbatch template path: {path}")
+        if not os.path.exists(path):
+            print(f"✗ JSC sbatch template not found at {path}")
+            return False
+        print("✓ JSC sbatch template found")
+        return True
+    except Exception as e:
+        print(f"✗ JSC sbatch template test failed: {e}")
+        return False
+
 def test_dry_run():
     """Test dry run functionality"""
     print("\nTesting dry run...")
@@ -142,6 +162,7 @@ def main():
     tests = [
         test_hpc_detection,
         test_environment_setup,
+        test_jsc_template_exists,
         test_pre_download,
         test_dry_run
     ]

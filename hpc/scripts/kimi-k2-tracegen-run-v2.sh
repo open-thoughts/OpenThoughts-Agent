@@ -222,7 +222,7 @@ NUM_NODES=${SLURM_JOB_NUM_NODES:-1}
 CPUS_PER_NODE=${SLURM_CPUS_PER_TASK:-32}
 
 # Get head node IP
-head_node_ip=$(srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$head_node" hostname --ip-address 2>/dev/null | head -1)
+head_node_ip=$(srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --mem="$SRUN_MEM_PER_STEP" --overlap -w "$head_node" hostname --ip-address 2>/dev/null | head -1)
 head_node_ip=${head_node_ip%% *}
 
 if [[ -z "$head_node_ip" || "$head_node_ip" == "127.0.0.1" ]]; then
@@ -249,7 +249,8 @@ cleanup() {
         wait "$VLLM_PID" 2>/dev/null || true
     fi
     for node in "${nodes_array[@]}"; do
-        srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$node" ray stop --force 2>/dev/null || true
+        srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --mem="$SRUN_MEM_PER_STEP" --overlap -w "$node" \
+            ray stop --force 2>/dev/null || true
     done
     for pid in "${ray_pids[@]}"; do
         wait "$pid" 2>/dev/null || true
@@ -265,6 +266,8 @@ mkdir -p "$RAY_TMPDIR"
 # Make sure all subsequent srun invocations inherit the tmpdir override
 SRUN_EXPORT_ENV="$SRUN_EXPORT_ENV,RAY_TMPDIR=$RAY_TMPDIR"
 export SRUN_EXPORT_ENV
+# Allow overriding the per-step memory cap (0 => inherit the parent job allocation).
+SRUN_MEM_PER_STEP="${SRUN_MEM_PER_STEP:-0}"
 echo ">>> Ray session directory: $RAY_TMPDIR"
 
 # Calculate object store memory (conservative for large models)
@@ -272,7 +275,7 @@ OBJECT_STORE_BYTES=$((40 * 1024 * 1024 * 1024))  # 40GB
 
 # Start Ray head via srun
 echo ">>> Starting Ray head on $head_node"
-srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$head_node" \
+srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --mem="$SRUN_MEM_PER_STEP" --overlap -w "$head_node" \
     ray start --head \
         --node-ip-address="$head_node_ip" \
         --port="$RAY_PORT" \
@@ -287,7 +290,7 @@ ray_pids+=($!)
 for ((i = 1; i < NUM_NODES; i++)); do
     node_i=${nodes_array[$i]}
     echo ">>> Starting Ray worker on $node_i"
-    srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$node_i" \
+    srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --mem="$SRUN_MEM_PER_STEP" --overlap -w "$node_i" \
         ray start \
             --address="$ip_head" \
             --num-gpus="$GPUS_PER_NODE" \
@@ -325,7 +328,7 @@ echo "  API port: $API_PORT"
 echo "  TP size: $TP_SIZE"
 echo "  Log: $CONTROLLER_LOG"
 
-srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$head_node" \
+srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --mem="$SRUN_MEM_PER_STEP" --overlap -w "$head_node" \
     python3 scripts/vllm/start_vllm_ray_controller.py \
         --ray-address "$ip_head" \
         --host "$head_node_ip" \

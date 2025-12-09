@@ -4,8 +4,8 @@ NUM_NODES=2 # JSC-specific number of nodes
 NUM_GPUS_PER_NODE=4
 LOGGER="wandb"
 RUN_NAME="code-contests-qwen3-8b-2nodes-sync"  # The name of this run
-#TRAIN_DATA_DIR="DCAgent/code-contests-sandboxes-with-tests"  # can also be a local path
-TRAIN_DATA_DIR="/p/scratch/laionize/dc-agent-experiments/code-contests-parquet/tasks_extracted"
+TRAIN_DATA_DIR="DCAgent/code-contests-sandboxes-with-tests" 
+#TRAIN_DATA_DIR="/p/scratch/laionize/dc-agent-experiments/code-contests-parquet/tasks_extracted"
 #TRAIN_DATA_DIR="DCAgent2/nl2bash-gpt-5-codex-passed"
 EVAL_DATA_DIR="DCAgent/dev_set_71_tasks"
 MODEL_PATH="Qwen/Qwen3-8B"  # base model to start the RL from
@@ -18,7 +18,7 @@ SANDBOXES_DIR="${DCFT_SCRATCH}/sandboxes/run"
 SKYRL_CKPT_PATH="${SKYRL_EXPORT_PATH}/ckpts"
 
 # We set train_batch_size and mini_batch_size to the same value for on-policy
-TRAIN_AND_MINI_BATCH_SIZE=16
+TRAIN_AND_MINI_BATCH_SIZE=4
 EVAL_BATCH_SIZE=128  # we can afford more concurrency because there are only 71 tasks in the eval set
 EVAL_INTERVAL=20
 MAX_RESTARTS=2

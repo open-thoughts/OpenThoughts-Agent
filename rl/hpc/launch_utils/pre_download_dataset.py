@@ -116,8 +116,8 @@ def pre_download_dataset(exp_args):
                                 downloaded_datasets[dataset] = extraction_dir
                             except Exception as e:
                                 print(f"✗ Failed to extract parquet: {e}")
-                                # Fall back to the downloaded path
-                                downloaded_datasets[dataset] = dataset_download_path
+                                raise ValueError(f"Failed to extract parquet: {e}")
+                                
                         else:
                             # No parquet files, use the download path as-is
                             downloaded_datasets[dataset] = dataset_download_path

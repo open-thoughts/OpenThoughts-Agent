@@ -121,6 +121,13 @@ source hpc/setup.sh  # due to some bug, need to run twice TODO(Charlie): fix
 bash hpc/scripts/sync_rl_scripts/run_nl2bash_gpt5codex_cleaned.sh
 ```
 
+After your run is finished, don't forget to sync wandb.
+
+```
+export WANDB_API_KEY=xxx
+wandb sync path/to/wandb_logs
+```
+
 
 ## Supported Clusters
 

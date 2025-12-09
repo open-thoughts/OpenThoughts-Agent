@@ -19,6 +19,7 @@ ERROR_MESSAGE="is not set. Please define it in the calling script."
 
 GPUS_PER_NODE="${NUM_GPUS_PER_NODE:-1}"
 NUM_INFERENCE_ENGINES="${NUM_INFERENCE_DEVICES:-$(( NUM_NODES * GPUS_PER_NODE ))}"
+TIME_LIMIT="${TIME_LIMIT:-06:00:00}"
 
 cmd=(
  python3 -m hpc.launch
@@ -31,6 +32,7 @@ cmd=(
  --val_data "$EVAL_DATA_DIR"
  --model_path "$MODEL_PATH"
  --max_restarts "$MAX_RESTARTS"
+ --time_limit "$TIME_LIMIT"
  --skyrl_entrypoint examples.terminal_bench.entrypoints.main_tbench
  -S hydra.searchpath="['file://examples/terminal_bench']"
  -S +terminal_bench_config=terminal_bench

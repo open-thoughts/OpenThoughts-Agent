@@ -1,6 +1,6 @@
 #!/bin/bash
 
-NUM_NODES=2  # JSC-specific number of nodes (tune as needed)
+NUM_NODES=2
 NUM_GPUS_PER_NODE=4
 LOGGER="wandb"
 RUN_NAME="nl2bashGPT5CodexPassed-qwen3-8b-8nodes-sync"
@@ -24,7 +24,7 @@ EPOCHS=3  # cleaned nl2bash is ~700 samples -- about 11 steps
 # Set partition and QOS (JSC-specific)
 PARTITION="booster"
 QOS="normal"
-TIME_LIMIT="24:00:00"
+TIME_LIMIT="06:00:00"
 
 source "$(dirname "$0")/run_common.sh"
 

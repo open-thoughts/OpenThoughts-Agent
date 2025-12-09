@@ -6,7 +6,7 @@
 #SBATCH --constraint="h200"
 #SBATCH --gres=gpu:8
 #SBATCH --exclusive
-#SBATCH --mem=1024G
+#SBATCH --mem=1536G
 #SBATCH --time=47:59:00
 #SBATCH --comment="preemption=yes;requeue=false"
 

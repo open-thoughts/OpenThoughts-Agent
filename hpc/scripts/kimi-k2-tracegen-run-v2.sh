@@ -375,8 +375,8 @@ fi
 echo ">>> Endpoint JSON created, waiting for health check..."
 python3 scripts/vllm/wait_for_endpoint.py \
     --endpoint-json "$VLLM_ENDPOINT_JSON_PATH" \
-    --max-attempts 30 \
-    --retry-delay 10 \
+    --max-attempts 60 \
+    --retry-delay 20 \
     --health-path "v1/models"
 
 # =============================================================================

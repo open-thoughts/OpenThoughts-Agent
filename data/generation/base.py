@@ -111,14 +111,29 @@ class BaseDataGenerator(ABC):
         if getattr(args, "trace_agent_kwargs", None) is None and extra_agent_kwargs:
             setattr(args, "trace_agent_kwargs", extra_agent_kwargs)
 
+        endpoint_override = getattr(args, "endpoint_json", None) or os.environ.get("TRACE_ENDPOINT_JSON")
+        if runtime:
+            existing_endpoint = runtime.engine_kwargs.get("endpoint_json")
+            if endpoint_override:
+                runtime.engine_kwargs["endpoint_json"] = endpoint_override
+                setattr(args, "endpoint_json", endpoint_override)
+            elif existing_endpoint:
+                setattr(args, "endpoint_json", existing_endpoint)
+
         return args
 
     def build_request(self, args: argparse.Namespace) -> GenerationRequest:
         metadata = self._build_request_metadata(args)
+        endpoint_json = getattr(args, "endpoint_json", None) or os.environ.get("TRACE_ENDPOINT_JSON")
+        runtime: Optional[RuntimeEngineSettings] = getattr(args, "_engine_runtime", None)
+        if not endpoint_json and runtime:
+            endpoint_json = runtime.engine_kwargs.get("endpoint_json")
+        if endpoint_json:
+            metadata.setdefault("trace_endpoint_json", endpoint_json)
+
         limit_value = getattr(args, "limit", None)
         if limit_value is not None:
             metadata.setdefault("limit", limit_value)
-        runtime: Optional[RuntimeEngineSettings] = getattr(args, "_engine_runtime", None)
         engine_value = runtime.type if runtime else None
         if engine_value and engine_value.lower() == "none":
             engine_value = None

@@ -235,6 +235,12 @@ def add_generation_args(
         help="Dataset type label when uploading traces (default: SFT)",
     )
     trace_group.add_argument(
+        "--endpoint-json",
+        dest="endpoint_json",
+        type=str,
+        help="Path to a running vLLM endpoint JSON (required for vllm_local engines).",
+    )
+    trace_group.add_argument(
         "--trace-include-reasoning",
         dest="trace_include_reasoning",
         action="store_true",

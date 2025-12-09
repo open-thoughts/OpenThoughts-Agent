@@ -76,43 +76,78 @@ _configure_pip_cuda() {
     local info=""
     if ! info="$(python - <<'PY'
 import importlib.util
+import importlib.metadata
 import pathlib
 
 def pkg_dir(name):
     spec = importlib.util.find_spec(name)
     if not spec or not spec.origin:
         return ""
-    return str(pathlib.Path(spec.origin).parent)
+    return pathlib.Path(spec.origin).parent
+
+def find_nvcc():
+    candidates = []
+    pkg = pkg_dir("nvidia.cuda_nvcc")
+    if pkg:
+        candidates.append(pkg)
+    try:
+        dist = importlib.metadata.distribution("nvidia-cuda-nvcc-cu12")
+    except importlib.metadata.PackageNotFoundError:
+        dist = None
+    if dist:
+        candidates.append(pathlib.Path(dist.locate_file("")))
+        candidates.append(pathlib.Path(dist.locate_file("bin")))
+    for base in candidates:
+        if not base:
+            continue
+        paths = []
+        base = pathlib.Path(base)
+        if base.name == "bin":
+            paths.append(base / "nvcc")
+        paths.append(base / "bin" / "nvcc")
+        for candidate in paths:
+            if candidate.exists():
+                return candidate
+        try:
+            hit = next((p for p in base.rglob("nvcc") if p.is_file()), None)
+        except (PermissionError, FileNotFoundError):
+            hit = None
+        if hit:
+            return hit
+    return ""
 
 runtime = pkg_dir("nvidia.cuda_runtime")
-nvcc = pkg_dir("nvidia.cuda_nvcc")
 if not runtime:
     raise SystemExit(1)
+nvcc_path = find_nvcc()
 print(runtime)
-print(nvcc)
+print(nvcc_path)
 PY
 )"; then
         echo "WARNING: Could not locate pip-installed CUDA runtime; continuing with system CUDA." >&2
         return
     fi
 
-    local cuda_root nvcc_pkg_root nvcc_root
+    local cuda_root nvcc_bin nvcc_dir
     cuda_root="$(awk 'NR==1' <<<"$info")"
-    nvcc_pkg_root="$(awk 'NR==2' <<<"$info")"
-    nvcc_root=""
+    nvcc_bin="$(awk 'NR==2' <<<"$info")"
+    nvcc_dir=""
 
     echo "Configuring pip-installed CUDA runtime at: ${cuda_root}"
     export CUDA_HOME="${cuda_root}"
     export CUDA_PATH="${cuda_root}"
     export CUDATOOLKIT_ROOT_DIR="${cuda_root}"
 
-    if [[ -n "$nvcc_pkg_root" && -x "${nvcc_pkg_root}/bin/nvcc" ]]; then
-        nvcc_root="$nvcc_pkg_root"
+    if [[ -n "$nvcc_bin" && -x "$nvcc_bin" ]]; then
+        nvcc_dir="$(dirname "$nvcc_bin")"
+        echo "Using pip-installed nvcc at: ${nvcc_bin}"
     elif [[ -x "${cuda_root}/bin/nvcc" ]]; then
-        nvcc_root="${cuda_root}"
+        nvcc_dir="${cuda_root}/bin"
+        nvcc_bin="${cuda_root}/bin/nvcc"
+        echo "Using pip CUDA runtime-provided nvcc at: ${nvcc_bin}"
     fi
 
-    if [[ -z "$nvcc_root" ]]; then
+    if [[ -z "$nvcc_dir" ]]; then
         if [[ "${ALLOW_SYSTEM_NVCC}" == "1" ]]; then
             echo "WARNING: pip CUDA runtime lacks nvcc; falling back to system PATH (ALLOW_SYSTEM_NVCC=1)." >&2
         else
@@ -139,8 +174,8 @@ EOF
     if [[ -d "$include_dir" ]]; then
         _prepend_path CPATH "$include_dir"
     fi
-    if [[ -n "$nvcc_root" && -d "${nvcc_root}/bin" ]]; then
-        _prepend_path PATH "${nvcc_root}/bin"
+    if [[ -n "$nvcc_dir" && -d "$nvcc_dir" ]]; then
+        _prepend_path PATH "$nvcc_dir"
     elif [[ -d "${cuda_root}/bin" ]]; then
         _prepend_path PATH "${cuda_root}/bin"
     fi

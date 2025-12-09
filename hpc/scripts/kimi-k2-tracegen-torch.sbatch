@@ -187,13 +187,13 @@ export APPTAINERENV_OVERWRITE_TASKS="$OVERWRITE_TASKS"
 unset APPTAINER_OVERLAY SINGULARITY_OVERLAY SINGULARITYENV_OVERLAY 2>/dev/null || true
 
 # Find the run script - SLURM_SUBMIT_DIR is where sbatch was invoked
-# The script should be at hpc/scripts/kimi-k2-tracegen-run.sh relative to repo root
+# The script should be at hpc/scripts/kimi-k2-tracegen-run-v2.sh relative to repo root
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$PWD}"
-RUN_SCRIPT_PATH="$REPO_ROOT/hpc/scripts/kimi-k2-tracegen-run.sh"
+RUN_SCRIPT_PATH="$REPO_ROOT/hpc/scripts/kimi-k2-tracegen-run-v2.sh"
 
 # Fallback: try SCRATCH location
 if [[ ! -f "$RUN_SCRIPT_PATH" ]]; then
-  RUN_SCRIPT_PATH="${SCRATCH:-$HOME}/OpenThoughts-Agent/hpc/scripts/kimi-k2-tracegen-run.sh"
+  RUN_SCRIPT_PATH="${SCRATCH:-$HOME}/OpenThoughts-Agent/hpc/scripts/kimi-k2-tracegen-run-v2.sh"
 fi
 
 if [[ ! -f "$RUN_SCRIPT_PATH" ]]; then
@@ -201,13 +201,6 @@ if [[ ! -f "$RUN_SCRIPT_PATH" ]]; then
   echo "       SLURM_SUBMIT_DIR=$SLURM_SUBMIT_DIR" >&2
   echo "       SCRATCH=$SCRATCH" >&2
   exit 1
-fi
-
-# Use v2 script with proper srun management
-RUN_SCRIPT_V2="${RUN_SCRIPT_PATH%.sh}-v2.sh"
-if [[ -f "$RUN_SCRIPT_V2" ]]; then
-  RUN_SCRIPT_PATH="$RUN_SCRIPT_V2"
-  echo ">>> Using v2 script with srun-based Ray management"
 fi
 
 echo ">>> Running trace generation script: $RUN_SCRIPT_PATH"

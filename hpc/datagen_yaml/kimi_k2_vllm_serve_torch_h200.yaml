@@ -33,7 +33,7 @@ vllm_server:
   - --quantization
   - compressed-tensors
   - --kv-cache-dtype
-  - fp16
+  - bfloat16
   - --block-size
   - '16'
   - --enable-chunked-prefill

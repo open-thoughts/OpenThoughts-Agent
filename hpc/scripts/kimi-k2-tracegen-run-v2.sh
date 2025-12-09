@@ -220,7 +220,7 @@ nodes=$(scontrol show hostnames "$SLURM_JOB_NODELIST")
 nodes_array=($nodes)
 head_node=${nodes_array[0]}
 NUM_NODES=${SLURM_JOB_NUM_NODES:-1}
-CPUS_PER_NODE=${SLURM_CPUS_PER_TASK:-32}
+CPUS_PER_NODE=${SLURM_CPUS_PER_TASK:-96}
 HEADROOM_MB=8192
 SRUN_MEM_PER_STEP=$((1572864 - HEADROOM_MB))
 echo "Using SRUN_MEM_PER_STEP=${SRUN_MEM_PER_STEP} MB"
@@ -394,6 +394,7 @@ TRACE_CMD=(
     --trace-harbor-config "$TRACE_HARBOR_CONFIG"
     --trace-jobs-dir "$TRACE_JOBS_DIR"
     --trace-model "$TRACE_MODEL"
+    --endpoint-json "$VLLM_ENDPOINT_JSON_PATH"
     --trace-episodes "$TRACE_EPISODES"
     --trace-export-filter "$TRACE_EXPORT_FILTER"
     --trace-dataset-type "$TRACE_DATASET_TYPE"

@@ -1,6 +1,8 @@
 #!/bin/bash
 
-CMD_PREFIX=${1:-""}
+# CMD_PREFIX may contain spaces (e.g. "proxychains4 -f /path/to/proxychains.conf").
+# Preserve it by taking all args, not just $1.
+CMD_PREFIX="$*"
 
 # Getting the node names
 nodes=$(scontrol show hostnames "$SLURM_JOB_NODELIST")

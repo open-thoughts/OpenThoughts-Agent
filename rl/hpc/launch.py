@@ -44,10 +44,8 @@ sys.path.insert(0, ot_agent_root)
 
 from jinja2 import Environment, FileSystemLoader
 
-def launch_sbatch(sbatch_script_path, dependency=None, has_internet=False) -> str:
-    if not has_internet:
-        sbatch_cmd = f"bash {sbatch_script_path} &"
-    elif dependency is not None:
+def launch_sbatch(sbatch_script_path, dependency=None) -> str:
+    if dependency is not None:
         sbatch_cmd = f"sbatch --dependency={dependency} {sbatch_script_path}"
     else:
         sbatch_cmd = f"sbatch {sbatch_script_path}"
@@ -84,9 +82,10 @@ def render_jinja2_template(template_path, template_vars, output_path):
 
 def construct_sbatch_script(exp_args):
     """
-    Construct sbatch script using Jinja2 templating for TACC clusters.
+    Construct sbatch script using Jinja2 templating.
 
-    TODO(Charlie): Check JSC support for Jinja2 templating.
+    Uses environment-derived variables and lets the template pick what it needs
+    (works for both TACC and JSC templates).
     """
     jinja_template_path = exp_args["train_sbatch_jinja_path"]
     assert os.path.exists(jinja_template_path), f"Jinja2 template {jinja_template_path} does not exist."
@@ -94,8 +93,8 @@ def construct_sbatch_script(exp_args):
     # Prepare template variables
     template_vars = defaultdict(str, **exp_args)
     
-    # Add TACC-specific template variables
-    tacc_vars = {
+    # Common env-derived variables used by both TACC and JSC templates
+    env_vars = {
         "vllm_cache_root": os.environ.get("VLLM_CACHE_ROOT", ""),
         "vllm_config_root": os.environ.get("VLLM_CONFIG_ROOT", ""),
         "triton_dump_dir": os.environ.get("TRITON_DUMP_DIR", ""),
@@ -105,16 +104,40 @@ def construct_sbatch_script(exp_args):
         "uv_cache_dir": os.environ.get("UV_CACHE_DIR", ""),
         "secret_env_path": os.environ.get("SECRET_ENV_PATH", ""),
         "conda_activate_path": os.environ.get("CONDA_ACTIVATE_PATH", ""),
-        "extra_pythonpath": os.environ.get("EXTRA_PYTHONPATH", ""),  # TODO(Charlie): handle when it is not provided. This is optional.
+        "extra_pythonpath": os.environ.get("EXTRA_PYTHONPATH", ""),
         "conda_env_path": os.environ.get("CONDA_ENV_PATH", ""),
         "skyrl_home": os.environ.get("SKYRL_HOME", ""),
-        "ot_agent_path": os.environ.get("OT_AGENT", "/scratch/08134/negin/dc-agent-shared/dc-agent"),
+        "skyrl_output_dir": os.environ.get("SKYRL_OUTPUT_DIR", ""),
+        "ot_agent_path": os.environ.get("OT_AGENT", ""),
+        # HPC model_dump includes dotenv_path for JSC clusters
+        "dotenv_path": exp_args.get("dotenv_path", ""),
     }
-    # assert that all the directories exists to prevent erroring out on compute node after queuing
-    for key, value in tacc_vars.items():
-        assert os.path.exists(value), f"{key} path {value} does not exist. Please check your `tacc.env` file."
 
-    template_vars.update(tacc_vars)
+    template_vars.update(env_vars)
+
+    # Minimal safety checks common to both clusters
+    required_paths = {
+        "ot_agent_path": template_vars["ot_agent_path"],
+        "conda_activate_path": template_vars["conda_activate_path"],
+        "conda_env_path": template_vars["conda_env_path"],
+        "skyrl_home": template_vars["skyrl_home"],
+    }
+    for key, value in required_paths.items():
+        if not value:
+            raise ValueError(f"{key} is not set. Please check your HPC dotenv.")
+        if not os.path.exists(value):
+            if key == "skyrl_home":
+                raise FileNotFoundError(
+                    f"SkyRL repo not found at SKYRL_HOME={value}. "
+                    "Clone/install SkyRL and set SKYRL_HOME accordingly in your dotenv."
+                )
+            raise FileNotFoundError(f"{key} path {value} does not exist. Please check your HPC dotenv.")
+
+    # dotenv / secret env files should exist if provided
+    if template_vars.get("secret_env_path"):
+        assert os.path.exists(template_vars["secret_env_path"]), f"secret_env_path {template_vars['secret_env_path']} does not exist."
+    if template_vars.get("dotenv_path"):
+        assert os.path.exists(template_vars["dotenv_path"]), f"dotenv_path {template_vars['dotenv_path']} does not exist."
     
     # Set default time limit if not provided
     if template_vars.get("time_limit") is None:
@@ -189,7 +212,7 @@ def inplace_update_skyrl_args(skyrl_args, exp_args):
     return skyrl_args
 
 
-def submit_job(exp_args=None, dependency=None, has_internet=False):
+def submit_job(exp_args=None, dependency=None):
     exp_args["logs_dir"] = os.path.join(exp_args["experiments_dir"], "logs")
     os.makedirs(exp_args["logs_dir"], exist_ok=True)
 
@@ -200,7 +223,7 @@ def submit_job(exp_args=None, dependency=None, has_internet=False):
         if max_restarts > 0:
             for _ in range(max_restarts):
                 job_id = launch_sbatch(
-                    exp_args["train_sbatch_path_out"], dependency=dependency, has_internet=has_internet
+                    exp_args["train_sbatch_path_out"], dependency=dependency
                 )
                 job_id = job_id.split()[-1]
                 job_ids.append(job_id)
@@ -208,7 +231,7 @@ def submit_job(exp_args=None, dependency=None, has_internet=False):
 
     # Submit final job in chain
     job_id = launch_sbatch(
-        exp_args["train_sbatch_path_out"], dependency, has_internet
+        exp_args["train_sbatch_path_out"], dependency
     )
     job_id = job_id.split()[-1]
     job_ids.append(job_id)
@@ -359,7 +382,7 @@ def main():
         )
         return
 
-    train_job_ids = submit_job(exp_args=exp_args, dependency=None, has_internet=hpc.internet_node)
+    train_job_ids = submit_job(exp_args=exp_args, dependency=None)
 
     # For backwards compatibility and logging, use the last job ID
     train_job_id = train_job_ids[-1] if train_job_ids else None

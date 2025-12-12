@@ -53,6 +53,7 @@ class HPC(BaseModel):
 
 
 # JSC (Jülich Supercomputing Centre) configurations
+
 jsc_jureca = HPC(
     name="jsc_jureca",
     hostname_pattern=r"jr.*?.jureca",
@@ -62,7 +63,7 @@ jsc_jureca = HPC(
     partition="dc-hwai", # dc-gpu
     gpus_per_node=4,
     cpus_per_node=48,
-    internet_node=False,
+    internet_node=True,
     gpus_type="H100 94GB",
     total_partition_nodes=16,
 )
@@ -76,7 +77,7 @@ jsc_jupiter = HPC(
     partition="all",
     gpus_per_node=4,
     cpus_per_node=48,
-    internet_node=False,
+    internet_node=True,
     gpus_type="GH200 96GB",
     total_partition_nodes=48,
 )
@@ -90,7 +91,7 @@ jsc_juwels = HPC(
     partition="booster",
     gpus_per_node=4,
     cpus_per_node=48,
-    internet_node=False,
+    internet_node=True,
     gpus_type="A100 40GB",
     total_partition_nodes=936,
     node_exclusion_list="jwb[0059,0067,0069,0193,0198,0215,0266,0284,0287,0294,0359,0418,0637,0647,0829,0832,0838,0898,0907,0921,0971,1004,1023,1029,1213]",

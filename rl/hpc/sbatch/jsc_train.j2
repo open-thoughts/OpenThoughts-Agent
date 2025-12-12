@@ -1,0 +1,87 @@
+#!/bin/bash
+#SBATCH --partition={{ partition }}
+#SBATCH --time={{ time_limit }}
+#SBATCH --nodes={{ num_nodes }}
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task={{ cpus_per_node }}
+#SBATCH --account={{ account }}
+#SBATCH --gres=gpu:4
+#SBATCH --output={{ experiments_dir }}/logs/%x_%j.log
+#SBATCH --job-name={{ job_name }}
+
+
+# Set up environment variables
+bash {{ ot_agent_path }}/rl/hpc/sbatch/ensure_proxychains.sh
+source {{ dotenv_path }}
+source {{ secret_env_path }}
+
+export VLLM_USE_V1=1
+export RAY_RUNTIME_ENV_HOOK=ray._private.runtime_env.uv_runtime_env_hook.hook
+export RAY_ADDRESS=$RAY_ADDRESS
+export VLLM_CACHE_ROOT={{ vllm_cache_root }}
+export VLLM_CONFIG_ROOT={{ vllm_config_root }}
+export TRITON_DUMP_DIR={{ triton_dump_dir }}
+export TRITON_OVERRIDE_DIR={{ triton_override_dir }}
+export TRITON_CACHE_DIR={{ triton_cache_dir }}
+export FLASHINFER_WORKSPACE_BASE={{ flashinfer_workspace_base }}
+export UV_CACHE_DIR={{ uv_cache_dir }}
+export HYDRA_FULL_ERROR=1
+
+export NCCL_DEBUG=INFO
+export NCCL_SOCKET_IFNAME=ib0
+export GLOO_SOCKET_IFNAME=ib0
+export NCCL_ALGO=Ring,Tree
+
+# if SSH_KEY is set start the ssh tunnel
+if [ -n "$SSH_KEY" ]; then
+    export DOCKER_HOST=$(bash {{ ot_agent_path }}/rl/hpc/sbatch/start_tunnel.sh)
+fi
+
+# Activate conda environment
+source {{ conda_activate_path }}
+conda activate {{ conda_env_path }}
+echo "CONDA ENV PATH: "
+echo {{ conda_env_path }}
+
+# Ensure this Python is the one from the SkyRL env
+export PATH="{{ conda_env_path }}/bin:$PATH"
+
+# SkyRL paths
+export SKYRL_HOME={{ skyrl_home }}
+export SKYRL_OUTPUT_DIR={{ skyrl_output_dir }}
+cd "$SKYRL_HOME/skyrl-train"
+export PYTHONPATH="$SKYRL_HOME/skyrl-train:${PYTHONPATH}"
+echo "PYTHONPATH: "
+echo $PYTHONPATH
+
+# check if internet access is available
+if ping -c 1 google.com &> /dev/null; then
+    echo "Internet access is available."
+    export INTERNET_AVAILABLE=1
+else
+    echo "Internet access is not available."
+    export INTERNET_AVAILABLE=0
+fi
+
+CMD_PREFIX=""
+# if internet is not available, set up proxy tunnel
+if [ "$INTERNET_AVAILABLE" -eq 0 ] && [ -n "$SSH_KEY" ]; then
+    echo "Setting up proxy tunnel..."
+    CMD_PREFIX=$(bash {{ ot_agent_path }}/rl/hpc/sbatch/start_proxy_tunnel.sh)
+elif [ "$INTERNET_AVAILABLE" -eq 0 ]; then
+    echo "No internet and no SSH_KEY provided. Running without proxy."
+fi
+
+# Set up Ray server
+bash {{ ot_agent_path }}/eval/JSC/start_ray_server.sh $CMD_PREFIX
+
+sleep 30
+
+MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
+MASTER_ADDR="${MASTER_ADDR}i"
+MASTER_ADDR_IP=$(nslookup $MASTER_ADDR | grep 'Address' | tail -n1 | awk '{print $2}')
+
+# Run training
+$CMD_PREFIX {{ skyrl_command_string }}
+
+

@@ -187,13 +187,12 @@ export APPTAINERENV_OVERWRITE_TASKS="$OVERWRITE_TASKS"
 unset APPTAINER_OVERLAY SINGULARITY_OVERLAY SINGULARITYENV_OVERLAY 2>/dev/null || true
 
 # Find the run script - SLURM_SUBMIT_DIR is where sbatch was invoked
-# The script should be at hpc/scripts/kimi-k2-tracegen-run-v2.sh relative to repo root
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$PWD}"
-RUN_SCRIPT_PATH="$REPO_ROOT/hpc/scripts/kimi-k2-tracegen-run-v2.sh"
+RUN_SCRIPT_PATH="$REPO_ROOT/hpc/scripts/glm46-tracegen-run-v2.sh"
 
 # Fallback: try SCRATCH location
 if [[ ! -f "$RUN_SCRIPT_PATH" ]]; then
-  RUN_SCRIPT_PATH="${SCRATCH:-$HOME}/OpenThoughts-Agent/hpc/scripts/kimi-k2-tracegen-run-v2.sh"
+  RUN_SCRIPT_PATH="${SCRATCH:-$HOME}/OpenThoughts-Agent/hpc/scripts/glm46-tracegen-run-v2.sh"
 fi
 
 if [[ ! -f "$RUN_SCRIPT_PATH" ]]; then

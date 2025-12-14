@@ -43,8 +43,10 @@ CONDA_ENV_NAME="dcagent312"
 CONDA_ENV_PATH="$SCRATCH/miniconda3/envs/$CONDA_ENV_NAME"
 
 if [[ -d "$CONDA_ENV_PATH" ]]; then
+    set +u
     source "$SCRATCH/miniconda3/etc/profile.d/conda.sh"
     conda activate "$CONDA_ENV_NAME"
+    set -u
     echo "Activated conda env: $CONDA_ENV_NAME"
 else
     echo "ERROR: Conda env not found at $CONDA_ENV_PATH" >&2

@@ -188,11 +188,11 @@ unset APPTAINER_OVERLAY SINGULARITY_OVERLAY SINGULARITYENV_OVERLAY 2>/dev/null |
 
 # Find the run script - SLURM_SUBMIT_DIR is where sbatch was invoked
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$PWD}"
-RUN_SCRIPT_PATH="$REPO_ROOT/hpc/scripts/mistral3large-tracegen-run-v2.sh"
+RUN_SCRIPT_PATH="$REPO_ROOT/hpc/scripts/glm46-tracegen-run-v2.sh"
 
 # Fallback: try SCRATCH location
 if [[ ! -f "$RUN_SCRIPT_PATH" ]]; then
-  RUN_SCRIPT_PATH="${SCRATCH:-$HOME}/OpenThoughts-Agent/hpc/scripts/mistral3large-tracegen-run-v2.sh"
+  RUN_SCRIPT_PATH="${SCRATCH:-$HOME}/OpenThoughts-Agent/hpc/scripts/glm46-tracegen-run-v2.sh"
 fi
 
 if [[ ! -f "$RUN_SCRIPT_PATH" ]]; then

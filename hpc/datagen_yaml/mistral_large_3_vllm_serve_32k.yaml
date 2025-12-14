@@ -1,7 +1,7 @@
 engine:
   type: vllm_local
-  model: mistralai/Mistral-Large-3-675B-Instruct-2512
-  max_output_tokens: 16384
+  model: mistralai/Mistral-Large-3-675B-Instruct-2512-NVFP4
+  max_output_tokens: 8192
   healthcheck_interval: 300
   vllm_local: {}
 backend:
@@ -12,7 +12,7 @@ backend:
   healthcheck_max_attempts: 200
   healthcheck_retry_delay: 30
 vllm_server:
-  model_path: mistralai/Mistral-Large-3-675B-Instruct-2512
+  model_path: mistralai/Mistral-Large-3-675B-Instruct-2512-NVFP4
   num_replicas: 1
   tensor_parallel_size: 8
   pipeline_parallel_size: 1

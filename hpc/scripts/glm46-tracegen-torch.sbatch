@@ -48,15 +48,15 @@ USAGE
 }
 
 # Defaults
-EXPERIMENTS_DIR_DEFAULT="${SCRATCH:-$HOME}/OpenThoughts-Agent/experiments/glm46-r2egym_sandboxes-maxeps-131k"
+EXPERIMENTS_DIR_DEFAULT="${SCRATCH:-$HOME}/OpenThoughts-Agent/experiments/glm46-neulab-agenttuning-alfworld-sandboxes-maxeps-131k"
 DATAGEN_CONFIG_DEFAULT="hpc/datagen_yaml/glm_46_vllm_serve_torch_h200.yaml"
 TRACE_SCRIPT_DEFAULT="data/freelancer/generate_abstract.py"
-TRACE_TARGET_REPO_DEFAULT="DCAgent2/glm46-r2egym_sandboxes-maxeps-131k"
+TRACE_TARGET_REPO_DEFAULT="DCAgent2/glm46-neulab-agenttuning-alfworld-sandboxes-maxeps-131k"
 TRACE_HARBOR_CONFIG_DEFAULT="hpc/harbor_yaml/trace_64concurrency_ctx131k.yaml"
 TRACE_MODEL_DEFAULT="QuantTrio/GLM-4.6-AWQ"
 TRACE_ENGINE_DEFAULT="vllm_local"
 TRACE_BACKEND_DEFAULT="ray"
-TASKS_REPO_DEFAULT="DCAgent2/r2egym_sandboxes"
+TASKS_REPO_DEFAULT="DCAgent/neulab-agenttuning-alfworld-sandboxes"
 TASKS_REVISION_DEFAULT=""
 PARQUET_NAME_DEFAULT=""
 GPUS_PER_NODE_DEFAULT=8

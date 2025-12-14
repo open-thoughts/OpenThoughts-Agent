@@ -32,6 +32,11 @@ export PYTORCH_CUDA_ALLOC_CONF="garbage_collection_threshold:0.6,max_split_size_
 export OUTLINES_CACHE_DIR="${OUTLINES_CACHE_DIR:-/tmp/.outlines}"
 export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/tmp/triton_cache}"
 export RUN_SINGULARITY=/scratch/bf996/OpenThoughts-Agent/hpc/scripts/run-singularity-torch.bash
+export VLLM_USE_DEEP_GEMM=0  # ATM, this line is a "must" for Hopper devices
+export TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1
+export VLLM_USE_FLASHINFER_MOE_FP16=1
+export VLLM_USE_FLASHINFER_SAMPLER=0
+export OMP_NUM_THREADS=4
 
 if [ ! -x "$RUN_SINGULARITY" ]; then
     echo "Missing singularity launcher at $RUN_SINGULARITY" >&2

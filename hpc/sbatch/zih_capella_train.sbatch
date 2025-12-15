@@ -9,6 +9,8 @@
 #SBATCH --exclusive
 #SBATCH --output={experiments_dir}/logs/%x_%j.out
 #SBATCH --job-name={job_name}
+#SBATCH --mail-type=END,TIME_LIMIT,FAIL
+#SBATCH --mail-user=bf996@nyu.edu
 
 set -euo pipefail
 

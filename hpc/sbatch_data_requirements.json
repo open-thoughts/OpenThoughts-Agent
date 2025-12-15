@@ -1,4 +1,10 @@
 {
+  "capella": [
+    {
+      "cluster": "capella",
+      "path": "hpc/sbatch/zih_capella_train.sbatch"
+    }
+  ],
   "vista": [
     {
       "cluster": "vista",

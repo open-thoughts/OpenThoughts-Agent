@@ -412,7 +412,6 @@ def main() -> None:
         verbose=True,
         success_filter=success_filter,
         export_subagents=False,
-        include_reasoning=bool(args.include_reasoning),
     )
     try:
         from scripts.harbor.run_and_export_traces import _finalize_trace_dataset  # type: ignore

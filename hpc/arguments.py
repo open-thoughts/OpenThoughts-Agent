@@ -647,7 +647,7 @@ def _add_dataclass_arguments(arg_group, dataclass_type, exclude_fields=None):
         elif isinstance(field.default, bool):
             kwargs = {
                 "dest": field.name,
-                "type": _str_to_bool,
+                "type": parse_bool_flag,
                 "help": help_text,
                 "default": field.default,
             }

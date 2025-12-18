@@ -573,10 +573,6 @@ class DataGenArgs:
         default=None,
         metadata={"help": "Backend to use for trace generation (e.g., 'vllm', 'ray', 'none'; defaults to datagen_backend)"}
     )
-    trace_include_reasoning: bool = field(
-        default=True,
-        metadata={"help": "Include agent reasoning content inside <think> tags when exporting traces"}
-    )
     trace_export_subagents: bool = field(
         default=True,
         metadata={"help": "Export subagent traces (e.g., context summarization) alongside main agent traces"}

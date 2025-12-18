@@ -1829,14 +1829,6 @@ def launch_trace_job(
     trace_export_filter = exp_args.get("trace_export_filter") or "none"
     trace_dataset_type = exp_args.get("trace_dataset_type") or "SFT"
     disable_verification_flag = bool(exp_args.get("disable_verification"))
-    trace_include_reasoning_value = exp_args.get("trace_include_reasoning")
-    if trace_include_reasoning_value in (None, "", "None"):
-        trace_include_reasoning = True
-    elif isinstance(trace_include_reasoning_value, str):
-        trace_include_reasoning = trace_include_reasoning_value.strip().lower() not in {"0", "false", "no"}
-    else:
-        trace_include_reasoning = bool(trace_include_reasoning_value)
-
     trace_export_subagents_value = exp_args.get("trace_export_subagents")
     if trace_export_subagents_value in (None, "", "None"):
         trace_export_subagents = True
@@ -1914,7 +1906,6 @@ def launch_trace_job(
         "TRACE_EPISODES": trace_episodes,
         "TRACE_EXPORT_FILTER": trace_export_filter,
         "TRACE_DATASET_TYPE": trace_dataset_type,
-        "TRACE_INCLUDE_REASONING": "1" if trace_include_reasoning else "0",
         "TRACE_EXPORT_SUBAGENTS": "1" if trace_export_subagents else "0",
         "TRACE_JOBS_DIR": trace_jobs_dir,
         "TRACE_ENDPOINT_JSON": trace_endpoint_json or "",

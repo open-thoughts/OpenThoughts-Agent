@@ -983,12 +983,6 @@ class BaseDataGenerator(ABC):
             trace_export_filter = None
 
         trace_dataset_type = metadata.get("trace_dataset_type") or getattr(args, "trace_dataset_type", None) or "SFT"
-        include_reasoning = metadata.get("trace_include_reasoning")
-        if include_reasoning is None:
-            include_reasoning = getattr(args, "trace_include_reasoning", True)
-        include_reasoning = bool(include_reasoning)
-        metadata["trace_include_reasoning"] = include_reasoning
-
         try:
             agent_enum = AgentName(trace_agent_name)
         except ValueError:
@@ -1120,7 +1114,6 @@ class BaseDataGenerator(ABC):
                 agent_timeout_sec=getattr(args, "trace_agent_timeout_sec", None),
                 verifier_timeout_sec=getattr(args, "trace_verifier_timeout_sec", None),
                 disable_verification=disable_verification,
-                include_reasoning=include_reasoning,
             )
         except NotImplementedError as exc:
             if trace_eval_only:

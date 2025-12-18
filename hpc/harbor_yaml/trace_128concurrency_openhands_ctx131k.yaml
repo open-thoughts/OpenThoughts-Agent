@@ -8,7 +8,7 @@ debug: false
 
 orchestrator:
   type: local
-  n_concurrent_trials: 96
+  n_concurrent_trials: 128
   quiet: false
   adaptive_concurrency:
     enabled: false
@@ -52,13 +52,13 @@ verifier:
 metrics: []
 
 agents:
-  - name: terminus-2
+  - name: openhands
     import_path: null
     model_name: placeholder/override-at-runtime
     override_timeout_sec: 1800
     max_timeout_sec: null
     kwargs:
-      record_terminal_session: false
+      disable_tool_calls: true
       collect_rollout_details: false
       collect_engine_metrics: false
       metrics_endpoint: https://replace-with-vllm-host/metrics

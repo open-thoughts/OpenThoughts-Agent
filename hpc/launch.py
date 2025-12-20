@@ -25,6 +25,7 @@ from hpc.sft_launch_utils import (
     apply_mca_training_template,
     build_training_parameters_link,
     ensure_deepspeed_config,
+    maybe_apply_cluster_specific_env_overrides,
     maybe_compute_gradient_accumulation,
     apply_data_argument_overrides,
 )
@@ -129,6 +130,8 @@ def _apply_env_overrides(exp_args: dict, cli_args_filtered: dict, hpc) -> tuple[
             hpc,
             update_exp_args_fn=update_exp_args,
         )
+
+    exp_args = maybe_apply_cluster_specific_env_overrides(exp_args, hpc)
 
     datagen_runtime = None
     if job_type == JobType.DATAGEN.value or exp_args.get("datagen_script"):

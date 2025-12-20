@@ -293,3 +293,24 @@ def apply_data_argument_overrides(base_config: dict, exp_args: dict) -> None:
             tag_value = exp_args[tag]
             if tag_value is not None:
                 base_config[tag] = tag_value
+
+
+def maybe_apply_cluster_specific_env_overrides(exp_args: dict, hpc) -> dict:
+    """Inject cluster-specific defaults into exp_args when the user hasn't set them."""
+
+    if hpc is None:
+        return exp_args
+
+    hpc_name = str(getattr(hpc, "name", "") or "").lower()
+    explicit_cli_keys = set(exp_args.get("_explicit_cli_keys", []) or [])
+
+    def _set_default(key: str, value):
+        if key in explicit_cli_keys:
+            return
+        if exp_args.get(key) is None:
+            exp_args[key] = value
+
+    if hpc_name == "capella":
+        _set_default("data_shared_file_system", True)
+
+    return exp_args

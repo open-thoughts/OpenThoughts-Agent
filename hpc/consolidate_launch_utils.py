@@ -110,6 +110,8 @@ def launch_consolidate_job(
     time_limit = exp_args.get("time_limit") or os.environ.get("DEFAULT_TIME_LIMIT", "24:00:00")
 
     cpus_per_task = int(exp_args.get("cpus_per_task") or getattr(hpc, "cpus_per_node", 1) or 1)
+    if hpc_name == "capella":
+        cpus_per_task = min(cpus_per_task, 14)
     mem_per_node = getattr(hpc, "mem_per_node", "") or ""
     mem_directive = f"#SBATCH --mem={mem_per_node}" if mem_per_node else "#SBATCH --mem=0"
 

@@ -216,7 +216,7 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Logs
-experiments/logs/
+experiments/
 rl/experiments/sbatch_scripts/
 *.out
 daytona_parallel_results_*.json

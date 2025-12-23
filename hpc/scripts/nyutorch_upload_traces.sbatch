@@ -34,10 +34,12 @@ fi
 
 cd "$PROJECT_DIR"
 
+set +u
 source "${SCRATCH_ROOT}/miniconda3/etc/profile.d/conda.sh"
 conda activate dcagent312
 source hpc/dotenv/nyutorch.env
 source "${HOME}/secrets.env"
+set -u
 
 python -m scripts.harbor.make_and_upload_trace_dataset \
     --job_dir "$JOB_DIR" \

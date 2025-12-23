@@ -24,8 +24,9 @@ def parse_args() -> argparse.Namespace:
         "--parquet",
         required=True,
         help=(
-            "Path to the task parquet file to extract, or a Hugging Face dataset repo ID."
-            " If a repo ID is provided, the script downloads it before extraction."
+            "Path to the task parquet file to extract, a directory containing parquet files, "
+            "or a Hugging Face dataset repo ID. If a repo ID is provided, the script downloads "
+            "it before extraction."
         ),
     )
     parser.add_argument(
@@ -38,6 +39,16 @@ def parse_args() -> argparse.Namespace:
         choices=("skip", "overwrite", "error"),
         default="error",
         help="How to handle existing task folders (default: error).",
+    )
+    parser.add_argument(
+        "--tasks_revision",
+        default=None,
+        help="Optional revision/commit to download when --parquet references a Hugging Face repo.",
+    )
+    parser.add_argument(
+        "--parquet_name",
+        default=None,
+        help="Optional parquet filename to select when the source contains multiple parquet files.",
     )
     parser.add_argument(
         "--dry_run",
@@ -55,7 +66,21 @@ def main() -> None:
 
     candidate_path = Path(parquet_input).expanduser()
     if candidate_path.exists():
-        parquet_path = candidate_path.resolve()
+        if candidate_path.is_dir():
+            parquet_files = sorted(candidate_path.rglob("*.parquet"))
+            if not parquet_files:
+                raise FileNotFoundError(f"No parquet files found under directory: {candidate_path}")
+            if args.parquet_name:
+                matching = [p for p in parquet_files if p.name == args.parquet_name]
+                if not matching:
+                    raise FileNotFoundError(
+                        f"Could not find parquet named '{args.parquet_name}' under {candidate_path}"
+                    )
+                parquet_path = matching[0]
+            else:
+                parquet_path = parquet_files[0]
+        else:
+            parquet_path = candidate_path.resolve()
     else:
         global download_hf_dataset
         if download_hf_dataset is None:
@@ -69,13 +94,25 @@ def main() -> None:
             download_hf_dataset = _download_hf_dataset
 
         print(f"[extract] Treating '{parquet_input}' as a Hugging Face dataset repo; downloading snapshot...")
-        snapshot_dir = Path(download_hf_dataset(parquet_input))
+        snapshot_dir = Path(
+            download_hf_dataset(parquet_input, revision=args.tasks_revision)
+        )
         parquet_files = sorted(snapshot_dir.rglob("*.parquet"))
         if not parquet_files:
             raise FileNotFoundError(
                 f"No parquet files found under downloaded repo '{parquet_input}' (path: {snapshot_dir})"
             )
-        parquet_path = parquet_files[0]
+        if args.parquet_name:
+            matching = [p for p in parquet_files if p.name == args.parquet_name]
+            if not matching:
+                available = "\n  - ".join(str(p.relative_to(snapshot_dir)) for p in parquet_files[:20])
+                raise FileNotFoundError(
+                    f"Could not find parquet named '{args.parquet_name}' in repo '{parquet_input}'. "
+                    f"Available examples:\n  - {available}"
+                )
+            parquet_path = matching[0]
+        else:
+            parquet_path = parquet_files[0]
         print(f"[extract] Using parquet file: {parquet_path}")
 
     if not parquet_path.exists():

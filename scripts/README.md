@@ -42,14 +42,13 @@ Utility entrypoints that support data generation, trace analysis, Harbor uploads
   ```bash
   python scripts/datagen/gsm8k_terminal_bench_traces.py --tasks-repo mlfoundations-dev/gsm8k-terminal-bench --output-dir /tmp/gsm8k-traces
   ```
-- `datagen/launch_trace_from_parquet.py` – download tasks from HF (Parquet), extract them, then launch `python -m hpc.launch` for trace-only jobs.  
+- `datagen/extract_tasks_from_parquet.py` – resolve a local parquet file (or Hugging Face dataset repo), then materialize Harbor-style task folders for downstream trace jobs.  
   ```bash
-  python scripts/datagen/launch_trace_from_parquet.py \
-    --tasks_repo my-org/tasks-parquet \
-    --experiments_dir ~/experiments \
-    --datagen_config hpc/datagen_yaml/kimi_k2_vllm_serve_tacc_ray_32k.yaml \
-    --trace_target_repo my-org/task-traces \
-    --trace_harbor_config hpc/harbor_yaml/datagen_vllm.yaml
+  python scripts/datagen/extract_tasks_from_parquet.py \
+    --parquet my-org/tasks-parquet \
+    --output_dir $SCRATCH/experiments/tasks_extracted \
+    --parquet_name tasks/train-00000-of-00001.parquet \
+    --on_exist overwrite
   ```
 - `datagen/print_trace_contents.py` – quickly preview the conversations inside exported trace JSONL files.  
   ```bash

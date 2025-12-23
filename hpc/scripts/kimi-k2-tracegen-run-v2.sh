@@ -137,33 +137,25 @@ export SRUN_EXPORT_ENV
 # =============================================================================
 # Extract tasks
 # =============================================================================
-echo ">>> Extracting tasks via launch_trace_from_parquet.py"
+echo ">>> Extracting tasks via extract_tasks_from_parquet.py"
 
+TASKS_INPUT="$EXPERIMENTS_DIR/tasks_extracted"
 EXTRACT_CMD=(
   python3
-  scripts/datagen/launch_trace_from_parquet.py
-  --experiments_dir "$EXPERIMENTS_DIR"
-  --datagen_config "$DATAGEN_CONFIG"
-  --trace_script "$TRACE_SCRIPT"
-  --trace_target_repo "$TRACE_TARGET_REPO"
-  --trace_harbor_config "$TRACE_HARBOR_CONFIG"
-  --trace_model "$TRACE_MODEL"
-  --trace_engine "$TRACE_ENGINE"
-  --trace_backend "$TRACE_BACKEND"
-  --gpus_per_node "$GPUS_PER_NODE"
-  --time_limit "$TIME_LIMIT"
-  --tasks_repo "$TASKS_REPO"
-  --extract_tasks_only
+  scripts/datagen/extract_tasks_from_parquet.py
+  --parquet "$TASKS_REPO"
+  --output_dir "$TASKS_INPUT"
 )
 
 [[ -n "${TASKS_REVISION:-}" ]] && EXTRACT_CMD+=(--tasks_revision "$TASKS_REVISION")
 [[ -n "${PARQUET_NAME:-}" ]] && EXTRACT_CMD+=(--parquet_name "$PARQUET_NAME")
-[[ "$OVERWRITE_TASKS" == "1" ]] && EXTRACT_CMD+=(--overwrite)
+if [[ "$OVERWRITE_TASKS" == "1" ]]; then
+  EXTRACT_CMD+=(--on_exist overwrite)
+fi
 
 echo "Command: ${EXTRACT_CMD[*]}"
 "${EXTRACT_CMD[@]}"
 
-TASKS_INPUT="$EXPERIMENTS_DIR/tasks_extracted"
 TRACE_OUTPUT_DIR="$EXPERIMENTS_DIR/outputs/traces"
 TRACE_JOBS_DIR="$EXPERIMENTS_DIR/trace_jobs"
 

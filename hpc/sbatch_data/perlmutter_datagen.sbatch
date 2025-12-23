@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account={account}
-#SBATCH --qos=regular
+#SBATCH --qos=premium
 #SBATCH --constraint="gpu&hbm80g"
 #SBATCH --exclusive
 #SBATCH --nodes {num_nodes}

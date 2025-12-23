@@ -44,7 +44,6 @@ else
   fi
 fi
 
-module load cuda/12.9
 module load cudatoolkit/12.9
 
 if [ -n "${LIBRARY_PATH:-}" ]; then

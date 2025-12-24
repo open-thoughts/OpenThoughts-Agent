@@ -1,7 +1,7 @@
 #!/bin/bash
 # Frontier training template for HPC launch.
 #SBATCH -A {account}
-#SBATCH -p extended  # Frontier small-job queue (up to 24h)
+#SBATCH -p batch
 #SBATCH -q {qos}
 #SBATCH --exclusive
 #SBATCH --nodes={num_nodes}

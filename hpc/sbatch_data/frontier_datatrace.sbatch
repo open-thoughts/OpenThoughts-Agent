@@ -266,5 +266,179 @@ if [ -n "$TRACE_ENDPOINT_JSON" ]; then
     CMD+=(--endpoint-json "$TRACE_ENDPOINT_JSON")
 fi
 
-echo "Command: ${CMD[*]}"
-"${CMD[@]}"
+run_trace() {
+    echo "Command: ${CMD[*]}"
+    echo "======================================"
+    "${CMD[@]}"
+    return $?
+}
+
+if [ "$TRACE_BACKEND" != "ray" ]; then
+    if [ "$TRACE_REQUIRE_ENDPOINT" = "1" ] && [ "$TRACE_WAIT_FOR_ENDPOINT" = "1" ]; then
+        if [ -z "$TRACE_ENDPOINT_JSON" ]; then
+            echo "ERROR: Trace endpoint required but path is empty"
+            exit 1
+        fi
+
+        echo "Waiting for trace endpoint JSON..."
+        TRACE_MAX_WAIT=600
+        TRACE_WAIT=0
+        while [ ! -f "$TRACE_ENDPOINT_JSON" ] && [ $TRACE_WAIT -lt $TRACE_MAX_WAIT ]; do
+            sleep 5
+            TRACE_WAIT=$((TRACE_WAIT + 5))
+            if [ $((TRACE_WAIT % 30)) -eq 0 ]; then
+                echo "Still waiting for $TRACE_ENDPOINT_JSON... (${TRACE_WAIT}s elapsed)"
+            fi
+        done
+
+        if [ ! -f "$TRACE_ENDPOINT_JSON" ]; then
+            echo "ERROR: Trace endpoint JSON not found after ${TRACE_MAX_WAIT}s: $TRACE_ENDPOINT_JSON"
+            exit 1
+        fi
+
+        echo "✓ Trace endpoint JSON present"
+        cat "$TRACE_ENDPOINT_JSON"
+
+        python3 scripts/vllm/wait_for_endpoint.py \
+            --endpoint-json "$TRACE_ENDPOINT_JSON" \
+            --max-attempts "${TRACE_HEALTH_MAX_ATTEMPTS:-20}" \
+            --retry-delay "${TRACE_HEALTH_RETRY_DELAY:-60}" \
+            --health-path "v1/models"
+    else
+        echo "Trace endpoint wait skipped (engine=$TRACE_ENGINE, wait_flag=$TRACE_WAIT_FOR_ENDPOINT)"
+    fi
+
+    run_trace
+    EXIT_CODE=$?
+else
+    echo "=== Starting Ray-backed vLLM cluster for trace generation ==="
+    nodes=$(scontrol show hostnames "$SLURM_JOB_NODELIST")
+    nodes_array=($nodes)
+    head_node=${nodes_array[0]}
+
+    head_node_ip=$(srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$head_node" hostname --ip-address)
+    head_node_ip=${head_node_ip%% *}
+
+    RAY_PORT="${TRACE_RAY_PORT:-6379}"
+    API_PORT="${TRACE_API_PORT:-8000}"
+    TP_SIZE="${TRACE_TENSOR_PARALLEL_SIZE:-1}"
+    PP_SIZE="${TRACE_PIPELINE_PARALLEL_SIZE:-${VLLM_PIPELINE_PARALLEL_SIZE:-1}}"
+    DP_SIZE="${TRACE_DATA_PARALLEL_SIZE:-1}"
+    GPUS_PER_NODE="${TRACE_GPUS_PER_NODE:-0}"
+    export TRACE_GPUS_PER_NODE="$GPUS_PER_NODE"
+    NUM_NODES=$SLURM_JOB_NUM_NODES
+    TOTAL_GPUS=$(python3 - <<'PY'
+import os
+print(int(os.environ.get("SLURM_JOB_NUM_NODES", "1")) * int(os.environ.get("TRACE_GPUS_PER_NODE", "0")))
+PY
+)
+
+    ip_head="${head_node_ip}:${RAY_PORT}"
+    export RAY_ADDRESS="$ip_head"
+
+    ray_pids=()
+
+    start_ray_node() {
+        local node_name=$1
+        local start_cmd=$2
+        srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$node_name" bash -c "env $RAY_ENV_VARS $start_cmd" &
+        ray_pids+=($!)
+    }
+
+    head_cmd="ray start --head --node-ip-address=${head_node_ip} --port=${RAY_PORT} --num-gpus=${GPUS_PER_NODE} --num-cpus={cpus_per_node} --block"
+    echo "Starting Ray head on ${head_node} (${head_node_ip})"
+    start_ray_node "$head_node" "$head_cmd"
+
+    for ((i = 1; i < NUM_NODES; i++)); do
+        node_i=${nodes_array[$i]}
+        worker_cmd="ray start --address ${ip_head} --num-gpus=${GPUS_PER_NODE} --num-cpus={cpus_per_node} --block"
+        echo "Starting Ray worker on ${node_i}"
+        start_ray_node "$node_i" "$worker_cmd"
+        sleep 3
+    done
+
+    cleanup_ray() {
+        echo "Cleaning up Ray cluster and vLLM controller..."
+        if [ -n "${VLLM_PID:-}" ]; then
+            kill "$VLLM_PID" >/dev/null 2>&1 || true
+            wait "$VLLM_PID" >/dev/null 2>&1 || true
+        fi
+        for node in "${nodes_array[@]}"; do
+            srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$node" ray stop --force >/dev/null 2>&1 || true
+        done
+        for pid in "${ray_pids[@]}"; do
+            wait "$pid" >/dev/null 2>&1 || true
+        done
+    }
+
+    trap 'cleanup_ray; cleanup_vllm' EXIT
+
+    echo "Waiting for Ray cluster resources..."
+    python3 scripts/ray/wait_for_cluster.py \
+        --address "$ip_head" \
+        --expected-gpus "$TOTAL_GPUS" \
+        --expected-nodes "$NUM_NODES" \
+        --timeout 600 \
+        --poll-interval 10
+
+    echo "Launching vLLM Ray controller on ${head_node_ip}:${API_PORT}"
+    controller_log="{experiments_dir}/logs/{job_name}_vllm.log"
+    CONTROLLER_ENV_CMD="env PATH=$PATH LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-} HF_HOME=$HF_HOME PYTHONPATH=$PYTHONPATH"
+
+    srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$head_node" \
+        $CONTROLLER_ENV_CMD \
+        python3 scripts/vllm/start_vllm_ray_controller.py \
+            --ray-address "$ip_head" \
+            --host "$head_node_ip" \
+            --port "$API_PORT" \
+            --endpoint-json "$TRACE_ENDPOINT_JSON" \
+            --tensor-parallel-size "$TP_SIZE" \
+            --pipeline-parallel-size "$PP_SIZE" \
+            --data-parallel-size "$DP_SIZE" \
+        >> "$controller_log" 2>&1 &
+    VLLM_PID=$!
+
+    echo "vLLM controller PID: $VLLM_PID (log: $controller_log)"
+
+    if [ "$TRACE_REQUIRE_ENDPOINT" = "1" ] && [ "$TRACE_WAIT_FOR_ENDPOINT" = "1" ]; then
+        ENDPOINT_WAIT_TIMEOUT="${TRACE_ENDPOINT_WAIT_TIMEOUT:-180}"
+        ENDPOINT_WAIT_INTERVAL="${TRACE_ENDPOINT_WAIT_INTERVAL:-5}"
+        wait_elapsed=0
+
+        while true; do
+            if ! kill -0 "$VLLM_PID" 2>/dev/null; then
+                wait "$VLLM_PID" || true
+                echo "ERROR: vLLM controller exited before writing endpoint JSON; see $controller_log"
+                exit 1
+            fi
+            if [ -f "$TRACE_ENDPOINT_JSON" ]; then
+                break
+            fi
+            if [ $wait_elapsed -ge $ENDPOINT_WAIT_TIMEOUT ]; then
+                echo "ERROR: Timed out waiting for vLLM endpoint JSON at $TRACE_ENDPOINT_JSON"
+                exit 1
+            fi
+            sleep "$ENDPOINT_WAIT_INTERVAL"
+            wait_elapsed=$((wait_elapsed + ENDPOINT_WAIT_INTERVAL))
+        done
+
+        python3 scripts/vllm/wait_for_endpoint.py \
+            --endpoint-json "$TRACE_ENDPOINT_JSON" \
+            --max-attempts "${TRACE_HEALTH_MAX_ATTEMPTS:-60}" \
+            --retry-delay "${TRACE_HEALTH_RETRY_DELAY:-15}" \
+            --health-path "v1/models"
+    else
+        echo "Skipping endpoint readiness wait (engine=$TRACE_ENGINE, wait=$TRACE_WAIT_FOR_ENDPOINT)"
+    fi
+
+    run_trace
+    EXIT_CODE=$?
+fi
+
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "Trace generation completed successfully."
+else
+    echo "Trace generation failed with exit code $EXIT_CODE."
+fi
+
+exit $EXIT_CODE

@@ -19,6 +19,11 @@ try:
 except ImportError:  # pragma: no cover
     torch = None
 
+try:
+    import ray
+except ImportError:  # pragma: no cover
+    ray = None
+
 from scripts.vllm.start_vllm_cluster import VLLMCluster
 
 
@@ -277,6 +282,26 @@ def main() -> None:
         value = env.get(key, "<unset>")
         print(f"  {key}={value}")
     sys.stdout.flush()
+
+    ray_address = env.get("RAY_ADDRESS") or args.ray_address
+    if ray is not None and ray_address:
+        try:
+            print(f"[start_vllm_ray_controller] Inspecting Ray resources at {ray_address} before placement.")
+            ray.init(address=ray_address, ignore_reinit_error=True)
+            cluster_resources = ray.cluster_resources()
+            nodes = ray.nodes()
+            print(f"[start_vllm_ray_controller] Ray cluster resources: {cluster_resources}")
+            print(
+                f"[start_vllm_ray_controller] Ray nodes ({len(nodes)}): "
+                f"{[node.get('NodeID') for node in nodes]}"
+            )
+        except Exception as exc:  # pragma: no cover - best effort logging
+            print(f"[start_vllm_ray_controller] Warning: unable to query Ray cluster resources: {exc}")
+        finally:
+            try:
+                ray.shutdown()
+            except Exception:
+                pass
 
     cmd = build_vllm_command(args)
     print("Launching vLLM controller:")

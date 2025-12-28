@@ -17,9 +17,9 @@ JUDGMENT_SCHEMA_JSON = json.dumps(JudgmentResponse.model_json_schema(), indent=2
 
 def build_baseline_prompt(instruction: str) -> str:
     return f"""
-You are generating a minimal, correct Dockerfile for a coding sandbox task.
+Generate a minimal, correct Dockerfile to serve as the *environment* for solving a coding task down the line. Do NOT attempt to incorporate the solution of the task in the Dockerfile! And do NOT use heredocs in any way. The task specification is as follows:
 
-Instruction:
+Task:
 {instruction}
 
 Constraints:
@@ -28,6 +28,7 @@ Constraints:
 - Never use sudo, add-apt-repository, GUI/X11 deps, or imaginary packages.
 - Only install packages essential to solve the task.
 - Prefer --no-install-recommends and clean apt cache.
+- Ensure Dockerfile builds successfully.
 
 Return JSON matching this schema:
 {BASELINE_SCHEMA_JSON}
@@ -40,7 +41,7 @@ def build_variant_prompt(row: dict[str, object]) -> str:
     rationale = str(row.get("base_rationale", "")) or "n/a"
 
     return f"""
-Instruction:
+Task:
 {instruction}
 
 Baseline Dockerfile:
@@ -50,7 +51,7 @@ Baseline Dockerfile:
 
 Baseline rationale: {rationale}
 
-Create 4 variants that are reasonably harder yet still solvable. Ground each change in realistic developer friction, not sabotage. Focus on subtle, correct tweaks that force extra reasoning when running the task.
+Generate 4 variants of the baseline Dockerfile that are reasonably harder for solving the task yet still retain solvability. Ground each change in realistic developer friction, not sabotage. Focus on subtle, correct tweaks that force extra reasoning when running the task. Do NOT attempt to incorporate the solution of the task in the Dockerfile! And do NOT use heredocs in any way.
 
 Motivating tweak patterns (pick different styles across the four variants):
 - Remove or downgrade a non-obvious package so the solver must install or rebuild it manually.
@@ -63,7 +64,7 @@ Rules:
 - Keep `ubuntu:24.04` base and valid Dockerfile syntax.
 - Never add sudo, GUI/X11 deps, or imaginary packages.
 - Minimise noise: every change must have a payoff for genuine debugging friction.
-- Variants must build successfully with reasonable fixes by the solver.
+- Variants must build successfully
 
 One-shot illustration (for guidance only — do NOT copy):
 - Baseline installs `python3-pip` and `pytest` for a testing task.
@@ -89,7 +90,7 @@ def build_judge_prompt(row: dict[str, object]) -> str:
     return f"""
 Act as a strict reviewer selecting the best challenging Dockerfile variant.
 
-Instruction:
+Task:
 {instruction}
 
 Baseline Dockerfile:
@@ -101,8 +102,8 @@ Variants:
 {variants_text}
 
 Score each variant (0-5 integer) on:
-- solvability: certainty the Dockerfile builds and obeys guardrails.
-  * 0 = broken or violates hard rules; 1 = likely broken/flaky; 3 = probably builds with small fixes; 5 = clearly builds cleanly.
+- solvability: certainty the Dockerfile builds, obeys guardrails, and supports task completion.
+  * 0 = broken or violates hard rules; 1 = likely broken/flaky; 3 = likely builds; 5 = clearly builds cleanly and does not preclude task completion.
 - difficulty: meaningful extra friction relative to baseline.
   * 0 = identical difficulty; 1 = trivial nuisance; 3 = requires non-trivial reasoning or setup; 5 = excellent deeply challenging-but-fair environment work.
 - noise (lower is better): gratuitous churn, fantasy deps, or unrelated edits.

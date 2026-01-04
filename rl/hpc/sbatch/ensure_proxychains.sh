@@ -9,18 +9,12 @@ if ! command -v proxychains4 >/dev/null 2>&1; then
   exit 1
 fi
 
-CONF_DIR="${HOME}/.proxychains"
-CONF_PATH="${CONF_DIR}/proxychains.conf"
-
-mkdir -p "${CONF_DIR}"
-
-if [ ! -f "${CONF_PATH}" ]; then
-  echo "[proxychains] ${CONF_PATH} does not exist."
-  echo "[proxychains] Please create it according to dc-agent/JSC_setup/README.md before launching."
-  exit 1
-fi
-
 export LD_PRELOAD="${HOME}/.local/lib/libproxychains4.so"
-export PROXYCHAINS_CONF="${CONF_PATH}"
+# Some scripts generate a per-job config and pass it via `-f ...`.
+# If the default config exists, expose it via the standard env var as a convenience.
+CONF_PATH="${HOME}/.proxychains/proxychains.conf"
+if [ -f "${CONF_PATH}" ]; then
+  export PROXYCHAINS_CONF_FILE="${CONF_PATH}"
+fi
 
 

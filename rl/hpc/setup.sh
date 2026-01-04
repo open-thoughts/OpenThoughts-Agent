@@ -30,6 +30,7 @@ fi
 
 pip install huggingface_hub datasets Jinja2
 source hpc/scripts/common.sh  # Load common functions
+source hpc/dotenv/secret.env
 
 echo "✓ Environment loaded"
 # Test the setup

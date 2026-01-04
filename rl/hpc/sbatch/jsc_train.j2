@@ -82,6 +82,14 @@ MASTER_ADDR="${MASTER_ADDR}i"
 MASTER_ADDR_IP=$(nslookup $MASTER_ADDR | grep 'Address' | tail -n1 | awk '{print $2}')
 
 # Run training
-$CMD_PREFIX {{ skyrl_command_string }}
+SKYRL_CMD="{{ skyrl_command_string }}"
+# Override generator.http_endpoint_host to an InfiniBand-reachable address for robustness on JSC.
+# Note: MASTER_ADDR is already the IB hostname (with the +i suffix), and we use its resolved IP.
+SKYRL_CMD+=" ++generator.http_endpoint_host=${MASTER_ADDR_IP}"
+
+echo "SkyRL command: $SKYRL_CMD"
+echo "CMD_PREFIX: $CMD_PREFIX"
+
+$CMD_PREFIX $SKYRL_CMD
 
 

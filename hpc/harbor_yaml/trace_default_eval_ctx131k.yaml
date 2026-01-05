@@ -8,7 +8,7 @@ debug: false
 
 orchestrator:
   type: local
-  n_concurrent_trials: 24
+  n_concurrent_trials: 32
   quiet: false
   adaptive_concurrency:
     enabled: false
@@ -37,7 +37,7 @@ orchestrator:
 
 environment:
   type: daytona
-  force_build: true
+  force_build: false
   delete: true
   override_cpus: 1
   override_memory_mb: 2048
@@ -58,7 +58,6 @@ agents:
     override_timeout_sec: 1800
     max_timeout_sec: null
     kwargs:
-      max_episodes: 32
       collect_rollout_details: false
       collect_engine_metrics: false
       metrics_endpoint: https://replace-with-vllm-host/metrics

@@ -3,19 +3,28 @@ from dataclasses import dataclass, field
 from typing import Optional
 import argparse
 import sys
+from enum import Enum
+
+class JobType(str, Enum):
+    """Enumerates supported HPC launcher job categories."""
+
+    SFT = "sft"
+    SFT_MCA = "sft_mca"
+    PRETOKENIZE = "pretokenize"
+    DATAGEN = "datagen"
+    CONSOLIDATE = "consolidate"
+    RL = "rl"
+
+    @classmethod
+    def choices(cls) -> list[str]:
+        return [member.value for member in cls]
+
+    @classmethod
+    def default_value(cls) -> str:
+        return cls.SFT.value
 
 
-def _str_to_bool(value):
-    """Best-effort boolean parser for CLI arguments."""
-    if isinstance(value, bool):
-        return value
-    normalized = str(value).strip().lower()
-    if normalized in {"true", "1", "yes", "y", "on"}:
-        return True
-    if normalized in {"false", "0", "no", "n", "off"}:
-        return False
-    raise argparse.ArgumentTypeError(f"Expected a boolean, got '{value}'")
-
+from hpc.cli_utils import parse_bool_flag, coerce_str_bool_none, coerce_numeric_cli_values
 
 @dataclass
 class LlamaFactoryArgs:
@@ -74,6 +83,28 @@ class LlamaFactoryArgs:
     )
     dataset_dir: Optional[str] = field(
         default=None, metadata={"help": "Directory containing dataset files"}
+    )
+    prompt_column: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Override the instruction/prompt column for Alpaca-style datasets (use '' or 'none' to disable)."
+        },
+    )
+    query_column: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Override the optional input/query column for Alpaca-style datasets (use '' or 'none' to disable)."
+        },
+    )
+    response_column: Optional[str] = field(
+        default=None,
+        metadata={"help": "Override the completion/response column for Alpaca-style datasets."},
+    )
+    history_column: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Override the history column for Alpaca-style datasets (use '' or 'none' to disable)."
+        },
     )
     formatting: Optional[str] = field(
         default="sharegpt",
@@ -289,19 +320,6 @@ class LlamaFactoryArgs:
     )
 
 @dataclass
-class EvalArgs:
-    """Arguments for evaluation"""
-    eval_tasks: Optional[str] = field(
-        default=None, metadata={"help": "Comma-separated list of tasks to evaluate"}
-    )
-    eval_num_nodes: Optional[int] = field(
-        default=None, metadata={"help": "Number of nodes to evaluate"}
-    )
-    eval_time_limit: Optional[int] = field(
-        default=None, metadata={"help": "Time limit for evaluation"}
-    )
-
-@dataclass
 class LaunchArgs:
     """Arguments for job launching"""
 
@@ -392,19 +410,19 @@ class LaunchArgs:
     pinggy_persistent_url: Optional[str] = field(
         default=None,
         metadata={
-            "help": "Override the Pinggy persistent URL exported to PINGGY_PERSISTENT_URL",
+            "help": "Persistent Pinggy hostname (e.g., xxxxx.a.pinggy.link) to reuse for tunnels",
         },
     )
     pinggy_ssh_command: Optional[str] = field(
         default=None,
         metadata={
-            "help": "Override the Pinggy SSH tunnel command exported to PINGGY_SSH_COMMAND",
+            "help": "Custom Pinggy SSH tunnel command template (use {PORT} for HAProxy port)",
         },
     )
     pinggy_debugger_url: Optional[str] = field(
         default=None,
         metadata={
-            "help": "Override the Pinggy debugger URL exported to PINGGY_DEBUGGER_URL",
+            "help": "Debugger URL exposed via Pinggy (used for health checks)",
         },
     )
     use_mca: bool = field(
@@ -415,14 +433,19 @@ class LaunchArgs:
         },
     )
 
+
 @dataclass
 class DataGenArgs:
     """Arguments for data generation jobs"""
 
     # Job type
     job_type: Optional[str] = field(
-        default="train",
-        metadata={"help": "Job type: 'train', 'datagen', or 'consolidate'"}
+        default=JobType.default_value(),
+        metadata={
+            "help": "Job type: 'sft', 'sft_mca', 'pretokenize', 'datagen', 'consolidate', or 'rl'",
+            "choices": JobType.choices(),
+            "required": False,
+        },
     )
 
     # Data generation specific
@@ -499,10 +522,6 @@ class DataGenArgs:
         metadata={"help": "Override Daytona sandbox GPU allocation"}
     )
 
-    trace_max_tokens: Optional[int] = field(
-        default=None,
-        metadata={"help": "Maximum output tokens per completion during trace generation"}
-    )
     trace_script: Optional[str] = field(
         default=None,
         metadata={"help": "Path to trace generation script"}
@@ -551,9 +570,9 @@ class DataGenArgs:
         default=None,
         metadata={"help": "Backend to use for trace generation (e.g., 'vllm', 'ray', 'none'; defaults to datagen_backend)"}
     )
-    trace_include_reasoning: bool = field(
+    trace_export_subagents: bool = field(
         default=True,
-        metadata={"help": "Include agent reasoning content inside <think> tags when exporting traces"}
+        metadata={"help": "Export subagent traces (e.g., context summarization) alongside main agent traces"}
     )
     trace_use_gpu: bool = field(
         default=False,
@@ -567,13 +586,19 @@ class DataGenArgs:
         default=None,
         metadata={"help": "Override Harbor verifier timeout (seconds) for trace generation"}
     )
-    consolidate_repo_id: Optional[str] = field(
+@dataclass
+class ConsolidateArgs:
+    consolidate_input: Optional[str] = field(
         default=None,
-        metadata={"help": "Hugging Face repository ID containing ZeRO sharded checkpoints to consolidate"}
+        metadata={"help": "Input for consolidation: either a local directory with ZeRO shards or a Hugging Face repo ID"}
     )
     consolidate_base_repo: Optional[str] = field(
         default=None,
         metadata={"help": "Base Hugging Face model repo to copy ancillary files (config, tokenizer, chat template) from"}
+    )
+    consolidate_output_repo: Optional[str] = field(
+        default=None,
+        metadata={"help": "Destination Hugging Face repo to upload merged weights"}
     )
     consolidate_workdir: Optional[str] = field(
         default=None,
@@ -593,7 +618,7 @@ def _option_strings(field_name: str) -> list[str]:
     return [primary, dashed]
 
 
-def _add_dataclass_arguments(arg_group, dataclass_type, exclude_fields=None):
+def _add_dataclass_arguments(arg_group, dataclass_type, exclude_fields=None, *, bool_fields: set[str] | None = None):
     """
     Helper function to add arguments from a dataclass to an argument group.
 
@@ -609,33 +634,52 @@ def _add_dataclass_arguments(arg_group, dataclass_type, exclude_fields=None):
             continue
 
         option_strings = _option_strings(field.name)
+        help_text = field.metadata.get("help")
+        choices = field.metadata.get("choices")
+        required = field.metadata.get("required", False)
+
         if field.metadata.get("store_true"):
             arg_group.add_argument(
                 *option_strings,
                 dest=field.name,
                 action="store_true",
-                help=field.metadata.get("help"),
+                help=help_text,
                 default=field.default,
             )
+            if bool_fields is not None:
+                bool_fields.add(field.name)
         elif isinstance(field.default, bool):
-            arg_group.add_argument(
-                *option_strings,
-                dest=field.name,
-                type=_str_to_bool,
-                help=field.metadata.get("help"),
-                default=field.default,
-            )
+            kwargs = {
+                "dest": field.name,
+                "type": parse_bool_flag,
+                "help": help_text,
+                "default": field.default,
+            }
+            if choices:
+                kwargs["choices"] = choices
+            if required:
+                kwargs["required"] = True
+            arg_group.add_argument(*option_strings, **kwargs)
+            if bool_fields is not None:
+                bool_fields.add(field.name)
         else:
-            arg_group.add_argument(
-                *option_strings,
-                dest=field.name,
-                type=type(field.default) if field.default is not None else str,
-                help=field.metadata.get("help"),
-                default=field.default,
-            )
+            arg_type = type(field.default) if field.default is not None else str
+            kwargs = {
+                "dest": field.name,
+                "type": arg_type,
+                "help": help_text,
+                "default": field.default,
+            }
+            if choices:
+                kwargs["choices"] = choices
+            if required:
+                kwargs["required"] = True
+            arg_group.add_argument(*option_strings, **kwargs)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Launch HPC jobs for dcft experiment")
+
+    bool_keys: set[str] = set()
 
     raw_argv = sys.argv[1:]
     explicit_cli_keys = set()
@@ -657,14 +701,15 @@ def parse_args():
     launch_group = parser.add_argument_group("Launch Arguments")
     hpc_group = parser.add_argument_group("HPC Arguments")
     train_group = parser.add_argument_group("Training Arguments")
-    eval_group = parser.add_argument_group("Evaluation Arguments")
     datagen_group = parser.add_argument_group("Data Generation Arguments")
+    consolidate_group = parser.add_argument_group("Consolidation Arguments")
 
     # Add LaunchArgs arguments
-    _add_dataclass_arguments(launch_group, LaunchArgs)
+    _add_dataclass_arguments(launch_group, LaunchArgs, bool_fields=bool_keys)
 
     # Add DataGenArgs arguments
-    _add_dataclass_arguments(datagen_group, DataGenArgs)
+    _add_dataclass_arguments(datagen_group, DataGenArgs, bool_fields=bool_keys)
+    _add_dataclass_arguments(consolidate_group, ConsolidateArgs, bool_fields=bool_keys)
 
     # Add HPC arguments
     # Note: HPC is a Pydantic model, not a dataclass, so we need to handle it differently
@@ -695,12 +740,12 @@ def parse_args():
         )
 
     # Add LlamaFactoryArgs arguments
-    _add_dataclass_arguments(train_group, LlamaFactoryArgs)
-
-    # Add EvalArgs arguments
-    _add_dataclass_arguments(eval_group, EvalArgs, exclude_fields=["tasks"])
+    _add_dataclass_arguments(train_group, LlamaFactoryArgs, bool_fields=bool_keys)
 
     args = parser.parse_args()
     args_dict = {k: v for k, v in vars(args).items() if v is not None}
     args_dict["_explicit_cli_keys"] = explicit_cli_keys
+    literal_none_keys = {"datagen_engine", "trace_engine", "datagen_backend", "trace_backend"}
+    args_dict = coerce_str_bool_none(args_dict, literal_none_keys, bool_keys)
+    args_dict = coerce_numeric_cli_values(args_dict)
     return args_dict

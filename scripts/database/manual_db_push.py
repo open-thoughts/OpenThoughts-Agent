@@ -3,13 +3,14 @@
 Manually register a trained model with Supabase.
 
 Usage (from OpenThoughts-Agent/):
-    source hpc/dotenv/tacc.env       # or otherwise export the Supabase + WANDB env vars
-    python scripts/database/manual_db_push.py
+    source hpc/dotenv/tacc.env  # or otherwise export the Supabase + WANDB env vars
+    python scripts/database/manual_db_push.py --hf-model-id org/model --wandb-run entity/project/run
 """
 
-from datetime import datetime, timezone
+import argparse
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import wandb
@@ -21,16 +22,59 @@ if str(REPO_ROOT) not in sys.path:
 from database.unified_db.utils import register_trained_model  # noqa: E402
 
 
-HF_MODEL_ID = "DCAgent2/swesmith-stackseq"
-WANDB_RUN = "dogml/OpenThoughts-Agent/81en31zw"
-DATASET_NAME = "penfever/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k,penfever/GLM-4.6-swesmith-32ep-131k-nosumm-reasoning"
-BASE_MODEL = "Qwen/Qwen3-8B"
-TRAINING_TYPE = "SFT"
+DEFAULT_HF_MODEL_ID = "laion/Kimi-K2T-swesmith-32ep-131k"
+DEFAULT_WANDB_RUN = "dogml/dc-agent/34m5gsp5"
+DEFAULT_DATASET_NAME = "penfever/Kimi-K2T-swesmith-32ep-131k"
+DEFAULT_BASE_MODEL = "Qwen/Qwen3-8B"
+DEFAULT_TRAINING_TYPE = "SFT"
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Register a trained model with Supabase.")
+    parser.add_argument(
+        "--hf-model-id",
+        default=DEFAULT_HF_MODEL_ID,
+        help="Hugging Face repo ID for the trained model (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--wandb-run",
+        default=DEFAULT_WANDB_RUN,
+        help="Weights & Biases run path (entity/project/run_id) (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--dataset-name",
+        default=DEFAULT_DATASET_NAME,
+        help="Dataset name used during training (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--base-model",
+        default=DEFAULT_BASE_MODEL,
+        help="Base model name that was finetuned (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--training-type",
+        default=DEFAULT_TRAINING_TYPE,
+        help="Training type label to store (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--agent-name",
+        default=None,
+        help="Optional agent name override (default: derived from dataset slug)",
+    )
+    return parser.parse_args()
+
+
+def _derive_agent_name(dataset_name: str) -> str:
+    slug = dataset_name.split("/")[-1]
+    return slug or "agent"
+
 
 def main() -> None:
+    args = _parse_args()
+
     # 1. Pull timestamps from W&B
     api = wandb.Api()
-    run = api.run(WANDB_RUN)
+    run = api.run(args.wandb_run)
 
     created = getattr(run, "created_at", None)
     finished = getattr(run, "finished_at", None) or getattr(run, "stopped_at", None)
@@ -47,7 +91,7 @@ def main() -> None:
         finished = datetime.fromisoformat(finished.replace("Z", "+00:00"))
 
     if created is None:
-        raise RuntimeError(f"W&B run {WANDB_RUN} does not have created_at populated yet")
+        raise RuntimeError(f"W&B run {args.wandb_run} does not have created_at populated yet")
 
     if created.tzinfo is None:
         created = created.replace(tzinfo=timezone.utc)
@@ -62,21 +106,21 @@ def main() -> None:
 
     # 2. Shape the record exactly the way Llama-Factory expects
     record = {
-        "agent_name": "terminus-2",  # derived from the dataset slug
+        "agent_name": args.agent_name or _derive_agent_name(args.dataset_name),
         "training_start": training_start,
         "training_end": training_end,
-        "created_by": HF_MODEL_ID.split("/", 1)[0],  # -> org name
-        "base_model_name": BASE_MODEL,
-        "dataset_name": DATASET_NAME,
+        "created_by": args.hf_model_id.split("/", 1)[0],  # -> org name
+        "base_model_name": args.base_model,
+        "dataset_name": args.dataset_name,
         "dataset_id": None,
-        "training_type": TRAINING_TYPE,
+        "training_type": args.training_type,
         "training_parameters": {
-            "config_blob": f"https://huggingface.co/{HF_MODEL_ID}/blob/main/config.json",
-            "hf_repo": HF_MODEL_ID,
+            "config_blob": f"https://huggingface.co/{args.hf_model_id}/blob/main/config.json",
+            "hf_repo": args.hf_model_id,
         },
-        "wandb_link": f"https://wandb.ai/{WANDB_RUN}",
+        "wandb_link": f"https://wandb.ai/{args.wandb_run}",
         "traces_location_s3": os.environ.get("TRACE_S3_PATH"),
-        "model_name": HF_MODEL_ID,
+        "model_name": args.hf_model_id,
     }
 
     # 3. Insert / upsert into Supabase

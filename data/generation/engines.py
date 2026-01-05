@@ -6,7 +6,17 @@ import os
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
+
+DEFAULT_GEMINI_MODELS = [
+    "gemini-3-pro-preview",
+    "gemini-2.0-flash-001",
+    "gemini-1.5-flash-002",
+    "gemini-1.5-flash",
+    "gemini-1.0-pro-001",
+    "gemini-1.0-pro",
+    "gemini-pro",
+]
 
 class InferenceEngine(ABC):
     """Base class for inference engines used during data generation."""
@@ -336,53 +346,228 @@ class NoOpEngine(InferenceEngine):
         super().__init__(**kwargs)
 
 
-class GeminiOpenAIEngine(GenericOpenAIEngine):
-    """Google Gemini endpoint exposed via the OpenAI-compatible API surface."""
+class GeminiOpenAIEngine(InferenceEngine):
+    """Gemini engine backed by the google-genai Vertex integration."""
 
     requires_initial_healthcheck = False
 
     def __init__(
         self,
-        model: str = "gemini-1.5-flash-002",
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
+        model: str = "gemini-3-pro-preview",
+        *,
+        location: str = "global",
+        project_id: Optional[str] = None,
+        credentials_path: Optional[str] = None,
+        prompt_template: str = "{prompt}",
+        prompt_variable: str = "prompt",
+        system_instruction: Optional[str] = None,
+        model_candidates: Optional[List[str]] = None,
+        prompt_kwargs: Optional[Dict[str, Any]] = None,
+        thinking_level: Optional[str] = "low",
         **kwargs: Any,
     ):
-        resolved_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        if not resolved_key:
-            raise ValueError(
-                "Gemini OpenAI-compatible engine requires GEMINI_API_KEY or GOOGLE_API_KEY to be set."
-            )
-
-        resolved_base = (
-            base_url
-            or os.environ.get("GEMINI_OPENAI_BASE_URL")
-            or "https://generativelanguage.googleapis.com/v1beta/openai"
-        )
-
-        default_headers = kwargs.pop("default_headers", None) or {}
-        if "x-goog-api-key" not in default_headers:
-            default_headers = {**default_headers, "x-goog-api-key": resolved_key}
-
-        http_request_kwargs = kwargs.pop("http_request_kwargs", None) or {}
-        headers = dict(http_request_kwargs.get("headers") or {})
-        headers.setdefault("x-goog-api-key", resolved_key)
-        http_request_kwargs["headers"] = headers
-
         super().__init__(
-            base_url=resolved_base,
-            model_name=model,
-            api_key=resolved_key,
-            default_headers=default_headers,
-            http_request_kwargs=http_request_kwargs,
+            model=model,
+            location=location,
+            project_id=project_id,
+            prompt_template=prompt_template,
+            system_instruction=system_instruction,
+            credentials_path=credentials_path,
+            thinking_level=thinking_level,
             **kwargs,
         )
 
-    def generate(self, prompt: str, **generation_kwargs) -> str:
-        raise RuntimeError(
-            "NoOpEngine does not support text generation. "
-            "Configure an inference backend or avoid calling generate()."
+        try:
+            from google import genai
+            from google.genai import types as genai_types
+            from google.api_core import exceptions as api_exceptions
+        except ImportError as exc:  # pragma: no cover - dependency guard
+            raise ImportError(
+                "The google-genai package is required for Gemini engines. "
+                "Install it via `pip install google-genai`."
+            ) from exc
+
+        self._genai = genai
+        self._genai_types = genai_types
+        self._api_exceptions = api_exceptions
+
+        self.model_name = model
+        self.location = location or "global"
+        self.system_instruction = system_instruction
+        self.prompt_template = prompt_template
+        self.prompt_variable = prompt_variable
+        self.prompt_kwargs = dict(prompt_kwargs or {})
+        self.thinking_level = thinking_level
+        self.model_sequence = self._build_model_sequence(model, model_candidates)
+        self.credentials_path = (
+            credentials_path
+            or os.environ.get("GCS_CREDENTIALS_PATH")
+            or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
         )
+        self.project_id = self._resolve_project_id(project_id)
+        if not self.project_id:
+            raise ValueError(
+                "Gemini engine requires a project_id. Provide via engine configuration, "
+                "credentials JSON, or the GCP_PROJECT/GOOGLE_CLOUD_PROJECT environment variable."
+            )
+
+        self._configure_runtime_env()
+        self._client = self._genai.Client()
+
+    def _configure_runtime_env(self) -> None:
+        cred_path = self._resolve_credentials_path(self.credentials_path)
+        if cred_path:
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(cred_path)
+        if self.project_id:
+            os.environ["GOOGLE_CLOUD_PROJECT"] = self.project_id
+        if self.location:
+            os.environ["GOOGLE_CLOUD_LOCATION"] = self.location
+        os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
+        self._credential_path = cred_path
+
+    @staticmethod
+    def _resolve_credentials_path(path_value: Optional[str]) -> Optional[Path]:
+        candidate = path_value or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+        if not candidate:
+            return None
+        cred_path = Path(candidate).expanduser()
+        if not cred_path.exists():
+            raise FileNotFoundError(f"Gemini credentials file not found: {cred_path}")
+        return cred_path
+
+    def _resolve_project_id(self, explicit_project_id: Optional[str]) -> Optional[str]:
+        if explicit_project_id:
+            return explicit_project_id
+
+        credential_source = (
+            self.credentials_path
+            or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+        )
+        if credential_source:
+            cred_path = Path(credential_source).expanduser()
+            if cred_path.exists():
+                try:
+                    with cred_path.open("r", encoding="utf-8") as handle:
+                        data = json.load(handle)
+                    candidate = data.get("project_id")
+                    if candidate:
+                        return candidate
+                except Exception:  # pragma: no cover - defensive
+                    self.logger.warning("Unable to read project_id from %s", cred_path)
+
+        for env_key in ("GCP_PROJECT", "GOOGLE_CLOUD_PROJECT", "PROJECT_ID"):
+            value = os.environ.get(env_key)
+            if value:
+                return value
+        return None
+
+    @staticmethod
+    def _build_model_sequence(primary: str, candidates: Optional[List[str]]) -> List[str]:
+        sequence = [primary]
+        for candidate in (candidates or DEFAULT_GEMINI_MODELS):
+            if candidate and candidate not in sequence:
+                sequence.append(candidate)
+        return sequence
+
+    def _normalize_thinking_level(self, label: Optional[str]) -> Optional[Any]:
+        if not label or str(label).lower() in {"", "off", "none"}:
+            return None
+        normalized = str(label).strip().upper()
+        try:
+            return getattr(self._genai_types.ThinkingLevel, normalized)
+        except AttributeError as exc:
+            valid = ", ".join(level.upper() for level in ("low", "medium", "high"))
+            raise ValueError(f"Unsupported thinking level '{label}'. Choose from: {valid}") from exc
+
+    def _build_generation_config(self, **config_overrides: Any):
+        config_kwargs: Dict[str, Any] = {}
+        config_kwargs.update(self.prompt_kwargs)
+
+        prompt_override = config_overrides.pop("prompt_kwargs", {})
+        if prompt_override:
+            if not isinstance(prompt_override, dict):
+                raise TypeError("prompt_kwargs overrides must be a mapping")
+            config_kwargs.update(prompt_override)
+
+        config_kwargs.update({k: v for k, v in config_overrides.items() if v is not None})
+
+        if "max_tokens" in config_kwargs and "max_output_tokens" not in config_kwargs:
+            config_kwargs["max_output_tokens"] = config_kwargs.pop("max_tokens")
+
+        thinking_level = config_kwargs.pop("thinking_level", None) or self.thinking_level
+        system_instruction = config_kwargs.pop("system_instruction", None) or self.system_instruction
+
+        if thinking_level:
+            tl_enum = self._normalize_thinking_level(thinking_level)
+            if tl_enum:
+                config_kwargs["thinking_config"] = self._genai_types.ThinkingConfig(
+                    thinking_level=tl_enum
+                )
+
+        if system_instruction:
+            config_kwargs["system_instruction"] = system_instruction
+
+        if not config_kwargs:
+            return None
+
+        return self._genai_types.GenerateContentConfig(**config_kwargs)
+
+    @staticmethod
+    def _extract_text(response: Any) -> str:
+        text = getattr(response, "text", None)
+        if text:
+            return text.strip()
+
+        candidates = getattr(response, "candidates", None)
+        if candidates:
+            candidate = candidates[0]
+            content = getattr(candidate, "content", None)
+            parts = getattr(content, "parts", None)
+            if parts:
+                text = "".join(getattr(part, "text", "") or "" for part in parts)
+                if text:
+                    return text.strip()
+        return ""
+
+    def generate(self, prompt: str, **generation_kwargs) -> str:
+        prompt_template = generation_kwargs.pop("prompt_template", self.prompt_template)
+        prompt_variable = generation_kwargs.pop("prompt_variable", self.prompt_variable)
+        prompt_kwargs = generation_kwargs.pop("prompt_kwargs", {})
+        if prompt_kwargs and not isinstance(prompt_kwargs, dict):
+            raise TypeError("prompt_kwargs must be a mapping when provided")
+        assembled_prompt = prompt_template.format(**{prompt_variable: prompt})
+
+        config = self._build_generation_config(
+            prompt_kwargs=prompt_kwargs,
+            **generation_kwargs,
+        )
+
+        last_exception: Optional[Exception] = None
+        for model_name in self.model_sequence:
+            try:
+                request_kwargs = {
+                    "model": model_name,
+                    "contents": assembled_prompt,
+                }
+                if config is not None:
+                    request_kwargs["config"] = config
+
+                response = self._client.models.generate_content(**request_kwargs)
+                text = self._extract_text(response)
+                if text:
+                    return text
+            except self._api_exceptions.NotFound as exc:
+                self.logger.warning("Gemini model %s unavailable: %s", model_name, exc.message)
+                last_exception = exc
+                continue
+            except Exception as exc:  # pragma: no cover - network dependency
+                self.logger.error("Gemini request failed for %s: %s", model_name, exc)
+                last_exception = exc
+                continue
+
+        raise RuntimeError(
+            "Unable to generate content with any configured Gemini models."
+        ) from last_exception
 
 
 def create_inference_engine(engine_type: str, **kwargs: Any) -> InferenceEngine:

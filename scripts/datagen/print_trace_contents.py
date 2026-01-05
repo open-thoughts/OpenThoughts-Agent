@@ -53,11 +53,6 @@ def parse_args() -> argparse.Namespace:
         help="Search recursively under trace_dir for trials (default: False).",
     )
     parser.add_argument(
-        "--include_reasoning",
-        action="store_true",
-        help="Whether to include reasoning content when exporting traces.",
-    )
-    parser.add_argument(
         "--sharegpt",
         action="store_true",
         help="Also produce ShareGPT formatted conversations.",
@@ -77,7 +72,6 @@ def main() -> None:
         episodes="last",
         to_sharegpt=args.sharegpt,
         verbose=True,
-        include_reasoning=args.include_reasoning,
     )
 
     total = len(dataset)
@@ -113,11 +107,10 @@ def main() -> None:
         for share_msg in row_to_print["conversations_sharegpt"]:
             print(f"[{share_msg.get('from')}] {share_msg.get('value')}")
 
-    if args.include_reasoning:
-        reasoning = row_to_print.get("reasoning_content") or row_to_print.get("reasoning")
-        if reasoning:
-            print("\n[Reasoning]")
-            print(_format_reasoning(reasoning))
+    reasoning = row_to_print.get("reasoning_content") or row_to_print.get("reasoning")
+    if reasoning:
+        print("\n[Reasoning]")
+        print(_format_reasoning(reasoning))
     print()
 
 

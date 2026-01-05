@@ -73,6 +73,9 @@ class VLLMCluster:
                  pinggy_health_timeout: int = 10,
                  pinggy_max_restarts: int = 3,
                  pinggy_health_url: Optional[str] = None,
+                 pinggy_persistent_url: Optional[str] = None,
+                 pinggy_ssh_command: Optional[str] = None,
+                 pinggy_debugger_url: Optional[str] = None,
                  cpu_offload_gb: Optional[float] = None,
                  kv_offloading_size: Optional[float] = None,
                  kv_offloading_backend: Optional[str] = None,
@@ -104,9 +107,9 @@ class VLLMCluster:
         self.haproxy_binary = None
         self.pinggy_process = None
         self.pinggy_url: Optional[str] = None
-        self.pinggy_ssh_command = os.environ.get("PINGGY_SSH_COMMAND")
-        self.persistent_pinggy_url = os.environ.get("PINGGY_PERSISTENT_URL")
-        self.pinggy_debugger_url = os.environ.get("PINGGY_DEBUGGER_URL")
+        self.pinggy_ssh_command = pinggy_ssh_command
+        self.persistent_pinggy_url = pinggy_persistent_url
+        self.pinggy_debugger_url = pinggy_debugger_url
         self.pinggy_health_interval = max(15, int(pinggy_health_interval))
         self.pinggy_health_timeout = max(3, int(pinggy_health_timeout))
         self.pinggy_max_restarts = max(1, int(pinggy_max_restarts))
@@ -1113,6 +1116,9 @@ def main():
     parser.add_argument('--pinggy-health-timeout', type=int, default=10, help='Timeout for Pinggy health probe requests (default: 10)')
     parser.add_argument('--pinggy-max-restarts', type=int, default=3, help='Consecutive Pinggy restart attempts before giving up (default: 3)')
     parser.add_argument('--pinggy-health-url', type=str, help='Override Pinggy health-check URL (defaults to debugger URL or http://127.0.0.1:4300/)')
+    parser.add_argument('--pinggy-persistent-url', type=str, help='Persistent Pinggy hostname to reuse instead of dynamic tunnels')
+    parser.add_argument('--pinggy-ssh-command', type=str, help='Custom Pinggy SSH command template (use {PORT} placeholder for HAProxy port)')
+    parser.add_argument('--pinggy-debugger-url', type=str, help='Debugger/health port forwarded via Pinggy (used for health probes)')
     parser.add_argument('--cpu-offload-gb', type=float, help='CPU memory (GiB) reserved for KV cache offloading')
     parser.add_argument('--kv-offloading-size', type=float, help='Size (GiB) of KV cache to offload')
     parser.add_argument('--kv-offloading-backend', type=str, help='KV cache offloading backend (e.g., native, lmcache)')
@@ -1173,6 +1179,9 @@ def main():
         pinggy_health_timeout=args.pinggy_health_timeout,
         pinggy_max_restarts=args.pinggy_max_restarts,
         pinggy_health_url=args.pinggy_health_url,
+        pinggy_persistent_url=args.pinggy_persistent_url,
+        pinggy_ssh_command=args.pinggy_ssh_command,
+        pinggy_debugger_url=args.pinggy_debugger_url,
         cpu_offload_gb=args.cpu_offload_gb,
         kv_offloading_size=args.kv_offloading_size,
         kv_offloading_backend=args.kv_offloading_backend,

@@ -10,12 +10,12 @@ There are actually two HPC launchers in OT-Agent right now, one for RL and one f
 
 ## What job types can I launch with HPC launch?
 
-All jobs start with `python -m hpc.launch --job_type <mode>`. The supported modes are:
-- `train` (default): launches SFT/finetuning runs driven by llama-factory configs.
+All jobs start with `python -m hpc.launch --job_type <mode>`. Passing `--job_type` is mandatory. The supported modes are:
+- `sft` (default): launches SFT/finetuning runs driven by llama-factory configs.
+- `sft_mca`: identical to `sft` but forces MCA-aware sbatch templates and env exports.
+- `pretokenize`: prepares tokenized datasets ahead of SFT jobs using the same config inputs.
 - `datagen`: executes dataset generators to produce tasks, traces, or both.
 - `consolidate`: merges ZeRO-sharded checkpoints into FP32 weights using the consolidate sbatch templates.
-
-You can optionally schedule evaluations after a `train` job by supplying `--eval_tasks`; the launcher submits the eval job once training completes.
 
 ## Before you launch
 
@@ -75,7 +75,7 @@ python -m hpc.launch [core flags] [job-type flags] [--dry_run]
 Use `--dry_run` to inspect generated sbatch scripts without submitting a job.
 
 ### Common flags
-- `--job_type {datagen,train}`: choose between dataset generation and SFT runs.
+- `--job_type {sft,sft_mca,pretokenize,datagen,consolidate}`: choose the launcher mode.
 - `--experiments_dir`: directory where sbatch files, logs, and generated configs are written.
 - `--time_limit`: wall-clock limit passed to sbatch (e.g. `24:00:00`).
 - `--num_nodes`: requested node count for training jobs.
@@ -114,7 +114,7 @@ Adjust `--datagen_extra_args` to pass dataset-specific switches such as sampling
 Training runs rely on llama-factory configs stored under `sft/hp_settings`. Supply the path to a YAML alongside optional overrides:
 ```bash
 python -m hpc.launch \
-  --job_type train \
+  --job_type sft \
   --train_config_path sft/hp_settings/paper/reasoning_medium.yaml \
   --dataset my-org/my-training-set \
   --num_nodes 8 \

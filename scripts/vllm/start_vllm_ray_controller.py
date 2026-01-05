@@ -19,6 +19,11 @@ try:
 except ImportError:  # pragma: no cover
     torch = None
 
+try:
+    import ray
+except ImportError:  # pragma: no cover
+    ray = None
+
 from scripts.vllm.start_vllm_cluster import VLLMCluster
 
 
@@ -247,11 +252,56 @@ def main() -> None:
     if args.verbose:
         env.setdefault("VLLM_LOG_LEVEL", "INFO")
 
+    # Ray's default GPU isolation sets CUDA_VISIBLE_DEVICES for each actor to the
+    # *physical* GPU id(s) it was assigned (e.g. "3"). In that mode, CUDA will
+    # remap the visible device(s) to a compact 0..N-1 range inside the process.
+    #
+    # vLLM's Ray executor (v0.11.x) uses Ray-reported GPU ids as CUDA ordinals.
+    # If CUDA_VISIBLE_DEVICES is set to a single physical id (e.g. "3"), then
+    # torch only exposes cuda:0 and torch.cuda.set_device(3) crashes with
+    # "invalid device ordinal".
+    #
+    # Workaround: tell Ray not to rewrite CUDA_VISIBLE_DEVICES so that torch's
+    # ordinals match Ray's physical ids (0..N-1) on a single node allocation.
+    # Users can override by explicitly setting these env vars (e.g. to "0").
+    env.setdefault("RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES", "1")
+    env.setdefault("RAY_NOSET_CUDA_VISIBLE_DEVICES", "1")
+
     print("vLLM controller environment snapshot:")
-    for key in ("TRITON_CC", "LD_LIBRARY_PATH", "PATH", "HF_HOME", "PYTHONPATH"):
+    for key in (
+        "TRITON_CC",
+        "LD_LIBRARY_PATH",
+        "PATH",
+        "HF_HOME",
+        "PYTHONPATH",
+        "CUDA_VISIBLE_DEVICES",
+        "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES",
+        "RAY_NOSET_CUDA_VISIBLE_DEVICES",
+        "RAY_ADDRESS",
+    ):
         value = env.get(key, "<unset>")
         print(f"  {key}={value}")
     sys.stdout.flush()
+
+    ray_address = env.get("RAY_ADDRESS") or args.ray_address
+    if ray is not None and ray_address:
+        try:
+            print(f"[start_vllm_ray_controller] Inspecting Ray resources at {ray_address} before placement.")
+            ray.init(address=ray_address, ignore_reinit_error=True)
+            cluster_resources = ray.cluster_resources()
+            nodes = ray.nodes()
+            print(f"[start_vllm_ray_controller] Ray cluster resources: {cluster_resources}")
+            print(
+                f"[start_vllm_ray_controller] Ray nodes ({len(nodes)}): "
+                f"{[node.get('NodeID') for node in nodes]}"
+            )
+        except Exception as exc:  # pragma: no cover - best effort logging
+            print(f"[start_vllm_ray_controller] Warning: unable to query Ray cluster resources: {exc}")
+        finally:
+            try:
+                ray.shutdown()
+            except Exception:
+                pass
 
     cmd = build_vllm_command(args)
     print("Launching vLLM controller:")

@@ -1,41 +1,54 @@
 #!/bin/bash
-# Perlmutter datagen job; assumes optional vLLM endpoint JSON handoff.
 #SBATCH --account={account}
-#SBATCH --qos=regular
+#SBATCH --qos=premium
 #SBATCH --constraint="gpu&hbm80g"
 #SBATCH --exclusive
-#SBATCH --nodes={num_nodes}
-#SBATCH --ntasks-per-node 1
+#SBATCH --nodes {num_nodes}
+#SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task={cpus_per_node}
+#SBATCH --gpus-per-node={gpus_per_node}
 #SBATCH --time={time_limit}
 #SBATCH --output={experiments_dir}/logs/%x_%j.out
 #SBATCH --job-name={job_name}
+#SBATCH --mail-type=END,TIME_LIMIT,FAIL
+#SBATCH --mail-user=bf996@nyu.edu
 
 set -euo pipefail
-
-# Guard conda deactivate scripts from set -u complaints.
-export CONDA_BACKUP_CXX="${CONDA_BACKUP_CXX:-}"
-export CONDA_BACKUP_CC="${CONDA_BACKUP_CC:-}"
-export CONDA_BACKUP_FC="${CONDA_BACKUP_FC:-}"
 
 if [ -n "${DCFT:-}" ] && [ -f "$DCFT/hpc/dotenv/perlmutter.env" ]; then
   # shellcheck disable=SC1090
   source "$DCFT/hpc/dotenv/perlmutter.env"
+elif [ -n "${DC_AGENT:-}" ] && [ -f "$DC_AGENT/hpc/dotenv/perlmutter.env" ]; then
+  # shellcheck disable=SC1090
+  source "$DC_AGENT/hpc/dotenv/perlmutter.env"
 fi
 
-if [ -n "${DATAGEN_ACTIVATE_ENV:-}" ]; then
-  eval "$DATAGEN_ACTIVATE_ENV"
-elif [ -n "${DCFT_ACTIVATE_ENV:-}" ]; then
-  eval "$DCFT_ACTIVATE_ENV"
-fi
-
-module load cuda/12.9
 module load cudatoolkit/12.9
+
+if [ -n "${DCFT_ACTIVATE_ENV:-}" ]; then
+  set +u
+  eval "$DCFT_ACTIVATE_ENV"
+  set -u
+fi
 
 if [ -n "${LIBRARY_PATH:-}" ]; then
   export LIBRARY_PATH="$CUDA_HOME/lib64:$LIBRARY_PATH"
 else
   export LIBRARY_PATH="$CUDA_HOME/lib64"
+fi
+
+if [ -n "${CUDA_HOME:-}" ]; then
+  _cuda_sdk_root="$(dirname "$(dirname "$CUDA_HOME")")"
+  _cuda_version="$(basename "$CUDA_HOME")"
+  _cuda_math_lib_path="$_cuda_sdk_root/math_libs/$_cuda_version/lib64"
+  if [ -d "$_cuda_math_lib_path" ]; then
+    if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+      export LD_LIBRARY_PATH="$_cuda_math_lib_path:$LD_LIBRARY_PATH"
+    else
+      export LD_LIBRARY_PATH="$_cuda_math_lib_path"
+    fi
+  fi
+  unset _cuda_sdk_root _cuda_version _cuda_math_lib_path
 fi
 
 if [ -n "${CONDA_PREFIX:-}" ]; then
@@ -53,97 +66,134 @@ else
   echo "Warning: CONDA_PREFIX is not set; compiler environment variables were not configured." >&2
 fi
 
+SECRET_FILE="${DC_AGENT_SECRET_ENV:-${KEYS:-}}"
+if [[ -n "${SECRET_FILE}" ]]; then
+    if [[ -f "${SECRET_FILE}" ]]; then
+        echo "Sourcing secrets from ${SECRET_FILE}"
+        set -a
+        # shellcheck disable=SC1090
+        source "${SECRET_FILE}"
+        set +a
+    else
+        echo "Warning: secrets file ${SECRET_FILE} not found; uploads may fail." >&2
+    fi
+else
+    echo "Warning: DC_AGENT_SECRET_ENV is not set; uploads may fail." >&2
+fi
+
+export PYTHONFAULTHANDLER=1
+export CUDA_LAUNCH_BLOCKING=0
+export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
+export NCCL_DEBUG=INFO
+export NCCL_IB_TIMEOUT=23
+export HF_HOME=${HF_HOME:-$HF_HUB_CACHE}
+export OUTLINES_CACHE_DIR="${OUTLINES_CACHE_DIR:-/tmp/.outlines}"
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-$SCRATCH/triton_cache}"
+
+if [ -z "${DCFT:-}" ]; then
+  if [ -n "${DC_AGENT:-}" ]; then
+    export DCFT="$DC_AGENT"
+  else
+    export DCFT="$PWD"
+  fi
+fi
+
+mkdir -p "{experiments_dir}"
+mkdir -p "{experiments_dir}/logs"
+
 cd "$DCFT"
 export PYTHONPATH="$PWD:${PYTHONPATH:-}"
 
-GENERATE_SCRIPT="${DATAGEN_SCRIPT}"
-ENDPOINT_JSON="${DATAGEN_ENDPOINT_JSON:-}"
+BACKEND="${DATAGEN_BACKEND:-vllm}"
+GENERATE_SCRIPT="${DATAGEN_SCRIPT:?DATAGEN_SCRIPT must be set}"
+STAGE="${DATAGEN_STAGE:-tasks}"
+CONFIG_PATH="${DATAGEN_CONFIG_PATH:?DATAGEN_CONFIG_PATH is required}"
 TARGET_REPO="${DATAGEN_TARGET_REPO:-}"
 INPUT_DIR="${DATAGEN_INPUT_DIR:-}"
-EXTRA_ARGS="${DATAGEN_EXTRA_ARGS:-}"
-ENGINE="${DATAGEN_ENGINE:-}"
-REQUIRE_ENDPOINT="${DATAGEN_REQUIRE_ENDPOINT:-0}"
 OUTPUT_DIR="${DATAGEN_OUTPUT_DIR:-}"
-STAGE="${DATAGEN_STAGE:-tasks}"
-WAIT_FOR_ENDPOINT="${DATAGEN_WAIT_FOR_ENDPOINT:-0}"
-CONFIG_PATH="${DATAGEN_CONFIG_PATH:?DATAGEN_CONFIG_PATH is required}"
-GPU_REQUIRED="${DATAGEN_GPU_REQUIRED:-0}"
-GPUS_PER_NODE="${DATAGEN_GPUS_PER_NODE:-0}"
+EXTRA_ARGS="${DATAGEN_EXTRA_ARGS:-}"
 TASK_TYPE="${DATAGEN_TASK_TYPE:-}"
+ENDPOINT_JSON="${DATAGEN_ENDPOINT_JSON:-$DCFT/vllm_endpoint.json}"
+REQUIRE_ENDPOINT="${DATAGEN_REQUIRE_ENDPOINT:-0}"
+WAIT_FOR_ENDPOINT="${DATAGEN_WAIT_FOR_ENDPOINT:-0}"
+ENGINE="${DATAGEN_ENGINE:-}"
 
-echo "=== Datagen (Perlmutter) ==="
-echo "Script: $GENERATE_SCRIPT"
-echo "Endpoint: ${ENDPOINT_JSON:-<none>}"
-echo "Target Repo: $TARGET_REPO"
-echo "Input Dir: $INPUT_DIR"
-echo "Output Dir: ${OUTPUT_DIR:-<none>}"
-echo "Engine: ${ENGINE:-<unset>}"
-echo "Config Path: $CONFIG_PATH"
+echo "=== Data Generation Configuration (Perlmutter) ==="
+echo "Backend: $BACKEND"
+echo "Generate Script: $GENERATE_SCRIPT"
 echo "Stage: $STAGE"
-echo "GPUs required: $GPU_REQUIRED (per node: $GPUS_PER_NODE)"
-echo "Task Type: ${TASK_TYPE:-<none>}"
-
-if [ "$REQUIRE_ENDPOINT" = "1" ] && [ "$WAIT_FOR_ENDPOINT" = "1" ]; then
-  if [ -z "$ENDPOINT_JSON" ]; then
-    echo "ERROR: Endpoint required but DATAGEN_ENDPOINT_JSON is empty." >&2
-    exit 1
-  fi
-
-  echo "Waiting for endpoint JSON at $ENDPOINT_JSON"
-  MAX_WAIT=600
-  WAITED=0
-  while [ ! -f "$ENDPOINT_JSON" ] && [ $WAITED -lt $MAX_WAIT ]; do
-    sleep 5
-    WAITED=$((WAITED + 5))
-    if [ $((WAITED % 30)) -eq 0 ]; then
-      echo "Still waiting for $ENDPOINT_JSON... (${WAITED}s elapsed)"
-    fi
-  done
-
-  if [ ! -f "$ENDPOINT_JSON" ]; then
-    echo "ERROR: Endpoint JSON not found after ${MAX_WAIT}s." >&2
-    exit 1
-  fi
-
-  echo "✓ Endpoint JSON discovered"
-fi
+echo "Engine config: $CONFIG_PATH"
+echo "Target repo: ${TARGET_REPO:-<none>}"
+echo "Input dir: ${INPUT_DIR:-<none>}"
+echo "Output dir: ${OUTPUT_DIR:-<none>}"
+echo "Task type: ${TASK_TYPE:-<none>}"
+echo "Endpoint JSON: ${ENDPOINT_JSON:-<none>}"
+echo "Require endpoint: $REQUIRE_ENDPOINT (wait=$WAIT_FOR_ENDPOINT)"
+echo "Extra args: ${EXTRA_ARGS:-<none>}"
+echo "======================================"
 
 if [ -n "$OUTPUT_DIR" ]; then
-  mkdir -p "$OUTPUT_DIR"
+    mkdir -p "$OUTPUT_DIR"
 fi
 
 CMD=(python3 "$GENERATE_SCRIPT" --stage "$STAGE" --engine-config "$CONFIG_PATH")
 
 if [ -n "$TARGET_REPO" ]; then
-  CMD+=(--target-repo "$TARGET_REPO")
+    CMD+=(--target-repo "$TARGET_REPO")
 fi
-
 if [ -n "$INPUT_DIR" ]; then
-  CMD+=(--input-dir "$INPUT_DIR")
+    CMD+=(--input-dir "$INPUT_DIR")
 fi
-
 if [ -n "$OUTPUT_DIR" ]; then
-  CMD+=(--output-dir "$OUTPUT_DIR")
+    CMD+=(--output-dir "$OUTPUT_DIR")
 fi
-
 if [ -n "$TASK_TYPE" ]; then
-  CMD+=(--task-type "$TASK_TYPE")
+    CMD+=(--task-type "$TASK_TYPE")
 fi
-
 if [ -n "$EXTRA_ARGS" ]; then
-  # shellcheck disable=SC2206
-  EXTRA_ARR=($EXTRA_ARGS)
-  CMD+=("${EXTRA_ARR[@]}")
+    # shellcheck disable=SC2206
+    EXTRA_ARR=($EXTRA_ARGS)
+    CMD+=("${EXTRA_ARR[@]}")
 fi
 
-if [ "$GPU_REQUIRED" = "1" ]; then
-  if [ "$GPUS_PER_NODE" -le 0 ]; then
-    echo "ERROR: GPU access requested but DATAGEN_GPUS_PER_NODE is 0." >&2
-    exit 1
-  fi
-  echo "Running datagen with GPU access ($GPUS_PER_NODE per node)"
-  srun --gpus-per-node="$GPUS_PER_NODE" --cpu_bind=v --accel-bind=v "${CMD[@]}"
+wait_for_endpoint() {
+    local endpoint_json="$1"
+    local max_wait="${DATAGEN_ENDPOINT_WAIT_TIMEOUT:-600}"
+    local elapsed=0
+    echo "Waiting for endpoint JSON at $endpoint_json ..."
+    while [ ! -f "$endpoint_json" ] && [ $elapsed -lt $max_wait ]; do
+        sleep 5
+        elapsed=$((elapsed + 5))
+        if [ $((elapsed % 30)) -eq 0 ]; then
+            echo "  ... still waiting (${elapsed}s elapsed)"
+        fi
+    done
+    if [ ! -f "$endpoint_json" ]; then
+        echo "ERROR: Endpoint JSON not found after ${max_wait}s: $endpoint_json"
+        return 1
+    fi
+    echo "✓ Endpoint JSON found. Running health check..."
+    python3 scripts/vllm/wait_for_endpoint.py \
+        --endpoint-json "$endpoint_json" \
+        --max-attempts "${DATAGEN_HEALTHCHECK_MAX_ATTEMPTS:-60}" \
+        --retry-delay "${DATAGEN_HEALTHCHECK_RETRY_DELAY:-15}" \
+        --health-path "v1/models"
+}
+
+if [ "$REQUIRE_ENDPOINT" = "1" ] && [ "$WAIT_FOR_ENDPOINT" = "1" ]; then
+    wait_for_endpoint "$ENDPOINT_JSON"
 else
-  echo "Running datagen without GPU access"
-  srun "${CMD[@]}"
+    echo "Skipping endpoint wait (require=$REQUIRE_ENDPOINT wait=$WAIT_FOR_ENDPOINT engine=${ENGINE:-auto})"
 fi
+
+echo "Running datagen: ${CMD[*]}"
+"${CMD[@]}"
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -eq 0 ]; then
+    echo "=== Data generation completed successfully ==="
+else
+    echo "=== Data generation failed with exit code $EXIT_CODE ==="
+fi
+
+exit $EXIT_CODE

@@ -1,4 +1,10 @@
 {
+  "capella": [
+    {
+      "cluster": "capella",
+      "path": "hpc/sbatch/zih_capella_train.sbatch"
+    }
+  ],
   "vista": [
     {
       "cluster": "vista",
@@ -67,6 +73,20 @@
     {
       "cluster": "perlmutter",
       "path": "hpc/sbatch_data/perlmutter_datatrace.sbatch"
+    }
+  ],
+  "frontier": [
+    {
+      "cluster": "frontier",
+      "path": "hpc/sbatch_data/frontier_vllm_server.sbatch"
+    },
+    {
+      "cluster": "frontier",
+      "path": "hpc/sbatch_data/frontier_datagen.sbatch"
+    },
+    {
+      "cluster": "frontier",
+      "path": "hpc/sbatch_data/frontier_datatrace.sbatch"
     }
   ]
 }

@@ -29,6 +29,7 @@ class HPC(BaseModel):
     pretok_time_limit: str = "24:00:00"
     pretok_partition: str = ""
     pretok_gpus_per_node: int = 0 # will ask for 0 gpus
+    local_mode: bool = False
 
     def model_post_init(self, __context) -> None:
         # Derive a default CPU-per-GPU ratio when not explicitly provided.
@@ -120,8 +121,8 @@ capella = HPC(
     name="capella",
     hostname_pattern=r"c\d",
     train_sbatch_filename="zih_capella_train.sbatch",
-    dotenv_filename="zih.env",
-    account="p_finetuning",
+    dotenv_filename="zih_capella.env",
+    account="p_agents_finetuning",
     partition="capella",
     gpus_per_node=4,
     cpus_per_node=32,
@@ -144,6 +145,21 @@ alpha = HPC(
     internet_node=True,
     gpus_type="A100 40GB",
     total_partition_nodes=37,
+)
+
+dip = HPC(
+    name="dip",
+    hostname_pattern=r".*dip\.tu-dresden\.de$",
+    train_sbatch_filename="local_stub.sbatch",
+    dotenv_filename="dip.env",
+    account="",
+    partition="",
+    gpus_per_node=0,
+    cpus_per_node=16,
+    internet_node=True,
+    gpus_type="CPU-only",
+    total_partition_nodes=1,
+    local_mode=True,
 )
 
 lrz = HPC(
@@ -266,7 +282,23 @@ perlmutter = HPC(
     qos="regular",
 )
 
-clusters = [jureca, jupiter, juwels, leonardo, capella, alpha, lrz, vista, lonestar, claix, nyugreene, nyutorch, oumi, perlmutter]
+frontier = HPC(
+    name="frontier",
+    hostname_pattern=r"login\d+\.frontier\.olcf\.ornl\.gov",
+    train_sbatch_filename="frontier_train.sbatch",
+    dotenv_filename="frontier.env",
+    account="LRN081",
+    partition="batch",
+    gpus_per_node=4,
+    cpus_per_node=48,
+    mem_per_node="512GB",
+    internet_node=False,
+    gpus_type="AMD Instinct MI250X",
+    total_partition_nodes=9216,
+    qos="normal",
+)
+
+clusters = [jureca, jupiter, juwels, leonardo, capella, alpha, dip, lrz, vista, lonestar, claix, nyugreene, nyutorch, oumi, perlmutter, frontier]
 
 
 def detect_hpc() -> HPC:
@@ -309,6 +341,16 @@ def set_environment(hpc_name: HPC) -> None:
 
                 os.environ[key] = os.path.expandvars(value)
         print(f"Environment variables set from {dotenv}")
+
+        # Legacy compatibility: treat DC_AGENT as the canonical repo root when DCFT is unset.
+        if "DCFT" not in os.environ and os.environ.get("DC_AGENT"):
+            os.environ["DCFT"] = os.environ["DC_AGENT"]
+
+        # Capella account is project-specific; respect DCFT_GROUP when available.
+        if hpc_name.name.lower() == "capella":
+            env_account = os.environ.get("DCFT_GROUP")
+            if env_account:
+                hpc_name.account = env_account
     else:
         print(
             f"Warning: No dotenv file found for {hpc_name.name} in {dotenv}. Skipping environment variable setup."

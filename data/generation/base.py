@@ -111,14 +111,29 @@ class BaseDataGenerator(ABC):
         if getattr(args, "trace_agent_kwargs", None) is None and extra_agent_kwargs:
             setattr(args, "trace_agent_kwargs", extra_agent_kwargs)
 
+        endpoint_override = getattr(args, "endpoint_json", None) or os.environ.get("TRACE_ENDPOINT_JSON")
+        if runtime:
+            existing_endpoint = runtime.engine_kwargs.get("endpoint_json")
+            if endpoint_override:
+                runtime.engine_kwargs["endpoint_json"] = endpoint_override
+                setattr(args, "endpoint_json", endpoint_override)
+            elif existing_endpoint:
+                setattr(args, "endpoint_json", existing_endpoint)
+
         return args
 
     def build_request(self, args: argparse.Namespace) -> GenerationRequest:
         metadata = self._build_request_metadata(args)
+        endpoint_json = getattr(args, "endpoint_json", None) or os.environ.get("TRACE_ENDPOINT_JSON")
+        runtime: Optional[RuntimeEngineSettings] = getattr(args, "_engine_runtime", None)
+        if not endpoint_json and runtime:
+            endpoint_json = runtime.engine_kwargs.get("endpoint_json")
+        if endpoint_json:
+            metadata.setdefault("trace_endpoint_json", endpoint_json)
+
         limit_value = getattr(args, "limit", None)
         if limit_value is not None:
             metadata.setdefault("limit", limit_value)
-        runtime: Optional[RuntimeEngineSettings] = getattr(args, "_engine_runtime", None)
         engine_value = runtime.type if runtime else None
         if engine_value and engine_value.lower() == "none":
             engine_value = None
@@ -655,6 +670,12 @@ class BaseDataGenerator(ABC):
         metadata = request.metadata or {}
         engine = context.engine
         disable_verification = bool(getattr(args, "disable_verification", False))
+        trace_backend_raw = metadata.get("trace_backend") or getattr(args, "trace_backend", None)
+        trace_backend = (
+            str(trace_backend_raw).strip().lower()
+            if trace_backend_raw not in (None, "")
+            else None
+        )
 
         tasks_input = request.tasks_input or getattr(args, "tasks_input", None)
         if not tasks_input:
@@ -698,11 +719,14 @@ class BaseDataGenerator(ABC):
         trace_model: Optional[str] = None
         served_model: Optional[str] = None
         api_base: Optional[str] = None
+        is_openai_like_engine = isinstance(
+            engine, (GenericOpenAIEngine, GeminiOpenAIEngine)
+        )
         requires_endpoint = isinstance(engine, GenericOpenAIEngine) and not isinstance(
             engine, GeminiOpenAIEngine
         )
 
-        if isinstance(engine, GenericOpenAIEngine):
+        if is_openai_like_engine:
             print(
                 "[traces] engine",
                 {
@@ -777,7 +801,7 @@ class BaseDataGenerator(ABC):
             )
             if trace_model and str(trace_model).strip().lower() == TRACE_MODEL_PLACEHOLDER:
                 trace_model = ""
-            if not trace_model and isinstance(engine, GenericOpenAIEngine):
+            if not trace_model and isinstance(engine, (GenericOpenAIEngine, GeminiOpenAIEngine)):
                 trace_model = getattr(engine, "model_name", None)
 
             if isinstance(engine, GenericOpenAIEngine):
@@ -789,6 +813,9 @@ class BaseDataGenerator(ABC):
                     if not cleaned.endswith("/v1"):
                         cleaned = f"{cleaned}/v1"
                     api_base = cleaned
+            elif isinstance(engine, GeminiOpenAIEngine):
+                if served_model is None:
+                    served_model = getattr(engine, "model_name", None)
 
         if (
             not trace_model
@@ -838,7 +865,7 @@ class BaseDataGenerator(ABC):
                     "trace_model_dispatch": trace_model_for_dispatch,
                 },
             )
-        elif isinstance(engine, GenericOpenAIEngine):
+        elif is_openai_like_engine:
             provider_prefix = "openai"
             if isinstance(engine, GeminiOpenAIEngine):
                 provider_prefix = "gemini"
@@ -933,19 +960,18 @@ class BaseDataGenerator(ABC):
             return f"{cleaned}/metrics"
 
         agent_kwargs = dict(agent_kwargs)
+        if requires_endpoint:
+            # Endpoint JSON is authoritative for local vLLM jobs; discard stale overrides.
+            for key in ("api_base", "metrics_endpoint"):
+                agent_kwargs.pop(key, None)
+
         derived_metrics_endpoint: Optional[str] = None
         if api_base:
             agent_kwargs["api_base"] = api_base
             derived_metrics_endpoint = _derive_metrics_endpoint_from_api_base(api_base)
 
-        metrics_endpoint = agent_kwargs.get("metrics_endpoint")
         if derived_metrics_endpoint:
-            if (
-                not metrics_endpoint
-                or "replace-with" in str(metrics_endpoint)
-                or str(metrics_endpoint).rstrip("/") != derived_metrics_endpoint.rstrip("/")
-            ):
-                agent_kwargs["metrics_endpoint"] = derived_metrics_endpoint
+            agent_kwargs["metrics_endpoint"] = derived_metrics_endpoint
 
         print(
             "[traces] dispatch",
@@ -969,12 +995,6 @@ class BaseDataGenerator(ABC):
             trace_export_filter = None
 
         trace_dataset_type = metadata.get("trace_dataset_type") or getattr(args, "trace_dataset_type", None) or "SFT"
-        include_reasoning = metadata.get("trace_include_reasoning")
-        if include_reasoning is None:
-            include_reasoning = getattr(args, "trace_include_reasoning", True)
-        include_reasoning = bool(include_reasoning)
-        metadata["trace_include_reasoning"] = include_reasoning
-
         try:
             agent_enum = AgentName(trace_agent_name)
         except ValueError:
@@ -1043,6 +1063,52 @@ class BaseDataGenerator(ABC):
             job_config_for_run.environment.override_storage_mb = int(sandbox_disk) * 1024
 
         job_dir = trace_jobs_dir / job_config_for_run.job_name
+        if requires_endpoint:
+            existing_config_path = job_dir / "config.json"
+            existing_values: dict[str, str | None] = {}
+            if existing_config_path.exists():
+                try:
+                    existing_payload = json.loads(existing_config_path.read_text())
+                    existing_agent = ((existing_payload.get("agents") or [{}])[0]) or {}
+                    existing_kwargs = existing_agent.get("kwargs") or {}
+                    existing_values = {
+                        "api_base": (existing_kwargs.get("api_base") or "").strip() or None,
+                        "metrics_endpoint": (existing_kwargs.get("metrics_endpoint") or "").strip() or None,
+                    }
+                except Exception as exc:  # pragma: no cover - defensive
+                    self.logger.warning(
+                        "[traces] Failed to inspect existing Harbor config at %s (%s)",
+                        existing_config_path,
+                        exc,
+                    )
+            desired_api_base = (agent_kwargs.get("api_base") or "").strip() or None
+            desired_metrics = (agent_kwargs.get("metrics_endpoint") or "").strip() or None
+            if existing_values and desired_api_base:
+                old_api = existing_values.get("api_base")
+                old_metrics = existing_values.get("metrics_endpoint")
+                mismatch_api = bool(
+                    old_api
+                    and old_api.rstrip("/") != desired_api_base.rstrip("/")
+                )
+                mismatch_metrics = bool(
+                    old_metrics
+                    and desired_metrics
+                    and old_metrics.rstrip("/") != desired_metrics.rstrip("/")
+                )
+                if mismatch_api or mismatch_metrics:
+                    message = (
+                        "Existing trace job config at "
+                        f"{existing_config_path} still references Pinggy URL "
+                        f"{old_api or '<unset>'} (metrics {old_metrics or '<unset>'}) "
+                        f"but the current vLLM endpoint is {desired_api_base} "
+                        f"(metrics {desired_metrics or '<unset>'}). Delete the stale "
+                        "trace_jobs directory or pick a fresh --experiments_dir/--job_name "
+                        "to avoid reusing mismatched Harbor configs."
+                    )
+                    if trace_backend == "vllm":
+                        raise InputValidationError(message)
+                    self.logger.warning("[traces] %s", message)
+
         base_artifacts = {
             "trace_jobs_dir": str(trace_jobs_dir),
             "trace_job_name": job_config_for_run.job_name,
@@ -1063,7 +1129,6 @@ class BaseDataGenerator(ABC):
                 agent_timeout_sec=getattr(args, "trace_agent_timeout_sec", None),
                 verifier_timeout_sec=getattr(args, "trace_verifier_timeout_sec", None),
                 disable_verification=disable_verification,
-                include_reasoning=include_reasoning,
             )
         except NotImplementedError as exc:
             if trace_eval_only:

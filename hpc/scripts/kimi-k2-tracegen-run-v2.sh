@@ -39,12 +39,14 @@ echo "SLURM_JOB_ID: ${SLURM_JOB_ID:-<not set>}"
 echo "SLURM_JOB_NUM_NODES: ${SLURM_JOB_NUM_NODES:-1}"
 
 # Activate conda
-CONDA_ENV_NAME="dcagent"
+CONDA_ENV_NAME="dcagent312"
 CONDA_ENV_PATH="$SCRATCH/miniconda3/envs/$CONDA_ENV_NAME"
 
 if [[ -d "$CONDA_ENV_PATH" ]]; then
+    set +u
     source "$SCRATCH/miniconda3/etc/profile.d/conda.sh"
     conda activate "$CONDA_ENV_NAME"
+    set -u
     echo "Activated conda env: $CONDA_ENV_NAME"
 else
     echo "ERROR: Conda env not found at $CONDA_ENV_PATH" >&2
@@ -124,38 +126,39 @@ SRUN_EXPORT_ENV="$SRUN_EXPORT_ENV,TRITON_CC=${TRITON_CC:-}"
 SRUN_EXPORT_ENV="$SRUN_EXPORT_ENV,TRITON_LIBCUDA_PATH=${TRITON_LIBCUDA_PATH:-}"
 SRUN_EXPORT_ENV="$SRUN_EXPORT_ENV,HF_HOME=${HF_HOME:-}"
 SRUN_EXPORT_ENV="$SRUN_EXPORT_ENV,PYTHONPATH=${PYTHONPATH:-}"
+# Ray control-plane stability knobs (prevents backlog storms / exporter hangs)
+SRUN_EXPORT_ENV="$SRUN_EXPORT_ENV,RAY_report_worker_backlog_to_raylet=0"
+SRUN_EXPORT_ENV="$SRUN_EXPORT_ENV,RAY_metrics_export_port=8090"
+SRUN_EXPORT_ENV="$SRUN_EXPORT_ENV,RAY_gcs_server_request_timeout_seconds=300"
+SRUN_EXPORT_ENV="$SRUN_EXPORT_ENV,RAY_raylet_heartbeat_timeout_milliseconds=600000"
+SRUN_EXPORT_ENV="$SRUN_EXPORT_ENV,RAY_worker_heartbeat_timeout_milliseconds=600000"
 export SRUN_EXPORT_ENV
 
 # =============================================================================
 # Extract tasks
 # =============================================================================
-echo ">>> Extracting tasks via launch_trace_from_parquet.py"
+echo ">>> Extracting tasks via extract_tasks_from_parquet.py"
 
+TASKS_INPUT="$EXPERIMENTS_DIR/tasks_extracted"
 EXTRACT_CMD=(
   python3
-  scripts/datagen/launch_trace_from_parquet.py
-  --experiments_dir "$EXPERIMENTS_DIR"
-  --datagen_config "$DATAGEN_CONFIG"
-  --trace_script "$TRACE_SCRIPT"
-  --trace_target_repo "$TRACE_TARGET_REPO"
-  --trace_harbor_config "$TRACE_HARBOR_CONFIG"
-  --trace_model "$TRACE_MODEL"
-  --trace_engine "$TRACE_ENGINE"
-  --trace_backend "$TRACE_BACKEND"
-  --gpus_per_node "$GPUS_PER_NODE"
-  --time_limit "$TIME_LIMIT"
-  --tasks_repo "$TASKS_REPO"
-  --extract_tasks_only
+  scripts/datagen/extract_tasks_from_parquet.py
+  --parquet "$TASKS_REPO"
+  --output_dir "$TASKS_INPUT"
 )
+
+ON_EXIST_MODE="skip"
+if [[ "$OVERWRITE_TASKS" == "1" ]]; then
+  ON_EXIST_MODE="overwrite"
+fi
+EXTRACT_CMD+=(--on_exist "$ON_EXIST_MODE")
 
 [[ -n "${TASKS_REVISION:-}" ]] && EXTRACT_CMD+=(--tasks_revision "$TASKS_REVISION")
 [[ -n "${PARQUET_NAME:-}" ]] && EXTRACT_CMD+=(--parquet_name "$PARQUET_NAME")
-[[ "$OVERWRITE_TASKS" == "1" ]] && EXTRACT_CMD+=(--overwrite)
 
 echo "Command: ${EXTRACT_CMD[*]}"
 "${EXTRACT_CMD[@]}"
 
-TASKS_INPUT="$EXPERIMENTS_DIR/tasks_extracted"
 TRACE_OUTPUT_DIR="$EXPERIMENTS_DIR/outputs/traces"
 TRACE_JOBS_DIR="$EXPERIMENTS_DIR/trace_jobs"
 
@@ -207,16 +210,26 @@ DP_SIZE="${VLLM_DATA_PARALLEL_SIZE:-1}"
 # Ray cluster setup - using srun like vista_datagen
 # =============================================================================
 echo ">>> Setting up Ray cluster with srun"
+set -x
 
 # Get node info
 nodes=$(scontrol show hostnames "$SLURM_JOB_NODELIST")
 nodes_array=($nodes)
 head_node=${nodes_array[0]}
 NUM_NODES=${SLURM_JOB_NUM_NODES:-1}
-CPUS_PER_NODE=${SLURM_CPUS_PER_TASK:-32}
+CPUS_PER_NODE=${SLURM_CPUS_PER_TASK:-96}
+HEADROOM_MB=8192
+SRUN_MEM_PER_STEP=$((1572864 - HEADROOM_MB))
+echo "Using SRUN_MEM_PER_STEP=${SRUN_MEM_PER_STEP} MB"
 
 # Get head node IP
-head_node_ip=$(srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$head_node" hostname --ip-address 2>/dev/null | head -1)
+head_ip_output=$(srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --mem="$SRUN_MEM_PER_STEP" --overlap -w "$head_node" hostname --ip-address 2>&1)
+if [[ $? -ne 0 ]]; then
+    echo "$head_ip_output"
+    echo "ERROR: Failed to resolve head node IP via srun"
+    exit 1
+fi
+head_node_ip=$(echo "$head_ip_output" | head -n1)
 head_node_ip=${head_node_ip%% *}
 
 if [[ -z "$head_node_ip" || "$head_node_ip" == "127.0.0.1" ]]; then
@@ -243,7 +256,8 @@ cleanup() {
         wait "$VLLM_PID" 2>/dev/null || true
     fi
     for node in "${nodes_array[@]}"; do
-        srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$node" ray stop --force 2>/dev/null || true
+        srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --mem="$SRUN_MEM_PER_STEP" --overlap -w "$node" \
+            ray stop --force 2>/dev/null || true
     done
     for pid in "${ray_pids[@]}"; do
         wait "$pid" 2>/dev/null || true
@@ -252,16 +266,21 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Use short path for Ray temp to avoid socket path length issues
-RAY_TMPDIR="/tmp/ray_${SLURM_JOB_ID:-$$}"
+# Use SCRATCH-backed path for Ray temp/logs so we can inspect sessions post-mortem
+RAY_TMPDIR_BASE="${SCRATCH}/ray_sessions"
+RAY_TMPDIR="${RAY_TMPDIR_BASE}/ray_${SLURM_JOB_ID:-$$}"
 mkdir -p "$RAY_TMPDIR"
+# Make sure all subsequent srun invocations inherit the tmpdir override
+SRUN_EXPORT_ENV="$SRUN_EXPORT_ENV,RAY_TMPDIR=$RAY_TMPDIR"
+export SRUN_EXPORT_ENV
+echo ">>> Ray session directory: $RAY_TMPDIR"
 
 # Calculate object store memory (conservative for large models)
 OBJECT_STORE_BYTES=$((40 * 1024 * 1024 * 1024))  # 40GB
 
 # Start Ray head via srun
 echo ">>> Starting Ray head on $head_node"
-srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$head_node" \
+srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --mem="$SRUN_MEM_PER_STEP" --overlap -w "$head_node" \
     ray start --head \
         --node-ip-address="$head_node_ip" \
         --port="$RAY_PORT" \
@@ -276,7 +295,7 @@ ray_pids+=($!)
 for ((i = 1; i < NUM_NODES; i++)); do
     node_i=${nodes_array[$i]}
     echo ">>> Starting Ray worker on $node_i"
-    srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$node_i" \
+    srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --mem="$SRUN_MEM_PER_STEP" --overlap -w "$node_i" \
         ray start \
             --address="$ip_head" \
             --num-gpus="$GPUS_PER_NODE" \
@@ -301,6 +320,7 @@ python3 scripts/ray/wait_for_cluster.py \
     --poll-interval 10
 
 echo ">>> Ray cluster ready!"
+set +x
 
 # =============================================================================
 # Start vLLM controller via srun
@@ -314,7 +334,7 @@ echo "  API port: $API_PORT"
 echo "  TP size: $TP_SIZE"
 echo "  Log: $CONTROLLER_LOG"
 
-srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$head_node" \
+srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --mem="$SRUN_MEM_PER_STEP" --overlap -w "$head_node" \
     python3 scripts/vllm/start_vllm_ray_controller.py \
         --ray-address "$ip_head" \
         --host "$head_node_ip" \
@@ -352,8 +372,8 @@ fi
 echo ">>> Endpoint JSON created, waiting for health check..."
 python3 scripts/vllm/wait_for_endpoint.py \
     --endpoint-json "$VLLM_ENDPOINT_JSON_PATH" \
-    --max-attempts 30 \
-    --retry-delay 10 \
+    --max-attempts 60 \
+    --retry-delay 20 \
     --health-path "v1/models"
 
 # =============================================================================
@@ -371,19 +391,16 @@ TRACE_CMD=(
     --trace-harbor-config "$TRACE_HARBOR_CONFIG"
     --trace-jobs-dir "$TRACE_JOBS_DIR"
     --trace-model "$TRACE_MODEL"
-    --trace-engine "$TRACE_ENGINE"
-    --trace-backend "$TRACE_BACKEND"
+    --endpoint-json "$VLLM_ENDPOINT_JSON_PATH"
     --trace-episodes "$TRACE_EPISODES"
     --trace-export-filter "$TRACE_EXPORT_FILTER"
     --trace-dataset-type "$TRACE_DATASET_TYPE"
-    --trace-use-gpu
 )
 
 [[ -n "${TRACE_AGENT_NAME:-}" ]] && TRACE_CMD+=(--trace-agent-name "$TRACE_AGENT_NAME")
 [[ -n "${TRACE_AGENT_KWARGS:-}" ]] && TRACE_CMD+=(--trace-agent-kwargs "$TRACE_AGENT_KWARGS")
 [[ -n "${TRACE_ENV:-}" ]] && TRACE_CMD+=(--trace-env "$TRACE_ENV")
 [[ -n "${TRACE_AGENT_TIMEOUT_SEC:-}" ]] && TRACE_CMD+=(--trace-agent-timeout-sec "$TRACE_AGENT_TIMEOUT_SEC")
-[[ -n "${TRACE_MAX_TOKENS:-}" ]] && TRACE_CMD+=(--trace-max-tokens "$TRACE_MAX_TOKENS")
 [[ -n "${TRACE_N_CONCURRENT:-}" ]] && TRACE_CMD+=(--trace-n-concurrent "$TRACE_N_CONCURRENT")
 [[ -n "${TRACE_CHUNK_SIZE:-}" ]] && TRACE_CMD+=(--chunk_size "$TRACE_CHUNK_SIZE")
 

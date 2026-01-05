@@ -235,18 +235,24 @@ def add_generation_args(
         help="Dataset type label when uploading traces (default: SFT)",
     )
     trace_group.add_argument(
-        "--trace-include-reasoning",
-        dest="trace_include_reasoning",
-        action="store_true",
-        help="Prepend agent reasoning_content inside <think> tags for exported traces (default: enabled).",
+        "--endpoint-json",
+        dest="endpoint_json",
+        type=str,
+        help="Path to a running vLLM endpoint JSON (required for vllm_local engines).",
     )
     trace_group.add_argument(
-        "--trace-skip-reasoning",
-        dest="trace_include_reasoning",
-        action="store_false",
-        help="Disable reasoning_content injection when exporting traces.",
+        "--trace-export-subagents",
+        dest="trace_export_subagents",
+        action="store_true",
+        help="Export subagent traces (e.g., context summarization) alongside main agent traces (default: enabled).",
     )
-    parser.set_defaults(trace_include_reasoning=True)
+    trace_group.add_argument(
+        "--trace-skip-subagents",
+        dest="trace_export_subagents",
+        action="store_false",
+        help="Disable subagent trace export when exporting traces.",
+    )
+    parser.set_defaults(trace_export_subagents=True)
     trace_group.add_argument(
         "--trace-eval-only",
         action="store_true",

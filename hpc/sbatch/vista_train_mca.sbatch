@@ -17,20 +17,19 @@ module load gcc/14.2.0
 module load cuda/12.8
 
 source $SCRATCH/miniconda3/etc/profile.d/conda.sh
-conda activate $SCRATCH/miniconda3/envs/dcagent
+conda activate $SCRATCH/miniconda3/envs/otagent
 
 source $DCFT/hpc/dotenv/tacc.env
 
 SECRET_FILE="${DC_AGENT_SECRET_ENV:-${KEYS:-}}"
 if [[ -n "${SECRET_FILE}" ]]; then
     if [[ -f "${SECRET_FILE}" ]]; then
-        echo "Sourcing secrets from ${SECRET_FILE}"
         set -a
         # shellcheck disable=SC1090
         source "${SECRET_FILE}"
         set +a
     else
-        echo "Warning: secrets file ${SECRET_FILE} not found; database registration may fail." >&2
+        echo "Warning: secrets file not found; database registration may fail." >&2
     fi
 else
     echo "Warning: DC_AGENT_SECRET_ENV is not set; database registration may fail." >&2

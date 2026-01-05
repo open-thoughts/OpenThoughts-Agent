@@ -37,7 +37,7 @@ orchestrator:
 
 environment:
   type: daytona
-  force_build: true
+  force_build: false
   delete: true
   override_cpus: 1
   override_memory_mb: 2048

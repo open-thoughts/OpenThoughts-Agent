@@ -1,7 +1,7 @@
 #!/bin/bash
 # Perlmutter training template for HPC launch.
 #SBATCH --account={account}
-#SBATCH --qos=regular         # Other options: debug, shared
+#SBATCH --qos=premium         # Other options: debug, shared
 #SBATCH --constraint="gpu&hbm80g"
 #SBATCH --exclusive
 #SBATCH --nodes={num_nodes}
@@ -11,6 +11,8 @@
 #SBATCH --time={time_limit}
 #SBATCH --output={experiments_dir}/logs/%x_%j.out
 #SBATCH --job-name={job_name}
+#SBATCH --mail-type=END,TIME_LIMIT,FAIL
+#SBATCH --mail-user=bf996@nyu.edu
 
 set -euo pipefail
 
@@ -42,13 +44,60 @@ else
   fi
 fi
 
-module load cuda/12.9
 module load cudatoolkit/12.9
 
-if [ -n "${LIBRARY_PATH:-}" ]; then
-  export LIBRARY_PATH="$CUDA_HOME/lib64:$LIBRARY_PATH"
+# Derive CUDA_HOME from nvcc when the module doesn't set it.
+if [ -z "${CUDA_HOME:-}" ]; then
+  if command -v nvcc >/dev/null 2>&1; then
+    export CUDA_HOME="$(dirname "$(dirname "$(command -v nvcc)")")"
+  fi
+fi
+
+if [ -n "${CUDA_HOME:-}" ] && [ -d "$CUDA_HOME/lib64" ]; then
+  if [ -n "${LIBRARY_PATH:-}" ]; then
+    export LIBRARY_PATH="$CUDA_HOME/lib64:$LIBRARY_PATH"
+  else
+    export LIBRARY_PATH="$CUDA_HOME/lib64"
+  fi
 else
-  export LIBRARY_PATH="$CUDA_HOME/lib64"
+  echo "Warning: CUDA_HOME not set or missing lib64 directory; CUDA static libs may be unavailable." >&2
+fi
+
+if [ -n "${CUDA_HOME:-}" ]; then
+  _cuda_sdk_root="$(dirname "$(dirname "$CUDA_HOME")")"
+  _cuda_version="$(basename "$CUDA_HOME")"
+  _cuda_math_lib_path="$_cuda_sdk_root/math_libs/$_cuda_version/lib64"
+  if [ -d "$_cuda_math_lib_path" ]; then
+    if [ -n "${LIBRARY_PATH:-}" ]; then
+      export LIBRARY_PATH="$_cuda_math_lib_path:$LIBRARY_PATH"
+    else
+      export LIBRARY_PATH="$_cuda_math_lib_path"
+    fi
+    if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+      export LD_LIBRARY_PATH="$_cuda_math_lib_path:$LD_LIBRARY_PATH"
+    else
+      export LD_LIBRARY_PATH="$_cuda_math_lib_path"
+    fi
+  fi
+  unset _cuda_sdk_root _cuda_version _cuda_math_lib_path
+fi
+
+# Ensure linker sees the NVIDIA curand wheels bundled with the conda env.
+if [ -n "${CONDA_PREFIX:-}" ]; then
+  CURAND_LIB_DIR="$CONDA_PREFIX/lib/python3.12/site-packages/nvidia/curand/lib"
+  if [ -d "$CURAND_LIB_DIR" ]; then
+    if [ -n "${LIBRARY_PATH:-}" ]; then
+      export LIBRARY_PATH="$CURAND_LIB_DIR:$LIBRARY_PATH"
+    else
+      export LIBRARY_PATH="$CURAND_LIB_DIR"
+    fi
+    if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+      export LD_LIBRARY_PATH="$CURAND_LIB_DIR:$LD_LIBRARY_PATH"
+    else
+      export LD_LIBRARY_PATH="$CURAND_LIB_DIR"
+    fi
+  fi
+  unset CURAND_LIB_DIR
 fi
 
 if [ -n "${CONDA_PREFIX:-}" ]; then
@@ -57,6 +106,11 @@ if [ -n "${CONDA_PREFIX:-}" ]; then
   export FC="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-gfortran"
   export CUDAHOSTCXX="$CXX"
   export PATH="$CONDA_PREFIX/bin:$PATH"
+  if [ -n "${LIBRARY_PATH:-}" ]; then
+    export LIBRARY_PATH="$CONDA_PREFIX/lib:$LIBRARY_PATH"
+  else
+    export LIBRARY_PATH="$CONDA_PREFIX/lib"
+  fi
   if [ -n "${LD_LIBRARY_PATH:-}" ]; then
     export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
   else
@@ -65,6 +119,9 @@ if [ -n "${CONDA_PREFIX:-}" ]; then
 else
   echo "Warning: CONDA_PREFIX is not set; compiler environment variables were not configured." >&2
 fi
+
+echo "CUDA_HOME=${CUDA_HOME:-<unset>}"
+echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-<unset>}"
 
 SECRET_FILE="${DC_AGENT_SECRET_ENV:-${KEYS:-}}"
 if [[ -n "${SECRET_FILE}" ]]; then

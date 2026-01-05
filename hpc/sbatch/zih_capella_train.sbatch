@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH --account={account}
-#SBATCH --partition={partition}
 #SBATCH --nodes={num_nodes}
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task={cpus_per_node}
@@ -10,6 +9,9 @@
 #SBATCH --exclusive
 #SBATCH --output={experiments_dir}/logs/%x_%j.out
 #SBATCH --job-name={job_name}
+#SBATCH --mail-type=END,TIME_LIMIT,FAIL
+#SBATCH --mail-user=bf996@nyu.edu
+#SBATCH --exclude=c66,c68
 
 set -euo pipefail
 
@@ -17,14 +19,15 @@ export CONDA_BACKUP_CXX="${CONDA_BACKUP_CXX:-}"
 export CONDA_BACKUP_CC="${CONDA_BACKUP_CC:-}"
 export CONDA_BACKUP_FC="${CONDA_BACKUP_FC:-}"
 
-if [ -n "${DCFT:-}" ] && [ -f "$DCFT/hpc/dotenv/zih.env" ]; then
+if [ -n "${DCFT:-}" ] && [ -f "$DCFT/hpc/dotenv/zih_capella.env" ]; then
   # shellcheck disable=SC1090
-  source "$DCFT/hpc/dotenv/zih.env"
+  source "$DCFT/hpc/dotenv/zih_capella.env"
+elif [ -n "${DC_AGENT:-}" ] && [ -f "$DC_AGENT/hpc/dotenv/zih_capella.env" ]; then
+  # shellcheck disable=SC1090
+  source "$DC_AGENT/hpc/dotenv/zih_capella.env"
 fi
 
-module load release/24.04 GCCcore/12.3.0
-module load CUDA/12.1.1
-module load NCCL/2.18.3-CUDA-12.1.1
+module load CUDA/12.8.0
 
 if [ -n "${DCFT_ACTIVATE_ENV:-}" ]; then
   set +u
@@ -69,7 +72,11 @@ export NCCL_NET_GDR_READ=1
 export OMP_NUM_THREADS=1
 
 if [ -z "${DCFT:-}" ]; then
-  export DCFT="$PWD"
+  if [ -n "${DC_AGENT:-}" ]; then
+    export DCFT="$DC_AGENT"
+  else
+    export DCFT="$PWD"
+  fi
 fi
 
 mkdir -p "$DCFT/{experiments_dir}"

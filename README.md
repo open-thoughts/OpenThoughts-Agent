@@ -112,7 +112,7 @@ That file should `export DAYTONA_API_KEY=...`, `export HF_TOKEN=...`, `export WA
 
 ### Launching a Job
 
-OT-Agent's job launchers are designed to work with HPC (high-performance computing) clusters. Different launchers exist for different job types. OT-Agent's launchers are modular, making it relatively straightforward to add your own preferred cluster.
+OT-Agent's job launchers are designed to work with HPC (high-performance computing) clusters. Different launchers exist for different job types. OT-Agent's launchers are modular, making it relatively straightforward to add your own preferred cluster. Every invocation of `python -m hpc.launch` must explicitly set `--job_type`; use `sft` for standard finetuning jobs, `sft_mca` when you need the Megatron Core Adapter sbatch templates, `pretokenize` for tokenization-only runs, `datagen` for generator/trace work, and `consolidate` for ZeRO merges.
 
 #### How to Launch a Datagen Job
 
@@ -148,7 +148,7 @@ The launcher will synthesize and submit one or more `sbatch` scripts under `"$ex
 
 #### How to Launch an SFT Job
 
-SFT jobs are also launched via `hpc.launch` with `--job_type train` and a LLaMA Factory config.
+SFT jobs are also launched via `hpc.launch` with `--job_type sft` and a LLaMA Factory config.
 
 1. Pull and install the SFT submodule (once per checkout) and install its dependencies in-place:
    ```bash
@@ -161,8 +161,8 @@ SFT jobs are also launched via `hpc.launch` with `--job_type train` and a LLaMA 
 3. Pick a training config under `sft/lf_configs` or create your own YAML alongside the existing presets.
 4. From a login node, run:
    ```bash
-   python -m hpc.launch \
-     --job_type train \
+  python -m hpc.launch \
+    --job_type sft \
      --train_config_path sft/lf_configs/<path-to-config>.yaml \
      --dataset <org/dataset> \
      --num_nodes 8 \

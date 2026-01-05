@@ -1,0 +1,7 @@
+# Example model list for reset_hf_repos*.sbatch scripts.
+# List one Hugging Face repo per line.
+# Lines starting with '#' are ignored.
+
+# DCAgent sample repos
+DCAgent2/Example-Model-1
+DCAgent2/Example-Model-2

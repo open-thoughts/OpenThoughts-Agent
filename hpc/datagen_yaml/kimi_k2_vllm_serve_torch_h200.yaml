@@ -1,7 +1,7 @@
 engine:
   type: vllm_local
   model: moonshotai/Kimi-K2-Thinking
-  max_output_tokens: 16384
+  max_output_tokens: 8192
   healthcheck_interval: 300
   vllm_local: {}
 backend:
@@ -20,9 +20,9 @@ vllm_server:
   pipeline_parallel_size: 1
   data_parallel_size: 1
   time_limit: '48:00:00'
-  max_model_len: 65536
+  max_model_len: 32768
   max_num_seqs: 16
-  gpu_memory_utilization: 0.88
+  gpu_memory_utilization: 0.9
   swap_space: 32
   enable_expert_parallel: true
   enable_auto_tool_choice: true
@@ -30,8 +30,6 @@ vllm_server:
   reasoning_parser: kimi_k2
   trust_remote_code: true
   extra_args:
-  - --dtype
-  - bfloat16
   - --quantization
   - compressed-tensors
   - --kv-cache-dtype
@@ -43,10 +41,8 @@ vllm_server:
   - '1'
   - --enable-prefix-caching
   - --max-num-batched-tokens
-  - '65536'
+  - '8192'
   - --all2all-backend
   - pplx
   - --cpu-offload-gb
   - '20'
-
-

@@ -27,8 +27,6 @@ vllm_server:
   reasoning_parser: kimi_k2
   trust_remote_code: true
   extra_args:
-  - --dtype
-  - bfloat16
   - --quantization
   - compressed-tensors
   - --kv-cache-dtype

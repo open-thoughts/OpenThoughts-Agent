@@ -32,20 +32,23 @@ Utility entrypoints that support data generation, trace analysis, Harbor uploads
   ```bash
   python scripts/analysis/trace_runtime_report.py --root ~/evaltraces --output-json ~/evaltraces/summary.json
   ```
+- `analysis/episode_distribution.py` – download one or more Hugging Face trace datasets, normalize their `episode` labels to integers, and plot smoothed per-episode counts to compare run lengths.  
+  ```bash
+  python scripts/analysis/episode_distribution.py my-org/datasetA my-org/datasetB --sigma 3.0 --output plots/episodes.png
+  ```
 
 ### Data generation helpers
 - `datagen/gsm8k_terminal_bench_traces.py` – BaseDataGenerator entrypoint for GSM8K Terminal Bench traces; reruns the standard datagen CLI with dataset-specific flags.  
   ```bash
   python scripts/datagen/gsm8k_terminal_bench_traces.py --tasks-repo mlfoundations-dev/gsm8k-terminal-bench --output-dir /tmp/gsm8k-traces
   ```
-- `datagen/launch_trace_from_parquet.py` – download tasks from HF (Parquet), extract them, then launch `python -m hpc.launch` for trace-only jobs.  
+- `datagen/extract_tasks_from_parquet.py` – resolve a local parquet file (or Hugging Face dataset repo), then materialize Harbor-style task folders for downstream trace jobs.  
   ```bash
-  python scripts/datagen/launch_trace_from_parquet.py \
-    --tasks_repo my-org/tasks-parquet \
-    --experiments_dir ~/experiments \
-    --datagen_config hpc/datagen_yaml/kimi_k2_vllm_serve_tacc_ray_32k.yaml \
-    --trace_target_repo my-org/task-traces \
-    --trace_harbor_config hpc/harbor_yaml/datagen_vllm.yaml
+  python scripts/datagen/extract_tasks_from_parquet.py \
+    --parquet my-org/tasks-parquet \
+    --output_dir $SCRATCH/experiments/tasks_extracted \
+    --parquet_name tasks/train-00000-of-00001.parquet \
+    --on_exist overwrite
   ```
 - `datagen/print_trace_contents.py` – quickly preview the conversations inside exported trace JSONL files.  
   ```bash
@@ -90,7 +93,7 @@ Utility entrypoints that support data generation, trace analysis, Harbor uploads
   ```bash
   python scripts/database/manual_db_push.py
   ```
-- `database/list_public_models.py` and `database/reset_hf_repo.py` provide quick HF org utilities (list models, wipe repo contents).
+- `huggingface/list_public_models.py` and `huggingface/reset_hf_repo.py` provide quick HF org utilities (list models, wipe repo contents).
 
 ### Ray / vLLM / Terminal Bench
 - `docker_ray/start_ray_cluster.py` – spin up a Ray Serve deployment backed by vLLM directly from your workstation (handy for local testing).  
@@ -102,6 +105,7 @@ Utility entrypoints that support data generation, trace analysis, Harbor uploads
   python scripts/ray/wait_for_cluster.py --address ${RAY_ADDRESS} --expected-gpus 8 --expected-nodes 2 --timeout 900
   ```
 - `vllm/start_vllm_ray_controller.py` & `vllm/start_vllm_cluster.py` – bring up a vLLM OpenAI-compatible endpoint on top of Ray; pair with `vllm/wait_for_endpoint.py` to poll readiness.  
+  - Note: on some SLURM clusters, Ray's default `CUDA_VISIBLE_DEVICES` rewriting can cause vLLM to crash with `CUDA error: invalid device ordinal`; `start_vllm_ray_controller.py` sets `RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1` by default (override by exporting it yourself).  
   ```bash
   python scripts/vllm/start_vllm_ray_controller.py --model /checkpoint/qwen --ray-address auto --tensor-parallel-size 2
   ```

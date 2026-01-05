@@ -37,7 +37,7 @@ orchestrator:
 
 environment:
   type: daytona
-  force_build: true
+  force_build: false
   delete: true
   override_cpus: 1
   override_memory_mb: 2048
@@ -58,6 +58,7 @@ agents:
     override_timeout_sec: 1800
     max_timeout_sec: null
     kwargs:
+      record_terminal_session: false
       max_episodes: 32
       collect_rollout_details: false
       collect_engine_metrics: true

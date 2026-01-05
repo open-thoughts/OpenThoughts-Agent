@@ -336,6 +336,15 @@ fi
 if [ -n "${VLLM_PINGGY_HEALTH_URL:-}" ]; then
     CMD+=(--pinggy-health-url "$VLLM_PINGGY_HEALTH_URL")
 fi
+if [ -n "${VLLM_PINGGY_PERSISTENT_URL:-}" ]; then
+    CMD+=(--pinggy-persistent-url "$VLLM_PINGGY_PERSISTENT_URL")
+fi
+if [ -n "${VLLM_PINGGY_SSH_COMMAND:-}" ]; then
+    CMD+=(--pinggy-ssh-command "$VLLM_PINGGY_SSH_COMMAND")
+fi
+if [ -n "${VLLM_PINGGY_DEBUGGER_URL:-}" ]; then
+    CMD+=(--pinggy-debugger-url "$VLLM_PINGGY_DEBUGGER_URL")
+fi
 
 if [ -n "$MAX_NUM_SEQS" ]; then
     CMD+=(--max-num-seqs "$MAX_NUM_SEQS")

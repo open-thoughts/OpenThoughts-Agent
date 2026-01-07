@@ -1,0 +1,89 @@
+# Harbor job configuration for trace generation with Docker backend.
+# Uses local Docker/Podman runtime instead of Daytona cloud service.
+# Suitable for: local development, SLURM with Podman, cloud instances with Docker.
+
+job_name: docker-trace-job
+jobs_dir: trace_jobs
+n_attempts: 1
+timeout_multiplier: 1.0
+debug: false
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 64
+  quiet: false
+  adaptive_concurrency:
+    enabled: false
+    algorithm: gradient2
+    min_limit:
+    max_limit:
+    metrics_endpoint:
+    metrics_timeout_sec: 10.0
+    poll_interval_sec: 120.0
+    window_size: 5
+    queue_p95_drop_threshold:
+    algorithm_kwargs: {}
+  retry:
+    max_retries: 5
+    include_exceptions: []
+    exclude_exceptions:
+    - AgentTimeoutError
+    - VerifierTimeoutError
+    - RewardFileNotFoundError
+    - RewardFileEmptyError
+    - VerifierOutputParseError
+    wait_multiplier: 2.0
+    min_wait_sec: 1.0
+    max_wait_sec: 60.0
+  kwargs: {}
+
+environment:
+  type: docker
+  force_build: true
+  delete: true
+  override_cpus: 1
+  override_memory_mb: 2048
+  override_storage_mb: 2048
+  kwargs: {}
+
+verifier:
+  override_timeout_sec:
+  max_timeout_sec:
+  disable: true
+
+metrics: []
+
+agents:
+- name: terminus-2
+  import_path:
+  model_name: placeholder/override-at-runtime
+  override_timeout_sec: 1800
+  max_timeout_sec:
+  kwargs:
+    record_terminal_session: false
+    collect_rollout_details: false
+    collect_engine_metrics: false
+    metrics_endpoint: https://replace-with-vllm-host/metrics
+    metrics_timeout_sec: 10
+    model_info:
+      max_input_tokens: 131000
+      max_output_tokens: 16000
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+
+    trajectory_config:
+      raw_content: true
+      linear_history: true
+    enable_summarize: true
+    proactive_summarization_threshold: 8192
+    interleaved_thinking: true
+    parser_name: json
+    tmux_pane_width: 160
+    tmux_pane_height: 40
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+datasets:
+- path: /replace/with/tasks/path
+
+tasks: []

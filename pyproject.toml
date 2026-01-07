@@ -16,15 +16,16 @@ dependencies = [
     "bs4",
     "huggingface_hub>=0.20.0",
     "datasets>=2.0.0",
-    "supabase==2.22.3",
+    "supabase>=2.22.3",
     "python-dotenv>=1.0.0",
-    "harbor",
+    "harbor @ git+https://github.com/laude-institute/harbor.git@a37706c696081223c981d5918a059786418f0ab3",
     "dynamic-semaphore @ git+https://github.com/penfever/dynamic-semaphore",
     "google-cloud-storage",
     "h5py",
     "certifi",
     "rapidfuzz",
     "huggingface_hub",
+    "uv>=0.4.17",
 ]
 
 [project.optional-dependencies]
@@ -37,14 +38,53 @@ datagen = [
     "torch-c-dlpack-ext==0.1.4",
     "google-cloud-aiplatform>=1.67.0",
     "google-genai>=0.1.0",
-    "nvidia-cuda-nvcc-cu12==12.8.93",
-    "vllm==0.11.2",
+    "nvidia-cuda-nvcc-cu12==12.8.93; platform_system != 'Darwin'",
+    "vllm[flashinfer]==0.11.2; platform_system != 'Darwin'",
+    "torch==2.9.0+cu128; platform_system != 'Darwin' or platform_machine != 'arm64'",
+    "torch==2.9.0; platform_system == 'Darwin' and platform_machine == 'arm64'",
 ]
 datagen-swesmith = [
     "swesmith",
 ]
+cloud = [
+    "skypilot>=0.6.1",
+    "google-api-python-client",  # GCP support for SkyPilot
+]
+cloud-aws = [
+    "skypilot>=0.6.1",
+    "boto3",
+]
+cloud-lambda = [
+    "skypilot>=0.6.1",
+    # Lambda Cloud only needs skypilot + API key configuration
+]
+cloud-vast = [
+    "skypilot>=0.6.1",
+    "vastai-sdk>=0.1.12",
+]
+cloud-kubernetes = [
+    "skypilot>=0.6.1",
+    # Kubernetes needs kubectl + kubeconfig, no extra Python deps
+]
+cloud-all = [
+    "skypilot>=0.6.1",
+    "google-api-python-client",
+    "boto3",
+    "vastai-sdk>=0.1.12",
+]
 rl = [
     "skyrl @ git+https://github.com/mlfoundations/skyrl.git",
+]
+# Harbor environment backends
+harbor-docker = [
+    "docker>=7.0.0",
+]
+harbor-modal = [
+    "modal>=0.60.0",
+]
+harbor-all = [
+    "docker>=7.0.0",
+    "modal>=0.60.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -73,3 +113,8 @@ exclude = [
     "wheels*",
     "tmp*",
 ]
+
+[tool.uv.pip]
+extra-index-url = ["https://download.pytorch.org/whl/cu128"]
+[tool.uv]
+index-strategy = "unsafe-best-match"

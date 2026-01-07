@@ -123,11 +123,18 @@ def _extract_wandb_run(url: Optional[str]) -> Optional[str]:
         return None
     parsed = urlparse(url)
     parts = parsed.path.strip("/").split("/")
+    entity = project = run_id = None
     if len(parts) >= 4 and parts[2] == "runs":
         entity, project, _, run_id = parts[:4]
-        return f"{entity}/{project}/{run_id}"
-    if len(parts) >= 3:
+    elif len(parts) >= 3:
         entity, project, run_id = parts[:3]
+    env_entity = os.environ.get("WANDB_ENTITY")
+    env_project = os.environ.get("WANDB_PROJECT")
+    if env_entity:
+        entity = env_entity
+    if env_project:
+        project = env_project
+    if entity and project and run_id:
         return f"{entity}/{project}/{run_id}"
     return None
 

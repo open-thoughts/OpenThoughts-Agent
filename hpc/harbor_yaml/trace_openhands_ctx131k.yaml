@@ -22,17 +22,18 @@ orchestrator:
     queue_p95_drop_threshold: null
     algorithm_kwargs: {}
   retry:
-    max_retries: 0
-    include_exceptions: null
+    max_retries: 10
+    include_exceptions:
+      - DaytonaRateLimitError
     exclude_exceptions:
       - AgentTimeoutError
       - VerifierTimeoutError
       - RewardFileNotFoundError
       - RewardFileEmptyError
       - VerifierOutputParseError
-    wait_multiplier: 1.0
+    wait_multiplier: 2.0
     min_wait_sec: 1.0
-    max_wait_sec: 60.0
+    max_wait_sec: 90.0
   kwargs: {}
 
 environment:

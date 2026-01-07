@@ -2,7 +2,7 @@
 
 job_name: openhands-trace-job
 jobs_dir: trace_jobs
-n_attempts: 1
+n_attempts: 3
 timeout_multiplier: 1.0
 debug: false
 
@@ -13,31 +13,28 @@ orchestrator:
   adaptive_concurrency:
     enabled: false
     algorithm: gradient2
-    min_limit: null
-    max_limit: null
-    metrics_endpoint: null
+    min_limit:
+    max_limit:
+    metrics_endpoint:
     metrics_timeout_sec: 10.0
     poll_interval_sec: 120.0
     window_size: 5
-    queue_p95_drop_threshold: null
+    queue_p95_drop_threshold:
     algorithm_kwargs: {}
   retry:
-    max_retries: 0
-    include_exceptions: null
+    max_retries: 100
+    include_exceptions:
     exclude_exceptions:
-      - AgentTimeoutError
-      - VerifierTimeoutError
-      - RewardFileNotFoundError
-      - RewardFileEmptyError
-      - VerifierOutputParseError
-    wait_multiplier: 1.0
+    - AgentTimeoutError
+    - VerifierTimeoutError
+    wait_multiplier: 2.0
     min_wait_sec: 1.0
-    max_wait_sec: 60.0
+    max_wait_sec: 90.0
   kwargs: {}
 
 environment:
   type: daytona
-  force_build: false
+  force_build: true
   delete: true
   override_cpus: 1
   override_memory_mb: 2048
@@ -52,19 +49,18 @@ verifier:
 metrics: []
 
 agents:
-  - name: openhands
-    import_path: null
-    model_name: together_ai/openai/gpt-oss-120b
-    override_timeout_sec: 1800
-    max_timeout_sec: null
-    kwargs:
-      model_info:
-        max_input_tokens: 32000
-        max_output_tokens: 8192
-        input_cost_per_token: 0
-        output_cost_per_token: 0
+- name: openhands
+  import_path:
+  model_name: together_ai/openai/gpt-oss-120b
+  max_timeout_sec:
+  kwargs:
+    model_info:
+      max_input_tokens: 32000
+      max_output_tokens: 8192
+      input_cost_per_token: 0
+      output_cost_per_token: 0
 
 datasets:
-  - path: /replace/with/tasks/path
+- path: /replace/with/tasks/path
 
 tasks: []

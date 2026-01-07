@@ -34,10 +34,14 @@ from hpc.hpc import detect_hpc, set_environment
 from hpc.datagen_launch_utils import (
     _prepare_datagen_configuration,
     _validate_sbatch_templates,
-    launch_datagen_job,
+    launch_datagen_job_v2,
 )
 from hpc.consolidate_launch_utils import (
     launch_consolidate_job,
+)
+from hpc.eval_launch_utils import (
+    launch_eval_job_v2,
+    prepare_eval_configuration,
 )
 from scripts.harbor.tasks_parquet_converter import from_parquet
 from database.unified_db.utils import load_supabase_keys
@@ -136,6 +140,9 @@ def _apply_env_overrides(exp_args: dict, cli_args_filtered: dict, hpc) -> tuple[
     datagen_runtime = None
     if job_type == JobType.DATAGEN.value or exp_args.get("datagen_script"):
         datagen_runtime = _prepare_datagen_configuration(exp_args)
+    elif job_type == JobType.EVAL.value:
+        datagen_runtime = _prepare_datagen_configuration(exp_args)
+        exp_args = prepare_eval_configuration(exp_args)
 
     return exp_args, job_type, datagen_runtime
 
@@ -535,8 +542,12 @@ def main():
 
     # Check if this is a data generation job
     if job_type == JobType.DATAGEN.value:
-        launch_datagen_job(exp_args, hpc)
+        launch_datagen_job_v2(exp_args, hpc)
         return  # Skip normal training flow
+
+    if job_type == JobType.EVAL.value:
+        launch_eval_job_v2(exp_args, hpc)
+        return
 
     if job_type == JobType.PRETOKENIZE.value:
         schedule_pretokenize(

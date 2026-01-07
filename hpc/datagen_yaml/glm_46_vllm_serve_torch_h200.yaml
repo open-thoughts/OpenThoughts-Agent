@@ -21,7 +21,7 @@ vllm_server:
   data_parallel_size: 1
   time_limit: '48:00:00'
   max_model_len: 131072
-  max_num_seqs: 40
+  max_num_seqs: 50
   gpu_memory_utilization: 0.9
   swap_space: 32
   enable_expert_parallel: true

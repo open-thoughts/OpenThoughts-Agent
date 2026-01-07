@@ -124,6 +124,15 @@ JOB_NAME_IGNORE_KEYS: list[str] = [
     "trace_eval_only",
     "trace_export_subagents",
     "push_to_hub",
+    "harbor_dataset",
+    # Upload toggles (don't affect job identity)
+    "upload_to_database",
+    "upload_username",
+    "upload_error_mode",
+    "upload_hf_repo",
+    "upload_hf_private",
+    "upload_hf_episodes",
+    "upload_forced_update",
     # Timeout toggles
     "trace_agent_timeout_sec",
     "trace_verifier_timeout_sec",

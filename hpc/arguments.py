@@ -12,6 +12,7 @@ class JobType(str, Enum):
     SFT_MCA = "sft_mca"
     PRETOKENIZE = "pretokenize"
     DATAGEN = "datagen"
+    EVAL = "eval"
     CONSOLIDATE = "consolidate"
     RL = "rl"
 
@@ -442,7 +443,7 @@ class DataGenArgs:
     job_type: Optional[str] = field(
         default=JobType.default_value(),
         metadata={
-            "help": "Job type: 'sft', 'sft_mca', 'pretokenize', 'datagen', 'consolidate', or 'rl'",
+            "help": "Job type: 'sft', 'sft_mca', 'pretokenize', 'datagen', 'eval', 'consolidate', or 'rl'",
             "choices": JobType.choices(),
             "required": False,
         },
@@ -455,14 +456,7 @@ class DataGenArgs:
     )
     enable_trace_gen: bool = field(
         default=False,
-        metadata={"help": "Enable trace generation stage", "store_true": True}
-    )
-    trace_eval_only: bool = field(
-        default=False,
-        metadata={
-            "help": "Run trace jobs without exporting/uploading traces",
-            "store_true": True,
-        },
+        metadata={"help": "Enable trace generation stage"}
     )
     disable_verification: bool = field(
         default=False,
@@ -586,6 +580,40 @@ class DataGenArgs:
         default=None,
         metadata={"help": "Override Harbor verifier timeout (seconds) for trace generation"}
     )
+    harbor_dataset: Optional[str] = field(
+        default=None,
+        metadata={"help": "Harbor registry dataset slug such as 'terminal-bench@2.0'"}
+    )
+    # Upload settings (traces -> HuggingFace, result abstracts -> Supabase)
+    upload_to_database: bool = field(
+        default=False,
+        metadata={"help": "Upload result abstracts to Supabase and traces to HuggingFace after eval", "store_true": True}
+    )
+    upload_username: Optional[str] = field(
+        default=None,
+        metadata={"help": "Username for Supabase result attribution (defaults to $UPLOAD_USERNAME or current user)"}
+    )
+    upload_error_mode: str = field(
+        default="skip_on_error",
+        metadata={"help": "Supabase upload error handling: 'skip_on_error' or 'rollback_on_error'"}
+    )
+    upload_hf_repo: Optional[str] = field(
+        default=None,
+        metadata={"help": "HuggingFace repo for traces upload (auto-derived from benchmark if not provided)"}
+    )
+    upload_hf_private: bool = field(
+        default=False,
+        metadata={"help": "Create the HuggingFace traces repo as private", "store_true": True}
+    )
+    upload_hf_episodes: str = field(
+        default="last",
+        metadata={"help": "Which episodes to include in HuggingFace traces upload: 'last' or 'all'"}
+    )
+    upload_forced_update: bool = field(
+        default=False,
+        metadata={"help": "Allow overwriting existing Supabase result records for the same job", "store_true": True}
+    )
+
 @dataclass
 class ConsolidateArgs:
     consolidate_input: Optional[str] = field(
@@ -723,20 +751,14 @@ def parse_args():
         "gpus_type",
         "total_partition_nodes",
         "qos",
+        "gpu_type",
     ]
+    str_hpc_fields = {"name", "account", "partition", "gpus_type", "qos", "gpu_type"}
     for field in hpc_fields:
         hpc_group.add_argument(
             f"--{field}",
-            type=(
-                str
-                if field == "name"
-                or field == "account"
-                or field == "partition"
-                or field == "gpus_type"
-                or field == "qos"
-                else int
-            ),
-            help=f"HPC {field}",
+            type=str if field in str_hpc_fields else int,
+            help=f"HPC {field}" if field != "gpu_type" else "GPU type override (e.g., h200, l40s) for clusters with multiple GPU types",
         )
 
     # Add LlamaFactoryArgs arguments

@@ -82,7 +82,7 @@ Examples:
         "--n-attempts", "-k",
         type=int,
         default=1,
-        help="Number of retry attempts per task (default: 1)"
+        help="Times to run each task for repeated trials (default: 1)"
     )
     parser.add_argument(
         "--env", "-e",

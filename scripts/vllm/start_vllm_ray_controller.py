@@ -1,11 +1,35 @@
 #!/usr/bin/env python3
-"""Start a vLLM API server backed by a Ray cluster."""
+"""Start a vLLM API server backed by a Ray cluster.
+
+This script accepts a minimal set of required arguments and passes any additional
+arguments directly through to the vLLM API server. This allows flexible configuration
+without maintaining mappings between config fields and CLI args.
+
+Usage:
+    python start_vllm_ray_controller.py \
+        --ray-address localhost:6379 \
+        --host 0.0.0.0 \
+        --port 8000 \
+        --tensor-parallel-size 4 \
+        -- \
+        --max-num-seqs 16 \
+        --gpu-memory-utilization 0.9 \
+        --enable-chunked-prefill
+
+Or without the explicit separator (unknown args are passed through):
+    python start_vllm_ray_controller.py \
+        --ray-address localhost:6379 \
+        --max-num-seqs 16 \
+        --gpu-memory-utilization 0.9
+"""
 
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -24,7 +48,7 @@ try:
 except ImportError:  # pragma: no cover
     ray = None
 
-from scripts.vllm.start_vllm_cluster import VLLMCluster
+_CLI_FLAG_PATTERN = re.compile(r"--[a-z0-9-]+")
 
 
 def _release_torch_memory() -> None:
@@ -39,8 +63,22 @@ def _release_torch_memory() -> None:
         pass
 
 
+def _discover_cli_flags() -> set[str]:
+    cmd = [sys.executable, "-m", "vllm.entrypoints.openai.api_server", "--help"]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    except Exception as exc:  # pragma: no cover - best effort
+        print(f"[start_vllm_ray_controller] Warning: unable to inspect vLLM CLI flags: {exc}")
+        return set()
+
+    flags = set(_CLI_FLAG_PATTERN.findall(result.stdout or ""))
+    flags.update(_CLI_FLAG_PATTERN.findall(result.stderr or ""))
+    return flags
+
+
+@functools.lru_cache(maxsize=1)
 def _supported_flags() -> set[str]:
-    return VLLMCluster._discover_cli_flags()
+    return _discover_cli_flags()
 
 
 def _flag_supported(flag: str) -> bool:
@@ -54,44 +92,12 @@ def _append_flag(cmd: List[str], flag: str, value: str | None = None) -> None:
         cmd.extend([flag, str(value)])
 
 
-def _load_extra_args_from_env() -> List[str]:
-    payload = os.environ.get("VLLM_SERVER_EXTRA_ARGS_JSON")
-    if not payload:
-        return []
-    try:
-        data = json.loads(payload)
-    except Exception as exc:  # pragma: no cover - defensive
-        print(f"[start_vllm_ray_controller] Warning: unable to parse VLLM_SERVER_EXTRA_ARGS_JSON: {exc}")
-        return []
-    if not isinstance(data, list):
-        print(
-            "[start_vllm_ray_controller] Warning: VLLM_SERVER_EXTRA_ARGS_JSON must be a JSON array; ignoring value."
-        )
-        return []
-    return [str(item) for item in data if item is not None]
-
-
-def build_vllm_command(args: argparse.Namespace) -> List[str]:
+def build_vllm_command(args: argparse.Namespace, extra_args: List[str]) -> List[str]:
+    """Build the vLLM command from parsed args and pass-through arguments."""
     env = os.environ
     model = args.model or env.get("VLLM_MODEL_PATH")
     if not model:
-        raise ValueError("VLLM_MODEL_PATH environment variable (or --model) is required")
-
-    tensor_parallel = args.tensor_parallel_size or env.get("VLLM_TENSOR_PARALLEL_SIZE") or 1
-    pipeline_parallel = args.pipeline_parallel_size or env.get("VLLM_PIPELINE_PARALLEL_SIZE") or 1
-    data_parallel = args.data_parallel_size or env.get("VLLM_DATA_PARALLEL_SIZE") or 1
-    custom_name = env.get("VLLM_CUSTOM_MODEL_NAME")
-    hf_overrides = env.get("VLLM_HF_OVERRIDES")
-    max_num_seqs = env.get("VLLM_MAX_NUM_SEQS")
-    gpu_mem_util = env.get("VLLM_GPU_MEMORY_UTILIZATION")
-    enable_expert_parallel = env.get("VLLM_ENABLE_EXPERT_PARALLEL") == "1"
-    swap_space = env.get("VLLM_SWAP_SPACE")
-    max_seq_len_to_capture = env.get("VLLM_MAX_SEQ_LEN_TO_CAPTURE")
-    trust_remote_code = env.get("VLLM_TRUST_REMOTE_CODE") == "1"
-    disable_log_requests = env.get("VLLM_DISABLE_LOG_REQUESTS") == "1"
-    enable_auto_tool_choice = env.get("VLLM_ENABLE_AUTO_TOOL_CHOICE") == "1"
-    tool_call_parser = env.get("VLLM_TOOL_CALL_PARSER")
-    reasoning_parser = env.get("VLLM_REASONING_PARSER")
+        raise ValueError("--model or VLLM_MODEL_PATH environment variable is required")
 
     cmd: List[str] = [
         sys.executable,
@@ -104,29 +110,33 @@ def build_vllm_command(args: argparse.Namespace) -> List[str]:
         "--port",
         str(args.port),
         "--tensor-parallel-size",
-        str(tensor_parallel),
+        str(args.tensor_parallel_size),
         "--distributed-executor-backend",
         "ray",
     ]
-    if _flag_supported("--data-parallel-size"):
-        _append_flag(cmd, "--data-parallel-size", str(data_parallel))
-    else:
-        print(
-            "[start_vllm_ray_controller] WARNING: --data-parallel-size not supported by vLLM version",
-            file=sys.stderr,
-        )
 
-    # NEW: Add pipeline parallelism support
-    if pipeline_parallel > 1:
-        if _flag_supported("--pipeline-parallel-size"):
-            _append_flag(cmd, "--pipeline-parallel-size", str(pipeline_parallel))
-            print(f"[start_vllm_ray_controller] Enabling pipeline parallelism: {pipeline_parallel}")
+    # Data parallel size
+    if args.data_parallel_size > 1:
+        if _flag_supported("--data-parallel-size"):
+            _append_flag(cmd, "--data-parallel-size", str(args.data_parallel_size))
         else:
             print(
-                f"[start_vllm_ray_controller] WARNING: --pipeline-parallel-size not supported by vLLM version",
+                "[start_vllm_ray_controller] WARNING: --data-parallel-size not supported by vLLM version",
                 file=sys.stderr,
             )
 
+    # Pipeline parallel size
+    if args.pipeline_parallel_size > 1:
+        if _flag_supported("--pipeline-parallel-size"):
+            _append_flag(cmd, "--pipeline-parallel-size", str(args.pipeline_parallel_size))
+            print(f"[start_vllm_ray_controller] Enabling pipeline parallelism: {args.pipeline_parallel_size}")
+        else:
+            print(
+                "[start_vllm_ray_controller] WARNING: --pipeline-parallel-size not supported by vLLM version",
+                file=sys.stderr,
+            )
+
+    # Ray address
     if args.ray_address:
         if _flag_supported("--ray-address"):
             _append_flag(cmd, "--ray-address", args.ray_address)
@@ -136,77 +146,41 @@ def build_vllm_command(args: argparse.Namespace) -> List[str]:
                 file=sys.stderr,
             )
 
-    if custom_name:
-        _append_flag(cmd, "--served-model-name", custom_name)
-    if hf_overrides:
-        _append_flag(cmd, "--hf-overrides", hf_overrides)
-    if max_num_seqs:
-        _append_flag(cmd, "--max-num-seqs", max_num_seqs)
-    if gpu_mem_util:
-        _append_flag(cmd, "--gpu-memory-utilization", gpu_mem_util)
-    if enable_expert_parallel and _flag_supported("--enable-expert-parallel"):
-        cmd.append("--enable-expert-parallel")
-    if swap_space and _flag_supported("--swap-space"):
-        _append_flag(cmd, "--swap-space", swap_space)
-    if max_seq_len_to_capture and _flag_supported("--max-seq-len-to-capture"):
-        _append_flag(cmd, "--max-seq-len-to-capture", max_seq_len_to_capture)
-    if trust_remote_code:
-        cmd.append("--trust-remote-code")
-    if disable_log_requests:
-        if _flag_supported("--no-enable-log-requests"):
-            cmd.append("--no-enable-log-requests")
-        elif _flag_supported("--disable-log-requests"):
-            cmd.append("--disable-log-requests")
-    if enable_auto_tool_choice and _flag_supported("--enable-auto-tool-choice"):
-        cmd.append("--enable-auto-tool-choice")
-    if tool_call_parser and _flag_supported("--tool-call-parser"):
-        _append_flag(cmd, "--tool-call-parser", tool_call_parser)
-    if reasoning_parser and _flag_supported("--reasoning-parser"):
-        _append_flag(cmd, "--reasoning-parser", reasoning_parser)
-        if _flag_supported("--enable-reasoning"):
-            cmd.append("--enable-reasoning")
-        else:
-            print(
-                "[start_vllm_ray_controller] WARNING: --enable-reasoning not supported by current vLLM version",
-                file=sys.stderr,
-            )
+    # Served model name
+    if args.served_model_name:
+        _append_flag(cmd, "--served-model-name", args.served_model_name)
 
-    overrides = {
-        "temperature": args.temperature,
-        "seed": args.seed,
-    }
-    _append_flag(cmd, "--override-generation-config", json.dumps(overrides))
-
-    max_model_len = args.max_model_len or env.get("VLLM_MAX_MODEL_LEN")
-    if max_model_len:
-        _append_flag(cmd, "--max-model-len", max_model_len)
-
-    extra_cli_args = _load_extra_args_from_env()
-    if extra_cli_args:
-        cmd.extend(extra_cli_args)
+    # Pass through all extra arguments directly to vLLM
+    if extra_args:
+        cmd.extend(extra_args)
 
     return cmd
 
 
-def write_endpoint_json(endpoint_json: Path, host: str, port: int, model: str, extra: Dict[str, str]) -> None:
+def write_endpoint_json(endpoint_json: Path, host: str, port: int, model: str, args: argparse.Namespace) -> None:
     endpoint_json.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "model_name": extra.get("VLLM_CUSTOM_MODEL_NAME") or model,
+        "model_name": args.served_model_name or model,
         "endpoint_url": f"http://{host}:{port}",
-        "ray_address": extra.get("RAY_ADDRESS"),
+        "ray_address": args.ray_address,
         "created_by": "start_vllm_ray_controller",
         "metadata": {
-            "tensor_parallel_size": extra.get("VLLM_TENSOR_PARALLEL_SIZE"),
-            "pipeline_parallel_size": extra.get("VLLM_PIPELINE_PARALLEL_SIZE"),
-            "data_parallel_size": extra.get("VLLM_DATA_PARALLEL_SIZE"),
+            "tensor_parallel_size": args.tensor_parallel_size,
+            "pipeline_parallel_size": args.pipeline_parallel_size,
+            "data_parallel_size": args.data_parallel_size,
         },
     }
     endpoint_json.write_text(json.dumps(payload, indent=2))
     print(f"✓ Endpoint configuration written to {endpoint_json}")
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Launch vLLM API server backed by Ray.")
+def parse_args() -> tuple[argparse.Namespace, List[str]]:
+    """Parse known arguments and return remaining as pass-through for vLLM."""
+    parser = argparse.ArgumentParser(
+        description="Launch vLLM API server backed by Ray. Unknown arguments are passed through to vLLM.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
     parser.add_argument("--ray-address", required=True, help="Address of the Ray head (host:port)")
     parser.add_argument("--host", default="0.0.0.0", help="Host interface for the API server (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8000, help="Port for the API server (default: 8000)")
@@ -214,17 +188,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--tensor-parallel-size",
         type=int,
-        help="Tensor parallel size (defaults to VLLM_TENSOR_PARALLEL_SIZE env var or 1)",
+        default=1,
+        help="Tensor parallel size (default: 1)",
     )
     parser.add_argument(
-        "--pipeline-parallel-size",  # NEW
+        "--pipeline-parallel-size",
         type=int,
-        help="Pipeline parallel size (defaults to VLLM_PIPELINE_PARALLEL_SIZE env var or 1)",
+        default=1,
+        help="Pipeline parallel size (default: 1)",
     )
     parser.add_argument(
         "--data-parallel-size",
         type=int,
-        help="Data parallel size (defaults to VLLM_DATA_PARALLEL_SIZE env var or 1)",
+        default=1,
+        help="Data parallel size (default: 1)",
+    )
+    parser.add_argument(
+        "--served-model-name",
+        type=str,
+        default=None,
+        help="Custom model name for the API",
     )
     parser.add_argument(
         "--endpoint-json",
@@ -232,20 +215,15 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional path to write endpoint metadata JSON",
     )
-    parser.add_argument("--temperature", type=float, default=0.1, help="Default sampling temperature")
-    parser.add_argument("--seed", type=int, default=42, help="Generation seed")
-    parser.add_argument(
-        "--max-model-len",
-        type=int,
-        default=None,
-        help="Optional override for --max-model-len",
-    )
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
-    return parser.parse_args()
+
+    # Use parse_known_args to capture any additional vLLM arguments
+    args, extra_args = parser.parse_known_args()
+    return args, extra_args
 
 
 def main() -> None:
-    args = parse_args()
+    args, extra_args = parse_args()
     _release_torch_memory()
 
     env = os.environ.copy()
@@ -303,9 +281,11 @@ def main() -> None:
             except Exception:
                 pass
 
-    cmd = build_vllm_command(args)
+    cmd = build_vllm_command(args, extra_args)
     print("Launching vLLM controller:")
     print("  " + " ".join(cmd))
+    if extra_args:
+        print(f"  (pass-through args: {' '.join(extra_args)})")
 
     process = subprocess.Popen(cmd, env=env)
 
@@ -334,7 +314,8 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _shutdown)
 
     if args.endpoint_json:
-        write_endpoint_json(args.endpoint_json, args.host, args.port, cmd[4], env)
+        model = args.model or os.environ.get("VLLM_MODEL_PATH", "unknown")
+        write_endpoint_json(args.endpoint_json, args.host, args.port, model, args)
 
     exit_code = process.wait()
     if exit_code != 0:

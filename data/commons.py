@@ -11,11 +11,12 @@ import os
 import random
 import shutil
 import tempfile
+import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
@@ -67,6 +68,32 @@ import traceback
 import json
 from rapidfuzz import fuzz
 from transformers import AutoTokenizer
+from rich.console import Console, Group
+from rich.live import Live
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
+from daytona import AsyncDaytona, CreateSandboxFromImageParams, Image, Resources
+
+CONSOLE = Console()
+PROGRESS_COLUMNS = (
+    SpinnerColumn(),
+    TextColumn("[progress.description]{task.description}"),
+    BarColumn(bar_width=None),
+    TextColumn("{task.completed}/{task.total}"),
+    TextColumn("[green]✓ {task.fields[success]}"),
+    TextColumn("[red]✗ {task.fields[failed]}"),
+    TextColumn("Rem: {task.fields[remaining]}"),
+    TextColumn("{task.fields[rate]:.2f} task/s"),
+    TimeElapsedColumn(),
+    TimeRemainingColumn(),
+)
+
 
 def finalize_dataset_output(
     source_dir: Union[str, Path],
@@ -574,7 +601,7 @@ def upload_traces_to_hf(
     )
    
 
-# @gcs_cache()
+@gcs_cache()
 def generate_tasks_from_questions(
     questions: List[str],
     dataset_prefix: str = "task",
@@ -1026,6 +1053,430 @@ def filter_tasks_by_docker_start(parent_task_path: str, dataset_prefix: str = "d
     print(f"Successfully filtered {len(filtered_tasks)} tasks from {len(task_paths)} total tasks!")
     print(f"Filtered out {len(task_paths) - len(filtered_tasks)} tasks that cannot start with Docker.")
     return str(temp_dir)
+
+async def _try_build_once(
+    dockerfile: Path, *, cpu: int, memory_gb: int, disk_gb: int, gpu: int, timeout: int
+) -> Tuple[bool, Optional[str]]:
+    """Attempt a single Daytona build for a Dockerfile.
+
+    Returns:
+        (success, error_message) - error_message is None if successful
+
+    Never raises exceptions - all failures return (False, error_msg).
+    """
+    resources = Resources(
+        cpu=max(cpu, 1), memory=max(memory_gb, 1), disk=max(disk_gb, 1), gpu=max(gpu, 0)
+    )
+    params = CreateSandboxFromImageParams(
+        image=Image.from_dockerfile(dockerfile),
+        auto_delete_interval=0,
+        resources=resources,
+    )
+
+    client = AsyncDaytona()
+    sandbox = None
+    try:
+        sandbox = await client.create(params=params, timeout=timeout)
+        # Successful build and start
+        await sandbox.delete()
+        return True, None
+    except Exception as e:
+        # Any failure returns (False, error_msg) - no exceptions propagated
+        error_msg = f"{type(e).__name__}: {str(e)}"
+        return False, error_msg
+    finally:
+        # Clean up sandbox if it exists
+        if sandbox:
+            try:
+                await sandbox.delete()
+            except Exception:
+                pass
+        # Don't close client here - let GC handle it to avoid race conditions
+        # in concurrent execution where one client closing affects another's sandbox
+
+
+async def validate_task_worker_async(
+    task_dir: Path,
+    cpu: int,
+    memory_gb: int,
+    disk_gb: int,
+    gpu: int,
+    timeout: int,
+    progress_update: Optional[Callable[[str], None]] = None,
+    num_retries: int = 0,
+) -> Tuple[str, bool, Optional[str]]:
+    """Async worker function for validation. Retry on any failure.
+
+    Returns: (task_name, success, error_message)
+    """
+    name = task_dir.name
+    dockerfile = task_dir / "environment" / "Dockerfile"
+    if not dockerfile.exists():
+        if progress_update:
+            progress_update(f"{name}: no Dockerfile found")
+        return name, False, "Dockerfile not found"
+
+    last_error = None
+    # Retry loop matching SWE-bench pattern
+    for attempt in range(num_retries + 1):
+        if attempt > 0:
+            # Exponential backoff: min(2^attempt, 60) seconds
+            delay = min(2**attempt, 60)
+            if progress_update:
+                progress_update(f"{name}: waiting {delay}s before retry...")
+            await asyncio.sleep(delay)
+
+        if progress_update:
+            attempt_info = (
+                f" (attempt {attempt + 1}/{num_retries + 1})" if num_retries > 0 else ""
+            )
+            progress_update(f"{name}: building{attempt_info}...")
+
+        ok, error_msg = await _try_build_once(
+            dockerfile,
+            cpu=cpu,
+            memory_gb=memory_gb,
+            disk_gb=disk_gb,
+            gpu=gpu,
+            timeout=timeout,
+        )
+
+        if ok:
+            # Success - break immediately
+            if progress_update:
+                progress_update(f"{name}: ✓ build successful")
+            return name, True, None
+
+        # Failed - store error message
+        last_error = error_msg
+
+        # Check if we should retry
+        if attempt == num_retries:
+            # Last attempt, accept failure
+            if progress_update:
+                progress_update(f"{name}: ✗ build failed")
+            return name, False, last_error
+
+        # Not the last attempt, will retry
+        if progress_update:
+            progress_update(f"{name}: ✗ build failed, will retry...")
+
+    # Should not reach here
+    return name, False, last_error
+
+
+async def _run_single_validation(
+    semaphore: asyncio.Semaphore,
+    task_dir: Path,
+    cpu: int,
+    memory_gb: int,
+    disk_gb: int,
+    gpu: int,
+    timeout: int,
+    loading_progress: Progress,
+    loading_progress_task,
+    running_progress: Progress,
+    name_to_path: Dict[str, Path],
+    base_dir: Path,
+    successes: List[Path],
+    failures: List[Path],
+    stats: Dict[str, int],
+    start_time: float,
+    num_retries: int,
+    error_log: Path,
+    cache_dir: Path,
+) -> Tuple[str, bool]:
+    """Run a single validation task with progress tracking."""
+    async with semaphore:
+        task_progress = running_progress.add_task(
+            f"{task_dir.name}: starting...", total=None
+        )
+
+        def update_task_status(description: str):
+            """Update the progress description for this task."""
+            running_progress.update(task_progress, description=description)
+
+        try:
+            name, ok, error_msg = await validate_task_worker_async(
+                task_dir,
+                cpu,
+                memory_gb,
+                disk_gb,
+                gpu,
+                timeout,
+                progress_update=update_task_status,
+                num_retries=num_retries,
+            )
+
+            task_path = name_to_path.get(name, base_dir / name)
+            if ok:
+                successes.append(task_path)
+                stats["success"] += 1
+                # Copy to success cache immediately
+                success_cache = cache_dir / "successes"
+                success_cache.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(
+                    task_path, success_cache / task_path.name, dirs_exist_ok=True
+                )
+                # Keep the success message visible briefly
+                await asyncio.sleep(0.5)
+            else:
+                failures.append(task_path)
+                stats["failed"] += 1
+                # Copy to failure cache immediately
+                failure_cache = cache_dir / "failures"
+                failure_cache.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(
+                    task_path, failure_cache / task_path.name, dirs_exist_ok=True
+                )
+                # Write error message to log file
+                if error_msg:
+                    import datetime
+
+                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    with open(error_log, "a") as f:
+                        f.write(f"[{timestamp}] ✗ {name} failed: {error_msg}\n")
+                # Keep the failure message visible briefly
+                await asyncio.sleep(0.5)
+
+            loading_progress.update(
+                loading_progress_task,
+                advance=1,
+                description=f"Stage 1: Daytona build validation (✓ {stats['success']} ✗ {stats['failed']})",
+            )
+
+            return name, ok
+        finally:
+            running_progress.remove_task(task_progress)
+
+
+async def run_daytona_validation_async(
+    task_dirs: List[Path],
+    *,
+    base_dir: Path,
+    cpu: int,
+    memory_gb: int,
+    disk_gb: int,
+    gpu: int,
+    timeout: int,
+    processes: int,
+    num_retries: int = 3,
+    cache_dir: Optional[Path] = None,
+) -> Tuple[List[Path], List[Path]]:
+    """Async validation with Harbor-style concurrency and progress display."""
+    if not task_dirs:
+        return [], []
+
+    # Create or use existing cache directory
+    if cache_dir is None:
+        cache_dir = Path(tempfile.gettempdir()) / "daytona_validation_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    success_cache = cache_dir / "successes"
+    failure_cache = cache_dir / "failures"
+
+    # Filter out already-validated tasks
+    tasks_to_validate = []
+    cached_successes = []
+    cached_failures = []
+
+    for task_dir in task_dirs:
+        if (success_cache / task_dir.name).exists():
+            cached_successes.append(task_dir)
+        elif (failure_cache / task_dir.name).exists():
+            cached_failures.append(task_dir)
+        else:
+            tasks_to_validate.append(task_dir)
+
+    if cached_successes or cached_failures:
+        CONSOLE.print(
+            f"[dim]Skipping {len(cached_successes)} cached successes and {len(cached_failures)} cached failures[/dim]"
+        )
+
+    if not tasks_to_validate:
+        return cached_successes, cached_failures
+
+    name_to_path: Dict[str, Path] = {path.name: path for path in tasks_to_validate}
+    semaphore = asyncio.Semaphore(max(1, processes))
+
+    successes: List[Path] = list(cached_successes)
+    failures: List[Path] = list(cached_failures)
+    stats = {
+        "success": len(cached_successes),
+        "failed": len(cached_failures),
+        "total": len(task_dirs),
+    }
+    start = time.perf_counter()
+
+    # Create error log file immediately and print location
+    error_log = cache_dir / "validation_errors.log"
+    # Append to existing log if it exists
+    mode = "a" if error_log.exists() else "w"
+    with open(error_log, mode) as f:
+        if mode == "w":
+            f.write(f"# Validation errors log - {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        else:
+            f.write(f"\n# Validation run - {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.flush()
+    CONSOLE.print(f"[dim]Cache dir: {cache_dir}[/dim]")
+    CONSOLE.print(f"[dim]Error log: {error_log}[/dim]")
+
+    loading_progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("{task.completed}/{task.total}"),
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),
+    )
+
+    running_progress = Progress(
+        SpinnerColumn(),
+        TimeElapsedColumn(),
+        TextColumn("[progress.description]{task.description}"),
+    )
+
+    with Live(
+        Group(loading_progress, running_progress),
+        console=CONSOLE,
+        refresh_per_second=10,
+    ):
+        progress_task = loading_progress.add_task(
+            "Stage 1: Daytona build validation",
+            total=len(tasks_to_validate),
+        )
+
+        async with asyncio.TaskGroup() as tg:
+            _ = [
+                tg.create_task(
+                    _run_single_validation(
+                        semaphore,
+                        task_dir,
+                        cpu,
+                        memory_gb,
+                        disk_gb,
+                        gpu,
+                        timeout,
+                        loading_progress,
+                        progress_task,
+                        running_progress,
+                        name_to_path,
+                        base_dir,
+                        successes,
+                        failures,
+                        stats,
+                        start,
+                        num_retries,
+                        error_log,
+                        cache_dir,
+                    )
+                )
+                for task_dir in tasks_to_validate
+            ]
+
+    return successes, failures
+
+
+def run_daytona_validation(
+    task_dirs: List[Path],
+    *,
+    base_dir: Path,
+    cpu: int,
+    memory_gb: int,
+    disk_gb: int,
+    gpu: int,
+    timeout: int,
+    processes: int,
+    num_retries: int = 3,
+    cache_dir: Optional[Path] = None,
+) -> Tuple[List[Path], List[Path]]:
+    """Synchronous wrapper for async validation."""
+    return asyncio.run(
+        run_daytona_validation_async(
+            task_dirs,
+            base_dir=base_dir,
+            cpu=cpu,
+            memory_gb=memory_gb,
+            disk_gb=disk_gb,
+            gpu=gpu,
+            timeout=timeout,
+            processes=processes,
+            num_retries=num_retries,
+            cache_dir=cache_dir,
+        )
+    )
+
+
+def ensure_output_dir_in_dockerfile(dockerfile: Path) -> None:
+    """Ensure the staged Dockerfile creates /output for tasks expecting it."""
+
+    if not dockerfile.exists():
+        return
+
+    content = dockerfile.read_text().splitlines()
+    directive = "RUN mkdir -p /output && chmod 777 /output"
+    if any(directive in line for line in content):
+        return
+
+    insert_idx = 0
+    for idx, line in enumerate(content):
+        if line.strip().upper().startswith("WORKDIR"):
+            insert_idx = idx + 1
+            break
+
+    content.insert(insert_idx, directive)
+    dockerfile.write_text("\n".join(content) + "\n")
+
+
+def discover_tasks(extracted_root: Path) -> list[Path]:
+    tasks: list[Path] = []
+    for path in sorted(extracted_root.iterdir()):
+        dockerfile = path / "environment" / "Dockerfile"
+        if path.is_dir() and dockerfile.exists():
+            ensure_output_dir_in_dockerfile(dockerfile)
+            tasks.append(path)
+    return tasks
+
+
+def copy_successes(task_dirs: Iterable[Path], dest_root: Path) -> Path:
+    dest_root.mkdir(parents=True, exist_ok=True)
+    for task in task_dirs:
+        shutil.copytree(task, dest_root / task.name, dirs_exist_ok=True)
+    return dest_root
+
+
+@gcs_cache()
+def filter_tasks_by_docker_start_working(
+    base_dir: str,
+    cpu: int = 1,
+    memory_gb: int = 4,
+    disk_gb: int = 10,
+    gpu: int = 0,
+    timeout: int = 600,
+    processes: int = 64,
+) -> str:
+    base_path = Path(base_dir)
+    # Use persistent cache directory
+    cache_dir = Path(tempfile.gettempdir()) / "daytona_validation_cache"
+
+    successes, failures = run_daytona_validation(
+        discover_tasks(base_path),
+        base_dir=base_path,
+        cpu=cpu,
+        memory_gb=memory_gb,
+        disk_gb=disk_gb,
+        gpu=gpu,
+        timeout=timeout,
+        processes=processes,
+        cache_dir=cache_dir,
+    )
+
+    # Return the successes cache directory directly
+    filtered_tasks_dir = cache_dir / "successes"
+    print(f"Filtered out {len(failures)} tasks that cannot start with Docker.")
+    print(f"Success tasks location: {filtered_tasks_dir}")
+    return str(filtered_tasks_dir)
+
 
 @gcs_cache()
 def download_dcagent_dev_set_instructions() -> List[str]:

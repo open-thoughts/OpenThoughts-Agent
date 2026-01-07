@@ -98,7 +98,7 @@ def _select_variant(row: dict[str, object]) -> SelectionResult:
         solv = judgment.get("score_solvability", 0)
         diff = judgment.get("score_difficulty", 0)
         noise = judgment.get("score_noise", 5)
-        score = solv * 100 + diff * 10 - noise
+        score = solv * 20 + diff * 10 - noise
 
         if score > best_score:
             best_idx = idx

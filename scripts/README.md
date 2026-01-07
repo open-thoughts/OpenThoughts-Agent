@@ -93,7 +93,7 @@ Utility entrypoints that support data generation, trace analysis, Harbor uploads
   ```bash
   python scripts/database/manual_db_push.py
   ```
-- `database/list_public_models.py` and `database/reset_hf_repo.py` provide quick HF org utilities (list models, wipe repo contents).
+- `huggingface/list_public_models.py` and `huggingface/reset_hf_repo.py` provide quick HF org utilities (list models, wipe repo contents).
 
 ### Ray / vLLM / Terminal Bench
 - `docker_ray/start_ray_cluster.py` – spin up a Ray Serve deployment backed by vLLM directly from your workstation (handy for local testing).  
@@ -104,7 +104,7 @@ Utility entrypoints that support data generation, trace analysis, Harbor uploads
   ```bash
   python scripts/ray/wait_for_cluster.py --address ${RAY_ADDRESS} --expected-gpus 8 --expected-nodes 2 --timeout 900
   ```
-- `vllm/start_vllm_ray_controller.py` & `vllm/start_vllm_cluster.py` – bring up a vLLM OpenAI-compatible endpoint on top of Ray; pair with `vllm/wait_for_endpoint.py` to poll readiness.  
+- `vllm/start_vllm_ray_controller.py` – bring up a vLLM OpenAI-compatible endpoint on top of Ray; pair with `vllm/wait_for_endpoint.py` to poll readiness.  
   - Note: on some SLURM clusters, Ray's default `CUDA_VISIBLE_DEVICES` rewriting can cause vLLM to crash with `CUDA error: invalid device ordinal`; `start_vllm_ray_controller.py` sets `RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1` by default (override by exporting it yourself).  
   ```bash
   python scripts/vllm/start_vllm_ray_controller.py --model /checkpoint/qwen --ray-address auto --tensor-parallel-size 2

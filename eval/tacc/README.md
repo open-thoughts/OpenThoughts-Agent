@@ -197,7 +197,7 @@ harbor jobs start \
   --env "daytona" \                  # Environment type
   --agent-kwarg "api_base=http://localhost:8000/v1" \  # VLLM endpoint
   --agent-kwarg "key=fake_key" \     # API key (not validated for local)
-  --k-attempts 3 \                   # Attempts per task
+  --n-attempts 3 \                   # Attempts per task
   --job-name "$RUN_TAG" \            # Unique job identifier
   --config "dcagent_eval_config.yaml"  # Config file
 ```

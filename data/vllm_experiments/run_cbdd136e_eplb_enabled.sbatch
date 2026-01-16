@@ -5,13 +5,13 @@
 #SBATCH --ntasks-per-node 1
 #SBATCH --cpus-per-task=64
 #SBATCH --account CCR24067
-#SBATCH --output=/scratch/10000/eguha3/ot-agent/data/vllm_experiments/logs/vllm_cbdd136e_%j.out
+#SBATCH --output=${DCAGENT_DIR}/data/vllm_experiments/logs/vllm_cbdd136e_%j.out
 #SBATCH --job-name=vllm_eplb_enabled
 
 set -eo pipefail
 
-EXPERIMENTS_DIR="/scratch/10000/eguha3/ot-agent/data/vllm_experiments"
-CONFIG_FILE="/scratch/10000/eguha3/ot-agent/data/vllm_experiments/configs/focused/config_13_eplb_enabled_3aea12c0.json"
+EXPERIMENTS_DIR="${DCAGENT_DIR}/data/vllm_experiments"
+CONFIG_FILE="${DCAGENT_DIR}/data/vllm_experiments/configs/focused/config_13_eplb_enabled_3aea12c0.json"
 CONFIG_HASH="cbdd136e"
 CONFIG_NAME="eplb_enabled"
 

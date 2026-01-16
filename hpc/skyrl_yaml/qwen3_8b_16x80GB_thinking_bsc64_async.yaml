@@ -1,0 +1,300 @@
+# SkyRL Configuration: Qwen3 8B on 16x80GB GPUs (Binary Rewards, Async Training)
+# Optimized for 32k context agentic RL with ASYNCHRONOUS training
+#
+# REWARD MODE: Binary (0/1) - original verifier reward without shaping
+# TRAINING MODE: Fully async - policy/ref/inference on dedicated GPU sets
+#
+# Hardware: 16 GPUs with 80GB VRAM each (e.g., 2x8 H100/A100-80GB or 4x4)
+# Model: Qwen3 8B Base (~16GB bf16 weights)
+#
+# GPU ALLOCATION (colocate_all=false):
+#   - Policy model: 8 GPUs (2 nodes x 4 GPUs)
+#   - Reference model: 8 GPUs (2 nodes x 4 GPUs) - CPU offloaded, shares with policy
+#   - Inference engines: 8 GPUs (8 engines x TP=1)
+#
+# ASYNC TRAINING BENEFITS:
+#   - No waiting for slowest trajectory in batch
+#   - Continuous policy updates as trajectories complete
+#   - Better GPU utilization during generation
+#   - Reduced wall-clock time for same number of samples
+#
+# CONTEXT BUDGET (32k total model context):
+#   - max_generate_length: 8k tokens (agent responses)
+#   - vLLM enforces total context <= max_model_len (32k)
+#
+# Key Design Decisions:
+# - TP=1 for inference engines: 8 independent engines for maximum parallelism
+# - batched=false: Each async worker handles its own requests
+# - num_parallel_generation_workers=8: Matches inference engines
+# - n_samples_per_prompt=4: GRPO advantage estimation (unchanged from sync)
+#
+# Usage:
+#   python -m hpc.launch \
+#       --job_type rl \
+#       --rl_config qwen3_8b_16x80GB_async_binary.yaml \
+#       --job_name qwen3_8b_agentic_async \
+#       --train_data '["mlfoundations-dev/your-dataset"]' \
+#       --model_path Qwen/Qwen3-8B \
+#       --num_nodes 2
+
+# SkyRL entrypoint module
+entrypoint: examples.terminal_bench.entrypoints.main_tbench
+
+# Hydra config groups (+ prefix in CLI)
+config_groups:
+  terminal_bench_config: terminal_bench
+
+# Terminal bench / agentic environment settings
+terminal_bench:
+  # trials_dir: Directory for Harbor trial artifacts (derived from experiments_dir if null)
+  trials_dir: null
+
+  # Harbor configuration - schema-driven mapping to TrialConfig
+  # See examples/terminal_bench/harbor_config.py for full list of supported fields.
+  # Unknown fields will generate warnings (typo protection + version compatibility).
+  harbor:
+    # ==========================================================================
+    # Agent settings (maps to Harbor AgentConfig)
+    # ==========================================================================
+    # Agent name - must be a valid Harbor AgentName (e.g., terminus-2, oracle)
+    name: terminus-2
+    # Max agent-environment turns before Harbor forces termination
+    max_episodes: 64
+    # Disable summarization, consistent with prior RL work
+    enable_summarize: false
+    # Store full message history for trajectory reconstruction
+    store_all_messages: true
+
+    # Agent timeout overrides
+    override_timeout_sec: 240        # Agent execution timeout (seconds)
+    # override_setup_timeout_sec: 120  # Agent setup timeout
+    # max_timeout_sec: 1800          # Cap timeout (useful for runaway tasks)
+
+    # ==========================================================================
+    # Environment settings (maps to Harbor EnvironmentConfig)
+    # ==========================================================================
+    # Sandbox resources - adequate for most agentic tasks
+    override_cpus: 1
+    override_memory_mb: 2048
+    override_storage_mb: 2048
+    # override_gpus: 0              # GPU allocation per sandbox
+    # environment_type: daytona     # Environment backend (daytona, docker, modal)
+
+    # ==========================================================================
+    # Trial-level settings (maps to Harbor TrialConfig)
+    # ==========================================================================
+    # timeout_multiplier: 1.0       # Multiply all timeouts by this factor
+
+    # ==========================================================================
+    # Verifier settings (maps to Harbor VerifierConfig)
+    # ==========================================================================
+    # verifier_disable: false       # Disable verification (for debugging)
+    verifier_override_timeout_sec: 120  # Override verifier timeout
+
+    # ==========================================================================
+    # Retry settings (maps to Harbor RetryConfig for QueueOrchestrator)
+    # ==========================================================================
+    # Retry logic with exponential backoff for transient failures
+    max_retries: 2                 # Max retry attempts per trial
+    min_wait_sec: 1.0              # Initial backoff delay (seconds)
+    max_wait_sec: 60.0             # Maximum backoff delay
+    wait_multiplier: 2.0           # Exponential backoff multiplier
+
+    # Exception filtering - don't retry permanent failures
+    # Default Harbor exclusions: AgentTimeoutError, VerifierTimeoutError,
+    #   RewardFileNotFoundError, RewardFileEmptyError, VerifierOutputParseError
+    # We add ContextLengthExceededError since summarization is disabled
+    exclude_exceptions:
+      - AgentTimeoutError
+      - VerifierTimeoutError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - VerifierOutputParseError
+      - ContextLengthExceededError  # Permanent when enable_summarize=false
+
+    # ==========================================================================
+    # Orchestrator settings (QueueOrchestrator concurrency control)
+    # ==========================================================================
+    n_concurrent_trials: 16        # Number of parallel trial workers
+
+    # ==========================================================================
+    # Logging settings
+    # ==========================================================================
+    log_level: WARNING             # Harbor logging level (DEBUG, INFO, WARNING, ERROR)
+
+    # ==========================================================================
+    # Reward shaping settings (DISABLED - binary rewards)
+    # ==========================================================================
+    enable_reward_shaping: false   # Use original binary (0/1) verifier rewards
+    # ==========================================================================
+    # Interleaved Thinking Settings (KEY ABLATION)
+    # ==========================================================================
+    # Include reasoning content in chat history and send to LLM in next round
+    interleaved_thinking: true
+    # Enable thinking in the LLM via chat template kwargs
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+
+  # Model info for Harbor's hosted_vllm validation (token limits and costs)
+  model_info:
+    # Context budget: 32k total = 24k prompt + 8k generation
+    # Prompts grow with conversation history, so reserve headroom for generation
+    max_input_tokens: 24576   # 24k - leaves 8k for generation
+    max_output_tokens: 8192   # 8k - sufficient for most agent responses
+
+# Trainer configuration
+trainer:
+  strategy: fsdp2
+  algorithm:
+    advantage_estimator: grpo
+    use_kl_loss: true
+    # GRPO-specific settings
+    kl_loss_coef: 0.001
+    grpo_norm_by_std: true
+    # Clip range for policy updates
+    eps_clip_low: 0.2
+    eps_clip_high: 0.2
+    # Token-level loss for better gradient signal on long sequences
+    loss_reduction: token_mean
+
+  # Training loop settings
+  epochs: 10
+  update_epochs_per_batch: 1
+
+  # Batch sizes - async training requires train_batch_size == policy_mini_batch_size
+  # (no mini-batching in fully async mode)
+  train_batch_size: 64
+  policy_mini_batch_size: 64
+  eval_batch_size: 32
+
+  # Micro batch sizes - set to 1 for long context to avoid OOM
+  micro_forward_batch_size_per_gpu: 1
+  micro_train_batch_size_per_gpu: 1
+
+  max_prompt_length: 999999
+
+  # Evaluation and checkpointing
+  eval_interval: 20
+  eval_before_train: false
+  ckpt_interval: 10
+  resume_mode: latest
+
+  # Logging
+  project_name: OpenThoughts-Agent
+  log_level: INFO  # SkyRL logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  # Commit to WandB after each step (for real-time monitoring in async training)
+  tracker_commit_each_step: true
+
+  # Paths derived from experiments_dir/job_name if null
+  run_name: null
+  ckpt_path: null
+  export_path: null
+
+  # Policy optimizer - conservative LR for base model fine-tuning
+  policy:
+    optimizer_config:
+      lr: 5.0e-7
+      weight_decay: 0.01
+      adam_betas: [0.9, 0.999]
+      # Gradient clipping important for long sequences
+      max_grad_norm: 1.0
+
+  # Reference model - CPU offload to save GPU memory
+  # With colocate_all=false, ref shares GPUs with policy but offloads weights
+  ref:
+    fsdp_config:
+      cpu_offload: true
+      reshard_after_forward: true
+
+  # ==========================================================================
+  # ASYNC TRAINING: Model placement (colocate_all=false)
+  # ==========================================================================
+  # Non-colocated placement for async RL:
+  # - Policy and ref get dedicated GPU sets (can overlap with CPU offload)
+  # - Inference engines run on separate GPUs
+  # - No memory swapping between rollout and training phases
+  placement:
+    colocate_all: false
+    policy_num_nodes: 2
+    ref_num_nodes: 2
+    policy_num_gpus_per_node: 4
+    ref_num_gpus_per_node: 4
+
+  # ==========================================================================
+  # ASYNC TRAINING: Fully async generation settings
+  # ==========================================================================
+  # Enable async RL training loop
+  fully_async:
+    # Number of parallel generation workers
+    # Constraint: mini_batch_size <= num_parallel_generation_workers <= mini_batch_size * (max_staleness_steps + 1)
+    # With mini_batch_size=64 and max_staleness_steps=4: 64 <= workers <= 320
+    num_parallel_generation_workers: 64
+
+# Generator (vLLM inference) configuration
+generator:
+  backend: vllm
+  model_dtype: bfloat16
+
+  # ==========================================================================
+  # ASYNC TRAINING: Inference engine configuration
+  # ==========================================================================
+  # TP=1 for maximum parallelism (8 independent engines)
+  # Each engine has full 80GB for 32k context with single sequences
+  inference_engine_tensor_parallel_size: 1
+  # 8 engines = 8 GPUs dedicated to inference
+  num_inference_engines: 8
+
+  # GRPO samples per prompt - 4 is typical for advantage estimation
+  n_samples_per_prompt: 4
+  eval_n_samples_per_prompt: 4
+
+  # Memory utilization - aggressive but leave headroom for 32k KV cache
+  gpu_memory_utilization: 0.90
+
+  # Sequence limits for 32k context (24k prompt + 8k gen)
+  # With TP=1, each engine handles fewer concurrent sequences
+  max_num_seqs: 32
+  # max_num_batched_tokens: tokens processed per batch
+  max_num_batched_tokens: 32768
+
+  # Memory optimization for long contexts
+  enable_prefix_caching: true
+  enable_chunked_prefill: true
+
+  # ==========================================================================
+  # ASYNC TRAINING: Engine settings
+  # ==========================================================================
+  run_engines_locally: true
+  weight_sync_backend: nccl
+  async_engine: true
+  # batched=false for async: each worker handles its own requests
+  batched: false
+  enable_http_endpoint: true
+
+  # Multi-turn agentic conversation handling
+  append_eos_token_after_stop_str_in_multi_turn: true
+  max_turns: 64  # Match max_episodes
+
+  # Sampling parameters for generation
+  sampling_params:
+    # Context budget: 32k total = 24k prompt + 8k generation
+    # This caps generation to stay within model's max_model_len
+    max_generate_length: 8192  # 8k - matches model_info.max_output_tokens
+    # Temperature 1.0 for exploration during training
+    temperature: 1.0
+    top_p: 0.95
+    top_k: -1  # Disabled
+
+  # Engine initialization kwargs - passed directly to vLLM/SGLang engine
+  # WARNING: Many kwargs are set by SkyRL internally (trust_remote_code, enforce_eager, etc.)
+  # The launcher validates this at parse time and will error with a full list if you set forbidden keys.
+  # SAFE TO SET: custom_chat_template_*, kv_cache_dtype, quantization, cpu_offload_gb, etc.
+  engine_init_kwargs:
+    # Chat template for Qwen3 Base model (path relative to working directory or absolute)
+    custom_chat_template_chat_completion_path: chat_templates/qwen3_thinking_acc.jinja2
+
+# Data paths (set via CLI --train_data, --val_data)
+data:
+  train_data: []
+  val_data: ["open-thoughts/OpenThoughts-TB-dev"]

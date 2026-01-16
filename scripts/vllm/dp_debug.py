@@ -164,10 +164,15 @@ def main():
         },
     )
 
+    # Get HTTP port from environment (default 8000)
+    http_port = get_env_int("SERVE_HTTP_PORT", 8000)
+
     print("Building OpenAI-compatible app...")
     dp_app = build_openai_app({"llm_configs": [llm_config]})
 
-    print("Starting Ray Serve...")
+    print(f"Starting Ray Serve on port {http_port}...")
+    # Start serve with custom HTTP options for port
+    serve.start(http_options={"host": "0.0.0.0", "port": http_port})
     serve.run(dp_app, name="vllm-dp-app", blocking=True)
 
 

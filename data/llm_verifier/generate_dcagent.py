@@ -41,7 +41,7 @@ def main() -> None:
     print(f"Generated tasks in: {output_dir}")
 
     # Upload to HuggingFace
-    upload_tasks_to_hf(output_dir, "DCAgent/llm-verifier-dcagent-dev-set")
+    upload_tasks_to_hf(output_dir, "DCAgent/exp_llmve_llm-verifier-dcagent-dev-set")
 
     # # Run dataset to generate traces
     # hf_dataset = run_dataset_to_traces(

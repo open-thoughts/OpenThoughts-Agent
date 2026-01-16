@@ -138,7 +138,7 @@ A complete framework for running GLM-4.6 inference experiments across 8 nodes (6
 
 ### Fastest Path to Results
 ```bash
-cd /scratch/10000/eguha3/ot-agent/data/vllm_experiments
+cd ${DCAGENT_DIR}/data/vllm_experiments
 
 # Setup and launch quick test
 ./setup_experiments.sh quick
@@ -290,6 +290,6 @@ python generate_sbatch.py --dataset datasets/custom_200.jsonl
 ---
 
 **Created**: 2025-11-22
-**Location**: `/scratch/10000/eguha3/ot-agent/data/vllm_experiments/`
+**Location**: `${DCAGENT_DIR}/data/vllm_experiments/`
 **Target**: 8-node H200 cluster (64 GPUs)
 **Model**: GLM-4.6 (or any MoE model)

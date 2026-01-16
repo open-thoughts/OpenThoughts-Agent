@@ -189,7 +189,7 @@ harbor jobs start \
   --env "daytona" \
   --agent-kwarg "api_base=http://localhost:8000/v1" \
   --agent-kwarg "key=fake_key" \
-  --k-attempts 3 \
+  --n-attempts 3 \
   --job-name "$RUN_TAG" \
   --config "dcagent_eval_config.yaml"
 SB_EXIT=$?

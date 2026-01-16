@@ -15,7 +15,7 @@ INFO 11-28 10:45:11 [__init__.py:241] Automatically detected platform cuda.
 /scratch/10000/eguha3/vllm_sandboxes_backup/lib/python3.12/site-packages/ray/_private/worker.py:2052: FutureWarning: Tip: In future versions of Ray, Ray will no longer override accelerator visible devices env var if num_gpus=0 or num_gpus=None (default). To enable this behavior and turn off this error message, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
   warnings.warn(
 Traceback (most recent call last):
-  File "/scratch/10000/eguha3/open-thoughts-agent/scripts/vllm/dp_debug.py", line 35, in <module>
+  File "${DCAGENT_DIR}/scripts/vllm/dp_debug.py", line 35, in <module>
     dp_app = build_openai_dp_app(llm_config)
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/scratch/10000/eguha3/vllm_sandboxes_backup/lib/python3.12/site-packages/ray/llm/_internal/serve/deployments/data_parallel/dp_server.py", line 142, in build_openai_dp_app

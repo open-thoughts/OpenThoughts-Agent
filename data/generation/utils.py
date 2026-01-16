@@ -254,11 +254,6 @@ def add_generation_args(
     )
     parser.set_defaults(trace_export_subagents=True)
     trace_group.add_argument(
-        "--trace-eval-only",
-        action="store_true",
-        help="Run Harbor jobs for evaluation only and skip trace export/upload",
-    )
-    trace_group.add_argument(
         "--trace-agent-timeout-sec",
         type=float,
         help="Override Harbor agent timeout_sec for each trial",

@@ -35,7 +35,7 @@ def main() -> None:
 
     print(subsampled_dataset_dir)
     # # Upload to HuggingFace
-    upload_tasks_to_hf(subsampled_dataset_dir, "DCAgent/llm-verifier-code-contests")
+    upload_tasks_to_hf(subsampled_dataset_dir, "DCAgent/exp_llmve_llm-verifier-code-contests")
 
     # # Run dataset to generate traces
     # hf_dataset = run_dataset_to_traces(

@@ -6,38 +6,31 @@ import os
 from pathlib import Path
 from typing import Optional, Callable
 
-from hpc.launch_utils import sanitize_repo_for_job
+from hpc.launch_utils import (
+    sanitize_repo_for_job,
+    resolve_job_and_paths,
+    parse_bool_with_default,
+    scale_memory_for_partial_gpus,
+)
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
 def _derive_consolidate_preamble(hpc) -> str:
     """
-    Attempt to reuse the environment setup section from the HPC training template so
-    consolidate jobs inherit module loads and activation commands.
+    Generate environment setup preamble for consolidate jobs using HPC config.
     """
-    template_path = getattr(hpc, "train_sbatch_path", None)
-    if not template_path or not os.path.exists(template_path):
-        return ""
-
     lines: list[str] = []
-    started = False
-    try:
-        with open(template_path, "r") as fh:
-            for raw_line in fh:
-                line = raw_line.rstrip("\n")
-                if line.startswith("#SBATCH") or line.startswith("#!/bin/bash"):
-                    continue
-                striped = line.strip()
-                if not started:
-                    if not striped:
-                        continue
-                    started = True
-                if "sft/llamafactory" in striped or striped.startswith("CONFIG="):
-                    break
-                lines.append(line)
-    except Exception:
-        return ""
+
+    # Add module commands
+    module_commands = getattr(hpc, "get_module_commands", lambda: "")()
+    if module_commands and module_commands.strip():
+        lines.append(module_commands)
+
+    # Add conda activation
+    conda_activate = getattr(hpc, "conda_activate", "")
+    if conda_activate and conda_activate.strip():
+        lines.append(conda_activate)
 
     return "\n".join(lines).strip()
 
@@ -63,11 +56,7 @@ def launch_consolidate_job(
     base_repo = exp_args.get("consolidate_base_repo")
     output_repo = exp_args.get("consolidate_output_repo")
     commit_message = exp_args.get("consolidate_commit_message") or "Merge ZeRO shards into safetensors"
-    push_to_hub_flag = exp_args.get("push_to_hub")
-    if push_to_hub_flag is None:
-        push_to_hub_flag = True
-    else:
-        push_to_hub_flag = bool(push_to_hub_flag)
+    push_to_hub_flag = parse_bool_with_default(exp_args.get("push_to_hub"), default=True)
 
     expanded_input = Path(str(input_value)).expanduser()
     input_is_local = False
@@ -93,40 +82,54 @@ def launch_consolidate_job(
     effective_output_repo = output_repo
     input_kind = "local" if input_is_local else "repo"
 
-    job_name = exp_args.get("job_name")
-    if not job_name:
+    # Define local derive function that captures input_value
+    def _derive_consolidate_job_name(_: dict) -> str:
         identifier = sanitize_repo_for_job(str(input_value))
-        job_name = f"{identifier}_consolidate"
-        if len(job_name) > 96:
-            job_name = job_name[:96]
-        exp_args = update_exp_args_fn(exp_args, {"job_name": job_name})
+        name = f"{identifier}_consolidate"
+        return name[:96] if len(name) > 96 else name
 
-    experiments_dir = exp_args.get("experiments_dir") or "experiments"
-    logs_dir = os.path.join(experiments_dir, "logs")
-    os.makedirs(logs_dir, exist_ok=True)
-    exp_args = update_exp_args_fn(exp_args, {"logs_dir": logs_dir})
+    # Resolve job_name and paths
+    job_setup = resolve_job_and_paths(
+        exp_args,
+        job_type_label="Consolidate",
+        derive_job_name_fn=_derive_consolidate_job_name,
+        sbatch_subdir="sbatch_scripts",
+    )
+    job_name = job_setup.job_name
+    exp_paths = job_setup.paths
+
+    # Update exp_args with derived job_name if it was auto-derived
+    if not exp_args.get("job_name"):
+        exp_args = update_exp_args_fn(exp_args, {"job_name": job_name})
+    experiments_dir = str(exp_paths.root)
+    exp_args = update_exp_args_fn(exp_args, {"logs_dir": str(exp_paths.logs)})
 
     hpc_name = getattr(hpc, "name", "").lower()
 
-    sbatch_dir = os.path.join(experiments_dir, "sbatch_scripts")
-    os.makedirs(sbatch_dir, exist_ok=True)
-    sbatch_path = os.path.join(sbatch_dir, f"{job_name}.sbatch")
+    sbatch_path = exp_paths.sbatch / f"{job_name}.sbatch"
 
     partition = exp_args.get("partition") or getattr(hpc, "partition", "")
     account = exp_args.get("account") or getattr(hpc, "account", "")
-    time_limit = exp_args.get("time_limit") or os.environ.get("DEFAULT_TIME_LIMIT", "24:00:00")
+    time_limit = exp_args.get("time_limit") or getattr(hpc, "default_time_limit", "24:00:00")
 
     cpus_per_task = int(exp_args.get("cpus_per_task") or getattr(hpc, "cpus_per_node", 1) or 1)
     if hpc_name == "capella":
         cpus_per_task = min(cpus_per_task, 14)
-    mem_per_node = getattr(hpc, "mem_per_node", "") or ""
-    mem_directive = f"#SBATCH --mem={mem_per_node}" if mem_per_node else "#SBATCH --mem=0"
-    if hpc_name == "capella":
-        # Capella throttles non-exclusive jobs to 188130 MB per GPU.
-        # Enforce a soft cap below the scheduler limit to avoid rejections.
-        mem_directive = "#SBATCH --mem=188000"
 
-    output_path = os.path.join(logs_dir, f"{job_name}_%j.out")
+    # Scale memory proportionally when requesting fewer GPUs than available on node
+    # (required by ZIH Capella and other schedulers for fair sharing)
+    mem_per_node = getattr(hpc, "mem_per_node", "") or ""
+    gpus_requested = 1  # consolidate jobs use 1 GPU
+    total_gpus = getattr(hpc, "gpus_per_node", 1) or 1
+    if mem_per_node and gpus_requested < total_gpus:
+        scaled_mem = scale_memory_for_partial_gpus(mem_per_node, gpus_requested, total_gpus)
+        mem_directive = f"#SBATCH --mem={scaled_mem}"
+    elif mem_per_node:
+        mem_directive = f"#SBATCH --mem={mem_per_node}"
+    else:
+        mem_directive = "#SBATCH --mem=0"
+
+    output_path = exp_paths.logs / f"{job_name}_%j.out"
     gpu_directive = "#SBATCH --gpus-per-node=1"
     if hpc_name in {"vista", "lonestar"}:
         gpu_directive = ""

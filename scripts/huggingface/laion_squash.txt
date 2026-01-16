@@ -2,17 +2,21 @@
 # List one Hugging Face repo per line.
 # Lines starting with '#' are ignored.
 
-laion/exp_tas_frequency_penalty_0_25_traces
-laion/exp_tas_frequency_penalty_0_5_traces
-laion/exp_tas_interleaved_thinking_on_traces
-laion/exp_tas_full_thinking_traces
-laion/exp_tas_baseline_traces
-laion/exp_tas_parser_xml_traces
-laion/exp_tas_min_p_0_1_traces
-laion/exp_tas_linear_history_off_traces
-laion/exp_tas_low_diversity_traces
-laion/glm46-stackexchange-tezos-maxeps-131k
-laion/stackexchange-tezos-sandboxes_glm_4_7_traces_locetash
-laion/stackexchange-tezos-sandboxes_glm_4_6_traces_together_again
-laion/glm46-swegym-tasks-maxeps-131k
-laion/glm-4_6-freelancer-32ep-131k-torch
+laion/exp_tas_top_p_0_9_traces
+laion/exp_tas_top_p_0_8_traces
+laion/exp_tas_temp_0_5_traces
+laion/exp_tas_top_p_0_95_traces
+laion/exp_tas_max_tokens_2048_traces
+laion/exp_tas_high_diversity_traces
+laion/exp_tas_top_k_128_traces
+laion/exp_tas_repetition_penalty_1_2_traces
+laion/exp_tas_summarize_off_traces
+laion/exp_tas_summarize_threshold_2048_traces
+laion/exp_tas_top_k_64_traces
+laion/exp_tas_max_tokens_4096_traces
+laion/exp_tas_min_p_0_01_traces
+laion/exp_tas_top_k_16_traces
+laion/exp_tas_min_p_0_05_traces
+laion/exp_tas_frequency_penalty_1_0_traces
+laion/exp_tas_raw_content_off_traces
+laion/exp_tas_summarize_threshold_16384_traces

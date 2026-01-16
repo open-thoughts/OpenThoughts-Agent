@@ -25,7 +25,7 @@ fi
 
 # Paths
 PYTHON_BIN="/scratch/10000/eguha3/vllm_sandboxes_backup/bin/python3"
-EXPERIMENTS_DIR="/scratch/10000/eguha3/ot-agent/data/vllm_experiments"
+EXPERIMENTS_DIR="${DCAGENT_DIR}/data/vllm_experiments"
 
 # API port (Ray Serve default is 8000)
 API_PORT="${API_PORT:-8000}"
@@ -72,7 +72,7 @@ srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$HEAD_NODE" 
         VLLM_ALL2ALL_BACKEND="${VLLM_ALL2ALL_BACKEND:-pplx}" \
         VLLM_ENABLE_EPLB="${VLLM_ENABLE_EPLB:-false}" \
         VLLM_EPLB_NUM_REDUNDANT_EXPERTS="${VLLM_EPLB_NUM_REDUNDANT_EXPERTS:-32}" \
-    $PYTHON_BIN /scratch/10000/eguha3/ot-agent/scripts/vllm/dp_debug.py \
+    $PYTHON_BIN ${DCAGENT_DIR}/scripts/vllm/dp_debug.py \
     >> "$VLLM_LOG" 2>&1 &
 VLLM_PID=$!
 

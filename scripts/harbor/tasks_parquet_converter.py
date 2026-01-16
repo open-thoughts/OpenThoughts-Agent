@@ -282,15 +282,43 @@ def from_hf_dataset(
 ) -> Path:
     """Download a HuggingFace dataset and extract tasks to a directory.
 
-    If base is not provided, creates a temporary directory for extraction.
+    Uses the dataset's fingerprint to enable caching. If the dataset has
+    already been downloaded with the same fingerprint, returns the cached path.
+
     Returns the base directory path where tasks were extracted.
     """
-    # Load dataset from HuggingFace
+    import sys
+    # Load dataset from HuggingFace (this uses HF's own caching)
+    print(f"Loading dataset: {dataset_name}", file=sys.stderr)
     dataset = load_dataset(dataset_name)
 
-    # Create temporary directory for extraction if base not provided
-    if base is None:
-        base = tempfile.mkdtemp()
+    # Get the fingerprint which tracks content changes
+    fingerprint = dataset["train"]._fingerprint
+    print(f"Dataset fingerprint: {fingerprint}", file=sys.stderr)
+
+    # Create a deterministic path in /tmp based on dataset name and fingerprint
+    # Sanitize dataset name for use in path (replace / with --)
+    safe_dataset_name = dataset_name.replace("/", "--")
+    dataset_cache_dir = Path(tempfile.gettempdir()) / "hf_datasets" / safe_dataset_name / fingerprint[:12]
+
+    # Check if dataset is already cached
+    marker_file = dataset_cache_dir / ".download_complete"
+    if dataset_cache_dir.exists() and marker_file.exists():
+        print(f"Dataset already cached at: {dataset_cache_dir}")
+        return dataset_cache_dir
+
+    # If base is provided (legacy behavior), use that instead
+    if base is not None:
+        extraction_dir = Path(base)
+    else:
+        extraction_dir = dataset_cache_dir
+
+    print(f"Extracting dataset to: {extraction_dir}")
+
+    # Clean up partial downloads
+    if extraction_dir.exists():
+        shutil.rmtree(extraction_dir)
+    extraction_dir.mkdir(parents=True, exist_ok=True)
 
     # Create temporary directory for the parquet file
     temp_parquet_dir = tempfile.mkdtemp()
@@ -301,9 +329,14 @@ def from_hf_dataset(
         dataset["train"].to_parquet(str(temp_parquet))
 
         # Extract tasks from the parquet file
-        from_parquet(str(temp_parquet), base=base, on_exist=on_exist)
+        from_parquet(str(temp_parquet), base=str(extraction_dir), on_exist=on_exist)
 
-        return Path(base)
+        # Write marker file to indicate download is complete
+        marker_file.write_text(f"fingerprint={fingerprint}\ndataset_name={dataset_name}\n")
+
+        print(f"Dataset extraction complete: {extraction_dir}")
+        return extraction_dir
+
     finally:
         # Clean up temporary parquet directory
         shutil.rmtree(temp_parquet_dir, ignore_errors=True)

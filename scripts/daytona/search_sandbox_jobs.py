@@ -12,14 +12,11 @@ from typing import List, Optional, Dict, Tuple
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
+# Load environment variables from secret.env
 SECRET_ENV_PATH = os.environ.get("DC_AGENT_SECRET_ENV")
 if SECRET_ENV_PATH and os.path.isfile(SECRET_ENV_PATH):
     load_dotenv(SECRET_ENV_PATH)
-else:
-    if SECRET_ENV_PATH:
-        print(f"Warning: DC_AGENT_SECRET_ENV set to '{SECRET_ENV_PATH}' but file not found.", flush=True)
-    print("Warning: DC_AGENT_SECRET_ENV not set. Ensure Supabase credentials are available in the environment.", flush=True)
-
+    
 def create_supabase_client() -> Client:
     """Create and return Supabase client."""
     url = os.getenv('SUPABASE_URL')
@@ -43,18 +40,54 @@ def get_benchmarks_map(client: Client) -> Dict[str, str]:
     response = client.table('benchmarks').select('id, name').execute()
     return {b['id']: b['name'] for b in response.data}
 
-def get_models_map(client: Client) -> Dict[str, str]:
+def get_models_map(client: Client) -> Tuple[Dict[str, str], Dict[str, str]]:
     """
-    Get mapping of model_id to model name.
-    
+    Get mapping of model_id to model name and dataset_id.
+
     Args:
         client: Supabase client
-    
+
     Returns:
-        Dictionary mapping model_id to model name
+        Tuple of (model_id -> model_name, model_id -> dataset_id)
     """
-    response = client.table('models').select('id, name').execute()
-    return {m['id']: m['name'] for m in response.data}
+    # Paginate to get all models (Supabase default limit is 1000)
+    models = []
+    offset = 0
+    batch_size = 1000
+    while True:
+        response = client.table('models').select('id, name, dataset_id').range(offset, offset + batch_size - 1).execute()
+        if not response.data:
+            break
+        models.extend(response.data)
+        if len(response.data) < batch_size:
+            break
+        offset += batch_size
+    return {m['id']: m['name'] for m in models}, {m['id']: m.get('dataset_id') for m in models}
+
+
+def get_datasets_map(client: Client) -> Dict[str, int]:
+    """
+    Get mapping of dataset_id to num_tasks from the datasets table.
+
+    Args:
+        client: Supabase client
+
+    Returns:
+        Dictionary mapping dataset_id to num_tasks
+    """
+    datasets = []
+    offset = 0
+    batch_size = 1000
+    while True:
+        response = client.table('datasets').select('id, num_tasks').range(offset, offset + batch_size - 1).execute()
+        if not response.data:
+            break
+        datasets.extend(response.data)
+        if len(response.data) < batch_size:
+            break
+        offset += batch_size
+    return {d['id']: d.get('num_tasks') for d in datasets}
+
 
 def search_jobs(
     client: Client,
@@ -73,18 +106,25 @@ def search_jobs(
         List of matching job records
     """
     exclude_substrings = exclude_substrings or []
-    
-    # Start with base query
-    query = client.table('sandbox_jobs').select('id, job_name, metrics')
-    
-    # Apply include filters (all must match)
-    for substring in include_substrings:
-        query = query.ilike('job_name', f'%{substring}%')
-    
-    # Execute query to get initial results
-    response = query.execute()
-    jobs = response.data
-    
+
+    # Paginate to get all matching jobs (Supabase default limit is 1000)
+    jobs = []
+    offset = 0
+    batch_size = 1000
+    while True:
+        query = client.table('sandbox_jobs').select('id, job_name, metrics')
+        # Apply include filters (all must match)
+        for substring in include_substrings:
+            query = query.ilike('job_name', f'%{substring}%')
+        query = query.range(offset, offset + batch_size - 1)
+        response = query.execute()
+        if not response.data:
+            break
+        jobs.extend(response.data)
+        if len(response.data) < batch_size:
+            break
+        offset += batch_size
+
     # Filter out excluded substrings (client-side filtering for exclude logic)
     if exclude_substrings:
         filtered_jobs = []
@@ -93,7 +133,7 @@ def search_jobs(
             if not any(exclude_sub.lower() in job_name for exclude_sub in exclude_substrings):
                 filtered_jobs.append(job)
         jobs = filtered_jobs
-    
+
     return jobs
 
 def search_all_jobs_for_model(
@@ -110,10 +150,19 @@ def search_all_jobs_for_model(
     Returns:
         List of all job records for the model with evaluation names extracted
     """
-    # Query by model_id UUID field
-    response = client.table('sandbox_jobs').select('id, job_name, metrics, model_id').eq('model_id', model_id).execute()
-    jobs = response.data
-    
+    # Query by model_id UUID field - paginate to get all (Supabase default limit is 1000)
+    jobs = []
+    offset = 0
+    batch_size = 1000
+    while True:
+        response = client.table('sandbox_jobs').select('id, job_name, metrics, model_id').eq('model_id', model_id).range(offset, offset + batch_size - 1).execute()
+        if not response.data:
+            break
+        jobs.extend(response.data)
+        if len(response.data) < batch_size:
+            break
+        offset += batch_size
+
     print(f"Found {len(jobs)} jobs for model_id: {model_id}")
     
     # Extract evaluation name from job_name for each job
@@ -281,6 +330,50 @@ def display_model_results_by_eval(jobs: List[dict]):
             print(f"  Full name: {job_name[:80]}..." if len(job_name) > 80 else f"  Full name: {job_name}")
             print()
 
+def _print_benchmark_averages(matrix_data: List[dict], benchmark_names: List[str]):
+    """
+    Calculate and print row averages (average across dev_set and swebench only).
+
+    Args:
+        matrix_data: List of dictionaries with model data and benchmark scores
+        benchmark_names: List of benchmark column names (clean names)
+    """
+    if not matrix_data:
+        return
+
+    # Identify dev_set and swebench benchmarks
+    avg_benchmarks = [b for b in benchmark_names if 'dev_set' in b.lower() or 'swebench' in b.lower()]
+
+    print(f"\n{'='*80}")
+    print("AVERAGE ACCURACY (dev_set + swebench only)")
+    print(f"{'='*80}\n")
+
+    model_averages = []
+
+    for row in matrix_data:
+        model_name = row.get('model_name', 'unknown')
+
+        # Collect only dev_set and swebench scores
+        scores = [row[b] for b in avg_benchmarks if row.get(b) is not None]
+
+        if scores:
+            avg_score = sum(scores) / len(scores)
+            model_averages.append({
+                'model_name': model_name,
+                'avg': avg_score,
+                'num_evals': len(scores),
+                'total_evals': len(avg_benchmarks)
+            })
+
+    # Sort by average descending
+    model_averages.sort(key=lambda x: x['avg'], reverse=True)
+
+    print(f"{'Model':<50} {'Avg Accuracy':<15} {'Evals'}")
+    print("-" * 80)
+
+    for item in model_averages:
+        print(f"{item['model_name']:<50} {item['avg']:.6f}       {item['num_evals']}/{item['total_evals']}")
+
 def extract_model_name_from_job(job_name: str) -> str:
     """
     Extract model name from job_name - it's typically the last meaningful part.
@@ -349,15 +442,27 @@ def generate_filtered_model_benchmark_matrix(client: Client, include_substrings:
         Path to generated CSV file
     """
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    
+
     # Get mappings
     benchmarks_map = get_benchmarks_map(client)
-    models_map = get_models_map(client)
+    models_map, dataset_id_map = get_models_map(client)
+    datasets_map = get_datasets_map(client)
     
     # Get filtered jobs with all necessary fields including timestamps
     print("Fetching filtered jobs...")
-    response = client.table('sandbox_jobs').select('id, job_name, model_id, benchmark_id, metrics, created_at, ended_at').execute()
-    all_jobs = response.data
+    # Fetch all jobs (Supabase default limit is 1000, so we need to paginate or set higher limit)
+    all_jobs = []
+    offset = 0
+    batch_size = 1000
+    while True:
+        response = client.table('sandbox_jobs').select('id, job_name, model_id, benchmark_id, metrics, created_at, ended_at').range(offset, offset + batch_size - 1).execute()
+        if not response.data:
+            break
+        all_jobs.extend(response.data)
+        if len(response.data) < batch_size:
+            break
+        offset += batch_size
+    print(f"Fetched {len(all_jobs)} total jobs")
     
     # Filter by include/exclude patterns
     filtered_jobs = []
@@ -379,30 +484,52 @@ def generate_filtered_model_benchmark_matrix(client: Client, include_substrings:
     
     print(f"Found {len(filtered_jobs)} matching jobs")
     
-    # Build matrix: Keep only earliest job for each (model, benchmark) combination
+    # Build matrix: Keep only earliest job WITH METRICS for each (model, benchmark) combination
     # Track earliest job by (model_id, benchmark_id)
     earliest_jobs = {}
-    
+
     for job in filtered_jobs:
         model_id = job.get('model_id')
         benchmark_id = job.get('benchmark_id')
-        
+
         if not model_id or not benchmark_id:
             continue
-        
+
         # Use ended_at if available, otherwise created_at for timestamp
         job_timestamp = job.get('ended_at') or job.get('created_at')
         if not job_timestamp:
             continue
-            
+
+        # Check if this job has valid metrics
+        accuracy, _ = extract_accuracy_metrics(job.get('metrics'))
+        has_metrics = accuracy is not None
+
         key = (model_id, benchmark_id)
-        
-        # Keep only the earliest job for this combination
-        if key not in earliest_jobs or job_timestamp < earliest_jobs[key]['timestamp']:
+
+        # Keep earliest job, but only filter by time if the job has metrics
+        # Jobs without metrics should be replaced by any job with metrics
+        if key not in earliest_jobs:
             earliest_jobs[key] = {
                 'job': job,
-                'timestamp': job_timestamp
+                'timestamp': job_timestamp,
+                'has_metrics': has_metrics
             }
+        else:
+            existing = earliest_jobs[key]
+            # If existing has no metrics but new one does, replace
+            if not existing['has_metrics'] and has_metrics:
+                earliest_jobs[key] = {
+                    'job': job,
+                    'timestamp': job_timestamp,
+                    'has_metrics': has_metrics
+                }
+            # If both have metrics (or both don't), keep the earliest
+            elif existing['has_metrics'] == has_metrics and job_timestamp < existing['timestamp']:
+                earliest_jobs[key] = {
+                    'job': job,
+                    'timestamp': job_timestamp,
+                    'has_metrics': has_metrics
+                }
     
     # Now build the matrix from earliest jobs only
     model_benchmark_matrix = {}
@@ -443,13 +570,22 @@ def generate_filtered_model_benchmark_matrix(client: Client, include_substrings:
     
     # Build matrix rows with earliest job accuracy for each model-benchmark pair
     matrix_data = []
-    
+    clean_benchmark_names = [column_name_map.get(b, b.replace('-', '_')) for b in benchmark_names]
+
     for model_id, data in model_benchmark_matrix.items():
+        model_name = data.get('model_name', 'unknown')
         row = {
             'model_id': model_id,
-            'model_name': data.get('model_name', 'unknown')
+            'model_name': model_name
         }
-        
+
+        # Look up dataset size from dataset_id -> datasets table
+        dataset_id = dataset_id_map.get(model_id)
+        if dataset_id:
+            row['dataset_size'] = datasets_map.get(dataset_id)
+        else:
+            row['dataset_size'] = None
+
         # Add accuracy for each benchmark with cleaner column names
         for benchmark in benchmark_names:
             clean_name = column_name_map.get(benchmark, benchmark.replace('-', '_'))
@@ -457,19 +593,25 @@ def generate_filtered_model_benchmark_matrix(client: Client, include_substrings:
                 benchmark_data = data[benchmark]
                 # Now it's a dict with accuracy, std, job_id
                 row[clean_name] = benchmark_data['accuracy']
-                # Optionally could add std column: row[f"{clean_name}_std"] = benchmark_data['std']
             else:
                 row[clean_name] = None
-        
+
+        # Calculate average across only dev_set and swebench
+        avg_scores = []
+        for benchmark in benchmark_names:
+            clean_name = column_name_map.get(benchmark, benchmark.replace('-', '_'))
+            if ('dev_set' in benchmark.lower() or 'swebench' in benchmark.lower()) and row.get(clean_name) is not None:
+                avg_scores.append(row[clean_name])
+        row['average'] = sum(avg_scores) / len(avg_scores) if avg_scores else None
+
         matrix_data.append(row)
-    
-    # Sort by model name
-    matrix_data.sort(key=lambda x: x['model_name'])
-    
-    # Write CSV with cleaner column names
-    clean_benchmark_names = [column_name_map.get(b, b.replace('-', '_')) for b in benchmark_names]
-    fieldnames = ['model_id', 'model_name'] + clean_benchmark_names
-    
+
+    # Sort by average descending
+    matrix_data.sort(key=lambda x: x['average'] if x['average'] is not None else -1, reverse=True)
+
+    # Write CSV with cleaner column names (average column already computed above)
+    fieldnames = ['model_id', 'model_name', 'dataset_size'] + clean_benchmark_names + ['average']
+
     with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
@@ -479,7 +621,10 @@ def generate_filtered_model_benchmark_matrix(client: Client, include_substrings:
     print(f"\nFiltered model-benchmark matrix saved to: {output_file}")
     print(f"Total models: {len(matrix_data)}")
     print(f"Benchmarks: {', '.join(benchmark_names)}")
-    
+
+    # Calculate averages for benchmarks present in all models
+    _print_benchmark_averages(matrix_data, clean_benchmark_names)
+
     return output_file
 
 def generate_model_benchmark_matrix(client: Client, output_file: str = "results/model_benchmark_matrix.csv"):
@@ -494,15 +639,26 @@ def generate_model_benchmark_matrix(client: Client, output_file: str = "results/
         Path to generated CSV file
     """
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    
+
     # Get all benchmarks and models
     benchmarks_map = get_benchmarks_map(client)
-    models_map = get_models_map(client)
+    models_map, _ = get_models_map(client)
     
     # Get all jobs with model_id, benchmark_id, and metrics
     print("Fetching all jobs with benchmark and model data...")
-    response = client.table('sandbox_jobs').select('id, job_name, model_id, benchmark_id, metrics').execute()
-    jobs = response.data
+    # Fetch all jobs (Supabase default limit is 1000, so we need to paginate)
+    jobs = []
+    offset = 0
+    batch_size = 1000
+    while True:
+        response = client.table('sandbox_jobs').select('id, job_name, model_id, benchmark_id, metrics').range(offset, offset + batch_size - 1).execute()
+        if not response.data:
+            break
+        jobs.extend(response.data)
+        if len(response.data) < batch_size:
+            break
+        offset += batch_size
+    print(f"Fetched {len(jobs)} total jobs")
     
     # Build matrix: model_id -> benchmark_name -> accuracies list
     model_benchmark_matrix = {}
@@ -542,12 +698,14 @@ def generate_model_benchmark_matrix(client: Client, output_file: str = "results/
         'terminal_bench_2': 'terminal_bench_2'
     }
     
+    clean_benchmark_names = [column_name_map.get(b, b.replace('-', '_')) for b in benchmark_names]
+
     for model_id, data in model_benchmark_matrix.items():
         row = {
             'model_id': model_id,
             'model_name': data.get('model_name', 'unknown')
         }
-        
+
         # Add average accuracy for each benchmark with cleaner column names
         for benchmark in benchmark_names:
             clean_name = column_name_map.get(benchmark, benchmark.replace('-', '_'))
@@ -557,15 +715,22 @@ def generate_model_benchmark_matrix(client: Client, output_file: str = "results/
                 row[clean_name] = avg_accuracy
             else:
                 row[clean_name] = None
-        
+
+        # Calculate average across only dev_set and swebench
+        avg_scores = []
+        for benchmark in benchmark_names:
+            clean_name = column_name_map.get(benchmark, benchmark.replace('-', '_'))
+            if ('dev_set' in benchmark.lower() or 'swebench' in benchmark.lower()) and row.get(clean_name) is not None:
+                avg_scores.append(row[clean_name])
+        row['average'] = sum(avg_scores) / len(avg_scores) if avg_scores else None
+
         matrix_data.append(row)
-    
-    # Sort by model name
-    matrix_data.sort(key=lambda x: x['model_name'])
-    
+
+    # Sort by average descending
+    matrix_data.sort(key=lambda x: x['average'] if x['average'] is not None else -1, reverse=True)
+
     # Write CSV with cleaner column names
-    clean_benchmark_names = [column_name_map.get(b, b.replace('-', '_')) for b in benchmark_names]
-    fieldnames = ['model_id', 'model_name'] + clean_benchmark_names
+    fieldnames = ['model_id', 'model_name'] + clean_benchmark_names + ['average']
     
     with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -583,16 +748,19 @@ def generate_model_benchmark_matrix(client: Client, output_file: str = "results/
         # Find best model for this benchmark
         best_model = None
         best_accuracy = -1
-        
+
         for row in matrix_data:
             if row.get(benchmark) is not None and row[benchmark] > best_accuracy:
                 best_accuracy = row[benchmark]
                 best_model = row
-        
+
         if best_model:
             print(f"\n{benchmark}:")
             print(f"  Best: {best_model['model_name']} - {best_accuracy:.4f}")
-    
+
+    # Calculate averages for benchmarks present in all models
+    _print_benchmark_averages(matrix_data, clean_benchmark_names)
+
     return output_file
 
 def generate_comprehensive_csv(jobs: List[dict], eval_type: str, output_dir: str = "results"):

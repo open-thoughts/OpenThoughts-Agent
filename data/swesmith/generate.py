@@ -115,10 +115,10 @@ def main() -> None:
     )
     upload_tasks_to_hf(
         dataset_path=final_dataset_dir,
-        repo_id="DCAgent2/swesmith-sandboxes-with_tests"
+        repo_id="DCAgent2/exp_snd_swesmith-sandboxes-with_tests"
     )
-    hf_dataset = run_dataset_to_traces(final_dataset_dir, model_name="gpt-5-nano-2025-08-07", agent_name="terminus-2", n_concurrent=256, agent_kwargs={"max_episodes": 8})
-    upload_traces_to_hf(hf_dataset, "DCAgent2/swesmith-sandboxes-with_tests-traces-terminus-2", "SFT")
+    # hf_dataset = run_dataset_to_traces(final_dataset_dir, model_name="gpt-5-nano-2025-08-07", agent_name="terminus-2", n_concurrent=256, agent_kwargs={"max_episodes": 8})
+    # upload_traces_to_hf(hf_dataset, "DCAgent2/swesmith-sandboxes-with_tests-traces-terminus-2", "SFT")
 
 
 if __name__ == "__main__":

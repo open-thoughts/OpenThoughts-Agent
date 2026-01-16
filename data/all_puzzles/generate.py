@@ -97,16 +97,17 @@ def main() -> None:
     # Step 2: Generate questions from puzzles
     questions = generate_questions_from_puzzles(puzzles)
     # Step 3: Generate task directories from questions
+    questions = questions[:5]
     tasks_dir = generate_tasks_from_questions(questions, dataset_prefix="all_puzzles")
 
     final_dataset_dir = subsample_tasks_directory(
         source_dir=tasks_dir,
-        num_samples=10_000,
+        num_samples=10,
         dataset_prefix="all_puzzles_subsampled"
     )
-    upload_tasks_to_hf(final_dataset_dir, "mlfoundations-dev/all-puzzles-sandboxes")
-    hf_dataset = run_dataset_to_traces(final_dataset_dir, model_name="gpt-5-nano-2025-08-07", agent_name="terminus-2", n_concurrent=256, agent_kwargs={"max_episodes": 8})
-    upload_traces_to_hf(hf_dataset, "mlfoundations-dev/all-puzzles-sandboxes-traces-terminus-2", "SFT")
+    upload_tasks_to_hf(final_dataset_dir, "DCAgent/harbor-devel-sandboxes")
+    # hf_dataset = run_dataset_to_traces(final_dataset_dir, model_name="gpt-5-nano-2025-08-07", agent_name="terminus-2", n_concurrent=256, agent_kwargs={"max_episodes": 8})
+    # upload_traces_to_hf(hf_dataset, "mlfoundations-dev/all-puzzles-sandboxes-traces-terminus-2", "SFT")
 
 if __name__ == "__main__":
     main()

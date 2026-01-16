@@ -499,4 +499,4 @@ For issues:
 
 ## License
 
-Part of the ot-agent project.
+Part of the dc-agent project.

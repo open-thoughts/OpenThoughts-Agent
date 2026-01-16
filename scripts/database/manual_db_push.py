@@ -15,9 +15,10 @@ from pathlib import Path
 
 import wandb
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+# Add repo root to sys.path for imports
+_repo_root = Path(__file__).resolve().parents[2]
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
 
 from database.unified_db.utils import register_trained_model  # noqa: E402
 

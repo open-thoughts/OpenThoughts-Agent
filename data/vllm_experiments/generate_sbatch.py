@@ -30,7 +30,7 @@ class SbatchGenerator:
 # Set up environment
 source /scratch/08002/gsmyrnis/miniconda3/etc/profile.d/conda.sh
 conda activate /work/10000/eguha3/vista/miniconda3/envs/dataagent
-source /scratch/10000/eguha3/old-ot-agent/secret.env
+source /scratch/10000/eguha3/old-dc-agent/secret.env
 
 # Get head node IP
 export HEAD_NODE_IP=$(hostname -i)
@@ -67,7 +67,7 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 
 # Start vLLM server
 echo "Starting vLLM server on head node..."
-cd /scratch/10000/eguha3/ot-agent/data/vllm_experiments
+cd ${DCAGENT_DIR}/data/vllm_experiments
 
 {vllm_command} &
 VLLM_PID=$!
@@ -123,7 +123,7 @@ echo "Job complete: {exp_id}"
 # Set up environment
 source /scratch/08002/gsmyrnis/miniconda3/etc/profile.d/conda.sh
 conda activate /work/10000/eguha3/vista/miniconda3/envs/dataagent
-source /scratch/10000/eguha3/old-ot-agent/secret.env
+source /scratch/10000/eguha3/old-dc-agent/secret.env
 
 # Get head node IP from environment or file
 export HEAD_NODE_IP={head_node_ip}
@@ -155,7 +155,7 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 
 # Start headless vLLM worker
 echo "Starting vLLM worker (headless) on node {node_id}..."
-cd /scratch/10000/eguha3/ot-agent/data/vllm_experiments
+cd ${DCAGENT_DIR}/data/vllm_experiments
 
 {vllm_command}
 

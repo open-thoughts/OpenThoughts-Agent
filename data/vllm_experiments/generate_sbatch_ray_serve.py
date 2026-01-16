@@ -10,6 +10,7 @@ Creates sbatch files that:
 
 import json
 import hashlib
+import os
 from pathlib import Path
 from typing import Dict, Any, List
 import argparse
@@ -168,7 +169,9 @@ echo "============================================"
 exit $BENCHMARK_EXIT_CODE
 """
 
-    def __init__(self, experiments_dir: str = "/scratch/10000/eguha3/ot-agent/data/vllm_experiments"):
+    def __init__(self, experiments_dir: str = None):
+        if experiments_dir is None:
+            experiments_dir = os.path.expandvars("${DCAGENT_DIR}/data/vllm_experiments")
         self.experiments_dir = Path(experiments_dir)
         self.logs_dir = self.experiments_dir / "logs"
         self.logs_dir.mkdir(parents=True, exist_ok=True)
@@ -286,8 +289,8 @@ echo "View results in: $EXPERIMENTS_DIR/results/"
 def main():
     parser = argparse.ArgumentParser(description="Generate SLURM batch scripts for Ray Serve vLLM experiments")
     parser.add_argument("--config-dir", help="Directory containing config JSON files")
-    parser.add_argument("--experiments-dir", default="/scratch/10000/eguha3/ot-agent/data/vllm_experiments",
-                        help="Base experiments directory")
+    parser.add_argument("--experiments-dir", default=None,
+                        help="Base experiments directory (default: $DCAGENT_DIR/data/vllm_experiments)")
     parser.add_argument("--dataset", default="large_throughput.jsonl", help="Dataset file name")
     parser.add_argument("--request-rate", type=float, default=10.0, help="Requests per second")
     parser.add_argument("--single-config", help="Generate script for single config file")

@@ -50,8 +50,29 @@ def wait_for_cluster(address: str, expected_gpus: float, expected_nodes: int, ti
     deadline = time.time() + timeout
 
     log(f"Connecting to Ray at {address} (expecting {expected_nodes} nodes, {expected_gpus} GPUs)")
-    ray.init(address=address, ignore_reinit_error=True)
-    log("Ray connection established, polling for resources...")
+
+    # Retry the initial connection - ray.init() has its own 30s timeout
+    # and the Ray head may not be ready immediately after ray start
+    connected = False
+    while time.time() < deadline:
+        try:
+            ray.init(address=address, ignore_reinit_error=True)
+            connected = True
+            log("Ray connection established, polling for resources...")
+            break
+        except (ConnectionError, RuntimeError) as e:
+            log(f"[Ray wait] Connection attempt failed: {e}")
+            log(f"[Ray wait] Retrying in {poll_interval}s...")
+            try:
+                ray.shutdown()
+            except Exception:
+                pass
+            time.sleep(poll_interval)
+
+    if not connected:
+        raise TimeoutError(
+            f"Could not connect to Ray cluster at {address} within {timeout} seconds"
+        )
 
     try:
         while True:

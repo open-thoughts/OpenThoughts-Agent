@@ -15,7 +15,7 @@ export PATH=/home1/apps/gcc/15.1.0/bin:$PATH
 export TRITON_CC=$(which gcc)
 
 # Load HF token
-source /scratch/10000/eguha3/old-ot-agent/secret.env
+source /scratch/10000/eguha3/old-dc-agent/secret.env
 
 # Ray/vLLM paths
 RAY_BIN="/scratch/10000/eguha3/vllm_sandboxes_backup/bin/ray"

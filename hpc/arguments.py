@@ -12,6 +12,7 @@ class JobType(str, Enum):
     SFT_MCA = "sft_mca"
     PRETOKENIZE = "pretokenize"
     DATAGEN = "datagen"
+    EVAL = "eval"
     CONSOLIDATE = "consolidate"
     RL = "rl"
 
@@ -331,16 +332,14 @@ class LaunchArgs:
         default="DCAgent",
         metadata={"help": "Name responsible for launching the job (<=96 characters)"}
     )
-    train_sbatch_path: Optional[str] = field(
-        default=None, metadata={"help": "Path to training sbatch file"}
-    )
     train_config_path: Optional[str] = field(
         default=None, metadata={"help": "Path to config file"}
     )
     experiments_dir: Optional[str] = field(
-        default="experiments",
+        default=None,
         metadata={
-            "help": "Output for storing experiment outputs - logs, configs, sbatch scripts"
+            "help": "Output for storing experiment outputs - logs, configs, sbatch scripts. "
+            "Defaults to ./experiments/<job_name> when not specified."
         },
     )
     image: Optional[str] = field(
@@ -442,7 +441,7 @@ class DataGenArgs:
     job_type: Optional[str] = field(
         default=JobType.default_value(),
         metadata={
-            "help": "Job type: 'sft', 'sft_mca', 'pretokenize', 'datagen', 'consolidate', or 'rl'",
+            "help": "Job type: 'sft', 'sft_mca', 'pretokenize', 'datagen', 'eval', 'consolidate', or 'rl'",
             "choices": JobType.choices(),
             "required": False,
         },
@@ -450,19 +449,12 @@ class DataGenArgs:
 
     # Data generation specific
     enable_task_gen: bool = field(
-        default=True,
+        default=False,
         metadata={"help": "Whether to run task generation stage"}
     )
     enable_trace_gen: bool = field(
         default=False,
-        metadata={"help": "Enable trace generation stage", "store_true": True}
-    )
-    trace_eval_only: bool = field(
-        default=False,
-        metadata={
-            "help": "Run trace jobs without exporting/uploading traces",
-            "store_true": True,
-        },
+        metadata={"help": "Enable trace generation stage"}
     )
     disable_verification: bool = field(
         default=False,
@@ -526,7 +518,7 @@ class DataGenArgs:
         default=None,
         metadata={"help": "Path to trace generation script"}
     )
-    trace_input_path: Optional[str] = field(
+    tasks_input_path: Optional[str] = field(
         default=None,
         metadata={"help": "Existing task dataset path for trace generation"}
     )
@@ -543,8 +535,8 @@ class DataGenArgs:
         metadata={"help": "Override Harbor agent model for trace generation"}
     )
     trace_agent_name: Optional[str] = field(
-        default=None,
-        metadata={"help": "Override Harbor agent name for trace generation"}
+        default="terminus-2",
+        metadata={"help": "Agent name for trace generation and run_summary.json (default: terminus-2)"}
     )
     trace_agent_kwargs: Optional[str] = field(
         default=None,
@@ -586,6 +578,40 @@ class DataGenArgs:
         default=None,
         metadata={"help": "Override Harbor verifier timeout (seconds) for trace generation"}
     )
+    harbor_dataset: Optional[str] = field(
+        default=None,
+        metadata={"help": "Harbor registry dataset slug such as 'terminal-bench@2.0'"}
+    )
+    # Upload settings (traces -> HuggingFace, result abstracts -> Supabase)
+    upload_to_database: bool = field(
+        default=False,
+        metadata={"help": "Upload result abstracts to Supabase and traces to HuggingFace after eval", "store_true": True}
+    )
+    upload_username: Optional[str] = field(
+        default=None,
+        metadata={"help": "Username for Supabase result attribution (defaults to $UPLOAD_USERNAME or current user)"}
+    )
+    upload_error_mode: str = field(
+        default="skip_on_error",
+        metadata={"help": "Supabase upload error handling: 'skip_on_error' or 'rollback_on_error'"}
+    )
+    upload_hf_repo: Optional[str] = field(
+        default=None,
+        metadata={"help": "HuggingFace repo for traces upload (auto-derived from benchmark if not provided)"}
+    )
+    upload_hf_private: bool = field(
+        default=False,
+        metadata={"help": "Create the HuggingFace traces repo as private", "store_true": True}
+    )
+    upload_hf_episodes: str = field(
+        default="last",
+        metadata={"help": "Which episodes to include in HuggingFace traces upload: 'last' or 'all'"}
+    )
+    upload_forced_update: bool = field(
+        default=False,
+        metadata={"help": "Allow overwriting existing Supabase result records for the same job", "store_true": True}
+    )
+
 @dataclass
 class ConsolidateArgs:
     consolidate_input: Optional[str] = field(
@@ -607,6 +633,85 @@ class ConsolidateArgs:
     consolidate_commit_message: Optional[str] = field(
         default="Merge ZeRO shards into safetensors",
         metadata={"help": "Commit message to use when uploading consolidated weights back to Hugging Face"}
+    )
+
+
+@dataclass
+class RLArgs:
+    """Arguments for RL (reinforcement learning) training jobs using SkyRL."""
+
+    rl_config: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Path to RL config YAML file (e.g., terminal_bench.yaml). "
+            "Can be absolute path or name of built-in config in hpc/skyrl_yaml/"
+        }
+    )
+    skyrl_override: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "SkyRL Hydra override (key=value). Can be specified multiple times. "
+            "Example: --skyrl_override trainer.epochs=5",
+            "action": "append",
+        }
+    )
+    model_path: Optional[str] = field(
+        default=None,
+        metadata={"help": "Model path for RL training (e.g., Qwen/Qwen2.5-7B-Instruct)"}
+    )
+    train_data: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Training dataset path(s). Use JSON list format for multiple: "
+            "'[\"org/dataset1\",\"org/dataset2\"]'"
+        }
+    )
+    val_data: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Validation dataset path(s). Use JSON list format for multiple: "
+            "'[\"org/val-dataset\"]'"
+        }
+    )
+    skyrl_entrypoint: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Override SkyRL entrypoint module. "
+            "Default: inferred from rl_config YAML"
+        }
+    )
+    policy_num_nodes: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Number of nodes for policy (actor) workers. "
+            "If not set, defaults to num_nodes (symmetric setup)"
+        }
+    )
+    tensor_parallel_size: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Tensor parallel size for vLLM inference engines. "
+            "Higher values needed for larger models (70B+). Default from config or 1"
+        }
+    )
+    ray_port: Optional[int] = field(
+        default=None,
+        metadata={"help": "Ray head node port (default: 6379)"}
+    )
+    rl_use_conda: bool = field(
+        default=False,
+        metadata={
+            "help": "Use conda environment for RL instead of venv. "
+            "Useful for clusters like Perlmutter where conda is preferred.",
+            "store_true": True,
+        }
+    )
+    rl_conda_env: Optional[str] = field(
+        default="dcagent-rl",
+        metadata={
+            "help": "Name of conda environment to use for RL when --rl_use_conda is set. "
+            "Default: dcagent-rl"
+        }
     )
 
 
@@ -637,6 +742,7 @@ def _add_dataclass_arguments(arg_group, dataclass_type, exclude_fields=None, *, 
         help_text = field.metadata.get("help")
         choices = field.metadata.get("choices")
         required = field.metadata.get("required", False)
+        action = field.metadata.get("action")
 
         if field.metadata.get("store_true"):
             arg_group.add_argument(
@@ -648,6 +754,15 @@ def _add_dataclass_arguments(arg_group, dataclass_type, exclude_fields=None, *, 
             )
             if bool_fields is not None:
                 bool_fields.add(field.name)
+        elif action == "append":
+            # Handle append action (e.g., --skyrl_override can be repeated)
+            arg_group.add_argument(
+                *option_strings,
+                dest=field.name,
+                action="append",
+                default=[],
+                help=help_text,
+            )
         elif isinstance(field.default, bool):
             kwargs = {
                 "dest": field.name,
@@ -703,13 +818,31 @@ def parse_args():
     train_group = parser.add_argument_group("Training Arguments")
     datagen_group = parser.add_argument_group("Data Generation Arguments")
     consolidate_group = parser.add_argument_group("Consolidation Arguments")
+    rl_group = parser.add_argument_group("RL Training Arguments")
 
     # Add LaunchArgs arguments
     _add_dataclass_arguments(launch_group, LaunchArgs, bool_fields=bool_keys)
 
+    # Add --harbor_config as alias for --trace_harbor_config (more concise for eval jobs)
+    launch_group.add_argument(
+        "--harbor_config", "--harbor-config",
+        dest="trace_harbor_config",
+        help=argparse.SUPPRESS,  # Hidden alias
+    )
+
+    # Add --model as alias for --trace_model (more concise for eval jobs)
+    launch_group.add_argument(
+        "--model",
+        dest="trace_model",
+        help=argparse.SUPPRESS,  # Hidden alias
+    )
+
     # Add DataGenArgs arguments
     _add_dataclass_arguments(datagen_group, DataGenArgs, bool_fields=bool_keys)
     _add_dataclass_arguments(consolidate_group, ConsolidateArgs, bool_fields=bool_keys)
+
+    # Add RLArgs arguments
+    _add_dataclass_arguments(rl_group, RLArgs, bool_fields=bool_keys)
 
     # Add HPC arguments
     # Note: HPC is a Pydantic model, not a dataclass, so we need to handle it differently
@@ -723,20 +856,14 @@ def parse_args():
         "gpus_type",
         "total_partition_nodes",
         "qos",
+        "gpu_type",
     ]
+    str_hpc_fields = {"name", "account", "partition", "gpus_type", "qos", "gpu_type"}
     for field in hpc_fields:
         hpc_group.add_argument(
             f"--{field}",
-            type=(
-                str
-                if field == "name"
-                or field == "account"
-                or field == "partition"
-                or field == "gpus_type"
-                or field == "qos"
-                else int
-            ),
-            help=f"HPC {field}",
+            type=str if field in str_hpc_fields else int,
+            help=f"HPC {field}" if field != "gpu_type" else "GPU type override (e.g., h200, l40s) for clusters with multiple GPU types",
         )
 
     # Add LlamaFactoryArgs arguments

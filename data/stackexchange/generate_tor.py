@@ -6,7 +6,7 @@ from typing import List, Dict, Any
 from datasets import load_dataset
 
 # Import from parent package
-from data.commons import upload_tasks_to_hf, generate_tasks_from_questions, subsample_tasks_directory, upload_traces_to_hf
+from data.commons import upload_tasks_to_hf, generate_tasks_from_questions, subsample_tasks_directory, upload_traces_to_hf, upsample_tasks_directory
 from data.stackexchange.generate_codereview import download_and_extract_dataset, parse_posts_xml, extract_questions_from_data
 from scripts.harbor.run_and_export_traces import run_dataset_to_traces
 
@@ -19,9 +19,9 @@ def main() -> None:
     final_dataset_dir = generate_tasks_from_questions(questions, "tor")
     subsampled_dataset_dir = subsample_tasks_directory(final_dataset_dir, 10_000)
     upsampled_dataset_dir = upsample_tasks_directory(subsampled_dataset_dir, 10_000)
-    hf_dataset = run_dataset_to_traces(upsampled_dataset_dir, model_name="gpt-5-nano-2025-08-07", agent_name="terminus-2", n_concurrent=256, agent_kwargs={"max_episodes": 8})
-    upload_traces_to_hf(hf_dataset, "mlfoundations-dev/stackexchange-tor-sandboxes-traces-terminus-2", "SFT")
-    upload_tasks_to_hf(upsampled_dataset_dir, "mlfoundations-dev/stackexchange-tor-sandboxes")
+    # hf_dataset = run_dataset_to_traces(upsampled_dataset_dir, model_name="gpt-5-nano-2025-08-07", agent_name="terminus-2", n_concurrent=256, agent_kwargs={"max_episodes": 8})
+    # upload_traces_to_hf(hf_dataset, "mlfoundations-dev/stackexchange-tor-sandboxes-traces-terminus-2", "SFT")
+    upload_tasks_to_hf(upsampled_dataset_dir, "DCAgent/stackexchange-tor-sandboxes")
 
 if __name__ == "__main__":
     main()

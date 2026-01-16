@@ -3,6 +3,9 @@ engine:
   model: QuantTrio/GLM-4.6-AWQ
   max_output_tokens: 16384
   healthcheck_interval: 300
+  request_params:
+    temperature: 1.0
+    top_p: 0.01
   vllm_local: {}
 backend:
   type: ray

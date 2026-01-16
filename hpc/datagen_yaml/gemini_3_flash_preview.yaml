@@ -1,0 +1,15 @@
+engine:
+  type: google_gemini
+  model: gemini-3-flash-preview
+  max_output_tokens: 512000
+  healthcheck_interval: 300
+  request_params:
+    temperature: 0.2
+  extra_args:
+    credentials_path: /Users/benjaminfeuer/Documents/.gcs_datacomp.json
+    location: global
+    project_id: soe-datacomp
+    thinking_level: low
+backend:
+  type: none
+vllm_server: null

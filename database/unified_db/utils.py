@@ -2822,9 +2822,8 @@ def _extract_trial_metadata(
     config = json.loads(config_path.read_text())
     result = json.loads(result_path.read_text())
 
-    # STRICT VALIDATION: Only accept fully completed trials
-    # A valid trial MUST have BOTH agent_execution AND verifier_result
-    # Exception info is NOT sufficient - we only accept complete runs
+    # VALIDATION: Accept trials with agent_execution and either verifier_result OR reward
+    # This allows trials where verifier was disabled but reward was set externally
     agent_execution = result.get("agent_execution")
     verifier_result = result.get("verifier_result")
 
@@ -2834,10 +2833,18 @@ def _extract_trial_metadata(
             f"Only fully completed trials are accepted."
         )
 
-    if verifier_result is None:
+    # Extract reward - check verifier_result first, then top-level result
+    reward = None
+    if verifier_result is not None:
+        reward = verifier_result.get("reward")
+    if reward is None:
+        reward = result.get("reward")
+
+    # Require either verifier_result OR a reward value
+    if verifier_result is None and reward is None:
         raise ValueError(
-            f"Trial {result['trial_name']} is incomplete: missing verifier_result data. "
-            f"Only fully completed trials are accepted."
+            f"Trial {result['trial_name']} is incomplete: missing both verifier_result and reward. "
+            f"Trials must have either verifier_result data or a reward value."
         )
 
     exception_info = result.get("exception_info")
@@ -2849,7 +2856,7 @@ def _extract_trial_metadata(
         "task_checksum": task_checksum,
         "config": result["config"],
         "job_id": str(job_id),
-        "reward": (verifier_result or {}).get("reward"),
+        "reward": reward,
         "exception_info": exception_info,
         "started_at": _parse_datetime(result.get("started_at")),
         "ended_at": _parse_datetime(result.get("finished_at")),
@@ -2891,7 +2898,8 @@ def _extract_model_usage(
         logger.debug(f"No agent_result for trial {trial_id}, skipping model usage")
         return None
 
-    model_provider = result.get("agent_info", {}).get("model_info", {}).get("provider", "unknown")
+    # Use `or {}` pattern because `.get()` returns None (not the default) when key exists with None value
+    model_provider = ((result.get("agent_info") or {}).get("model_info") or {}).get("provider", "unknown")
 
     usage_metadata = {
         "trial_id": str(trial_id),
@@ -3524,35 +3532,61 @@ def upload_job_and_trial_records(
             raise ValueError("model_name not provided and could not be auto-detected from trial config")
         logger.info(f"Auto-detected model_name: {model_name}")
 
-    # Auto-detect benchmark name and version from dataset path
-    if not benchmark_name or not benchmark_version_hash:
-        dataset_path = job_config.get("datasets", [{}])[0].get("path", "")
-        if dataset_path:
-            # Extract benchmark name from path
-            path_parts = dataset_path.split("/")
-            for part in path_parts:
-                if "datasets--" in part:
-                    benchmark_name = part.split("--")[-1]
-                    logger.info(f"Auto-detected benchmark_name: {benchmark_name}")
-                    break
+    # Auto-detect benchmark name using shared utility
+    if not benchmark_name:
+        try:
+            # Import shared utility from hpc.launch_utils
+            import sys
+            from pathlib import Path as _Path
+            _hpc_path = _Path(__file__).resolve().parents[2] / "hpc"
+            if str(_hpc_path.parent) not in sys.path:
+                sys.path.insert(0, str(_hpc_path.parent))
+            from hpc.launch_utils import derive_benchmark_from_job_dir
+            benchmark_name = derive_benchmark_from_job_dir(job_dir)
+            logger.info(f"Auto-detected benchmark_name: {benchmark_name}")
+        except ImportError:
+            # Fallback: inline detection if hpc module not available
+            datasets_cfg = job_config.get("datasets", [{}])
+            first_dataset = datasets_cfg[0] if datasets_cfg else {}
+            registry_name = first_dataset.get("name")
+            registry_version = first_dataset.get("version")
+            if registry_name:
+                benchmark_name = f"{registry_name}@{registry_version}" if registry_version else registry_name
+            if not benchmark_name:
+                raise ValueError("benchmark_name not provided and could not be auto-detected from job config")
+            logger.info(f"Auto-detected benchmark_name (fallback): {benchmark_name}")
 
-            # Extract version hash from snapshots path
-            if "snapshots/" in dataset_path:
+    # Auto-detect benchmark version hash from config
+    if not benchmark_version_hash:
+        import hashlib
+        datasets_cfg = job_config.get("datasets", [{}])
+        first_dataset = datasets_cfg[0] if datasets_cfg else {}
+
+        # Method 1: Harbor registry style - generate hash from name+version
+        registry_name = first_dataset.get("name")
+        registry_version = first_dataset.get("version")
+        if registry_name:
+            version_str = f"{registry_name}:{registry_version}" if registry_version else registry_name
+            benchmark_version_hash = hashlib.sha256(version_str.encode()).hexdigest()
+            logger.info(f"Generated benchmark_version_hash from registry info: {benchmark_version_hash[:16]}...")
+
+        # Method 2: HF cache path style - extract from snapshots path
+        if not benchmark_version_hash:
+            dataset_path = first_dataset.get("path", "")
+            if dataset_path and "snapshots/" in dataset_path:
                 snapshot_part = dataset_path.split("snapshots/")[1]
                 raw_hash = snapshot_part.strip("/").split("/")[0]
-                # If it's a 40-char git hash, convert to SHA-256 for consistency
                 if len(raw_hash) == 40:
-                    import hashlib
                     benchmark_version_hash = hashlib.sha256(raw_hash.encode()).hexdigest()
                     logger.info(f"Auto-detected git hash {raw_hash}, converted to SHA-256: {benchmark_version_hash}")
                 else:
                     benchmark_version_hash = raw_hash
-                    logger.info(f"Auto-detected benchmark_version_hash: {benchmark_version_hash}")
+                    logger.info(f"Auto-detected benchmark_version_hash from path: {benchmark_version_hash}")
 
-        if not benchmark_name:
-            raise ValueError("benchmark_name not provided and could not be auto-detected from dataset path")
+        # Method 3: Fallback - generate hash from benchmark_name
         if not benchmark_version_hash:
-            raise ValueError("benchmark_version_hash not provided and could not be auto-detected from dataset path")
+            benchmark_version_hash = hashlib.sha256(benchmark_name.encode()).hexdigest()
+            logger.info(f"Generated benchmark_version_hash from name: {benchmark_version_hash[:16]}...")
 
     # Lookup foreign keys in database
     logger.info("Looking up agent in database...")
@@ -3573,14 +3607,28 @@ def upload_job_and_trial_records(
             logger.info(f"Model '{model_name}' not found, trying stripped name: {hf_name}")
             model = get_model_by_name(hf_name)
 
-        # If still missing, attempt auto-register from HF run_summary.json
+        # If still missing, attempt auto-register from HF
+        # Try run_summary.json first (trained models), fall back to base model registration
         if not model:
             summary = _hf_run_summary(hf_name)
-            print("summary", summary, "hf_name", hf_name)
             if summary:
+                # Use eval job's agent_name as fallback if model's run_summary is missing it
+                if not summary.get("agent_name") and agent_name:
+                    logger.info(f"Model run_summary missing agent_name, using eval agent: {agent_name}")
+                    summary["agent_name"] = agent_name
                 uploaded_model = register_trained_model(summary, forced_update=forced_update)
-                if not uploaded_model or uploaded_model['success'] == False:
-                    raise ValueError(f"Could not register model in database: {uploaded_model}")
+                if not uploaded_model or uploaded_model.get('success') == False:
+                    # If trained model registration fails, fall back to base model registration
+                    logger.warning(f"register_trained_model failed for {hf_name}, trying register_base_model")
+                    uploaded_model = register_base_model(hf_name, forced_update=forced_update)
+                    if not uploaded_model or uploaded_model.get('success') == False:
+                        raise ValueError(f"Could not register model in database: {uploaded_model}")
+            else:
+                # No run_summary.json - this is likely a base model (Qwen, Llama, etc.)
+                logger.info(f"No run_summary.json for {hf_name}, registering as base model")
+                uploaded_model = register_base_model(hf_name, forced_update=forced_update)
+                if not uploaded_model or uploaded_model.get('success') == False:
+                    raise ValueError(f"Could not register base model in database: {uploaded_model}")
             # Re-lookup after attempted registration
             model = get_model_by_name(hf_name)
             if model:
@@ -3865,6 +3913,7 @@ def upload_traces_to_hf(
     episodes: str = "last",
     success_filter: Optional[str] = None,
     verbose: bool = False,
+    include_verifier_output: bool = True,
 ) -> str:
     """
     Upload job trial execution traces to HuggingFace Hub as a conversation dataset.
@@ -3892,6 +3941,7 @@ def upload_traces_to_hf(
         episodes: "all" or "last" - which episodes to export per trial (default: "all")
         success_filter: Filter trials by success ("success", "failure", or None)
         verbose: Enable verbose logging (default: False)
+        include_verifier_output: Include verifier stdout/stderr in traces (default: True)
 
     Returns:
         str: HuggingFace dataset URL (e.g., 'https://huggingface.co/datasets/username/dataset-name')
@@ -3968,6 +4018,7 @@ def upload_traces_to_hf(
             push=False,
             verbose=verbose,
             success_filter=success_filter,
+            include_verifier_output=include_verifier_output,
         )
         logger.info(f"Extracted {len(dataset)} conversation rows from trials")
     except Exception as e:

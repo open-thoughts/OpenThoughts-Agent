@@ -1,4 +1,3 @@
-import math
 import os
 import re
 import json
@@ -10,143 +9,81 @@ from huggingface_hub import snapshot_download
 from huggingface_hub.errors import HFValidationError
 
 from hpc.arguments import JobType, LlamaFactoryArgs, parse_args
+from hpc.cli_utils import normalize_job_type
 from hpc.launch_utils import (
     _merge_dependencies,
-    _parse_optional_int,
-    construct_sbatch_script,
-    extract_template_keys,
+    apply_env_overrides,
     get_job_name,
     launch_sbatch,
     sanitize_repo_component,
+    resolve_job_and_paths,
+    derive_default_job_name,
     update_exp_args,
 )
 from hpc.pretokenize_launch_utils import schedule_pretokenize, should_run_pretokenize
 from hpc.sft_launch_utils import (
     apply_mca_training_template,
     build_training_parameters_link,
+    configure_sft_reporting,
+    construct_sft_sbatch_script,
     ensure_deepspeed_config,
     maybe_apply_cluster_specific_env_overrides,
     maybe_compute_gradient_accumulation,
     apply_data_argument_overrides,
+    submit_sft_job,
 )
 from hpc.wandb_launch_utils import collect_wandb_metadata
 from hpc.hpc import detect_hpc, set_environment
 from hpc.datagen_launch_utils import (
     _prepare_datagen_configuration,
-    _validate_sbatch_templates,
-    launch_datagen_job,
+    launch_datagen_job_v2,
 )
 from hpc.consolidate_launch_utils import (
     launch_consolidate_job,
+)
+from hpc.eval_launch_utils import (
+    launch_eval_job_v2,
+    prepare_eval_configuration,
+    remap_eval_cli_args,
 )
 from scripts.harbor.tasks_parquet_converter import from_parquet
 from database.unified_db.utils import load_supabase_keys
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-def _normalize_job_type(exp_args: dict) -> str:
-    """Return the normalized job_type string with a default of SFT."""
 
-    raw_value = exp_args.get("job_type") or JobType.default_value()
-    return str(raw_value).strip().lower()
+def _extract_agent_name(dataset_name: str) -> str:
+    """Extract agent name from dataset name for run_summary.json.
 
+    Tries in order:
+    1. Extract from traces-<slug> pattern (e.g., "traces-swebench" -> "swebench")
+    2. Extract repo name from HF-style path (e.g., "org/repo-name" -> "repo-name")
+    3. Fall back to the full dataset name
 
-def _apply_env_overrides(exp_args: dict, cli_args_filtered: dict, hpc) -> tuple[dict, str, Optional[Any]]:
-    """Normalize resource overrides, defaults, and job-type specific toggles."""
+    Returns:
+        A non-empty agent name string (never None)
+    """
+    if not dataset_name:
+        return "unknown"
 
-    hpc_name = str(getattr(hpc, "name", "") or "").lower()
-    if hpc_name == "perlmutter":
-        requested = cli_args_filtered.get("gpus_per_node") or exp_args.get("gpus_per_node")
-        if requested not in (None, "", "None"):
-            requested_int = _parse_optional_int(requested, "--gpus_per_node")
-            if requested_int is not None and requested_int != 4:
-                raise ValueError("Perlmutter requires 4 GPUs per node.")
-        exp_args = update_exp_args(exp_args, {"gpus_per_node": 4})
+    # Try traces-<slug> pattern first
+    agent = sanitize_repo_component(dataset_name)
+    if agent:
+        return agent
 
-    gpus_per_node_norm = _parse_optional_int(exp_args.get("gpus_per_node"), "--gpus_per_node") or 0
-    exp_args = update_exp_args(exp_args, {"gpus_per_node": gpus_per_node_norm})
+    # Extract repo name from HF-style path (org/repo-name -> repo-name)
+    if "/" in dataset_name:
+        repo_part = dataset_name.split("/")[-1].strip()
+        if repo_part:
+            return repo_part
 
-    cpus_per_node_norm = _parse_optional_int(exp_args.get("cpus_per_node"), "--cpus_per_node")
-    if cpus_per_node_norm is not None:
-        exp_args = update_exp_args(exp_args, {"cpus_per_node": cpus_per_node_norm})
-
-    cpus_per_gpu_norm = _parse_optional_int(exp_args.get("cpus_per_gpu"), "--cpus_per_gpu")
-    if cpus_per_gpu_norm is not None:
-        exp_args = update_exp_args(exp_args, {"cpus_per_gpu": cpus_per_gpu_norm})
-
-    cpus_per_node_cli_norm = _parse_optional_int(cli_args_filtered.get("cpus_per_node"), "--cpus_per_node")
-    cpus_per_gpu_cli_norm = _parse_optional_int(cli_args_filtered.get("cpus_per_gpu"), "--cpus_per_gpu")
-
-    if cpus_per_gpu_cli_norm is not None:
-        if cpus_per_node_cli_norm is not None:
-            raise ValueError("Provide only one of --cpus_per_node or --cpus_per_gpu, not both.")
-        if gpus_per_node_norm <= 0:
-            raise ValueError("--cpus_per_gpu requires --gpus_per_node to be greater than zero.")
-        cpus_per_node_norm = cpus_per_gpu_cli_norm * gpus_per_node_norm
-        exp_args = update_exp_args(
-            exp_args,
-            {
-                "cpus_per_gpu": cpus_per_gpu_cli_norm,
-                "cpus_per_node": cpus_per_node_norm,
-            },
-        )
-        cpus_per_gpu_norm = cpus_per_gpu_cli_norm
-    else:
-        if cpus_per_node_norm is None and cpus_per_gpu_norm is not None and gpus_per_node_norm > 0:
-            cpus_per_node_norm = cpus_per_gpu_norm * gpus_per_node_norm
-            exp_args = update_exp_args(exp_args, {"cpus_per_node": cpus_per_node_norm})
-        elif (
-            cpus_per_node_norm is not None
-            and (cpus_per_gpu_norm is None or cpus_per_gpu_norm == 0)
-            and gpus_per_node_norm > 0
-        ):
-            derived_cpus_per_gpu = max(1, math.ceil(cpus_per_node_norm / gpus_per_node_norm))
-            exp_args = update_exp_args(exp_args, {"cpus_per_gpu": derived_cpus_per_gpu})
-            cpus_per_gpu_norm = derived_cpus_per_gpu
-
-    job_creator = str(exp_args.get("job_creator", "mlfoundations-dev") or "mlfoundations-dev").strip()
-    if not job_creator:
-        raise ValueError("--job_creator must be a non-empty string.")
-    if len(job_creator) > 96:
-        raise ValueError("--job_creator must be 96 characters or fewer.")
-    exp_args = update_exp_args(exp_args, {"job_creator": job_creator})
-
-    if exp_args.get("time_limit") in (None, "",):
-        default_time = os.path.expandvars(os.environ.get("DEFAULT_TIME_LIMIT", "24:00:00"))
-        exp_args = update_exp_args(exp_args, {"time_limit": default_time})
-        print(f"Using default time_limit: {default_time}")
-
-    job_type = _normalize_job_type(exp_args)
-    exp_args = update_exp_args(exp_args, {"job_type": job_type})
-
-    if exp_args.get("use_mca") and job_type == JobType.SFT.value:
-        job_type = JobType.SFT_MCA.value
-        exp_args = update_exp_args(exp_args, {"job_type": job_type})
-
-    if job_type == JobType.SFT_MCA.value:
-        exp_args = update_exp_args(exp_args, {"use_mca": True})
-        exp_args = apply_mca_training_template(
-            exp_args,
-            hpc,
-            update_exp_args_fn=update_exp_args,
-        )
-
-    exp_args = maybe_apply_cluster_specific_env_overrides(exp_args, hpc)
-
-    datagen_runtime = None
-    if job_type == JobType.DATAGEN.value or exp_args.get("datagen_script"):
-        datagen_runtime = _prepare_datagen_configuration(exp_args)
-
-    return exp_args, job_type, datagen_runtime
-
-
-def _extract_agent_name(dataset_name: str):
-    return sanitize_repo_component(dataset_name)
+    # Fall back to full dataset name
+    return dataset_name.strip() or "unknown"
 
 
 def write_run_summary(exp_args, train_config):
-    job_type = _normalize_job_type(exp_args)
-    if job_type not in (JobType.SFT.value, JobType.SFT_MCA.value, JobType.RL.value):
+    job_type = normalize_job_type(exp_args)
+    if job_type is None or job_type not in (JobType.SFT.value, JobType.SFT_MCA.value, JobType.RL.value):
         return
 
     output_dir = train_config.get("output_dir") or exp_args.get("output_dir")
@@ -156,7 +93,8 @@ def write_run_summary(exp_args, train_config):
     os.makedirs(output_dir, exist_ok=True)
 
     dataset_name = train_config.get("dataset") or exp_args.get("dataset")
-    agent_name = _extract_agent_name(dataset_name) if dataset_name else None
+    # Use explicit trace_agent_name if provided, otherwise derive from dataset
+    agent_name = exp_args.get("trace_agent_name") or _extract_agent_name(dataset_name)
 
     hub_model_id = train_config.get("hub_model_id") or exp_args.get("hub_model_id")
     training_parameters_link = build_training_parameters_link(hub_model_id)
@@ -170,7 +108,8 @@ def write_run_summary(exp_args, train_config):
         "training_start": training_start,
         "training_end": training_end,
         "created_by": exp_args.get("job_creator", "DCAgent"),
-        "base_model_name": train_config.get("model_name_or_path") or exp_args.get("model_name_or_path"),
+        # Use original model name (e.g., "qwen/qwen3-8B") not resolved HF snapshot path
+        "base_model_name": exp_args.get("_original_model_name_or_path") or train_config.get("model_name_or_path") or exp_args.get("model_name_or_path"),
         "dataset_name": dataset_name,
         "training_type": training_type,
         "training_parameters": training_parameters_link,
@@ -333,19 +272,6 @@ def _configure_output_and_logging(base_config: dict, exp_args: dict, checkpoints
     os.environ["WANDB_NAME"] = str(base_config["run_name"]) if base_config.get("run_name") else exp_args["job_name"]
     return base_config
 
-
-def _configure_reporting(base_config: dict, exp_args: dict, model_path: str) -> dict:
-    if exp_args["internet_node"]:
-        base_config["report_to"] = "wandb"
-        base_config["push_to_hub"] = exp_args.get("push_to_hub", True)
-    else:
-        base_config.pop("report_to", None)
-        base_config["push_to_hub"] = bool(exp_args.get("push_to_hub", False))
-        base_config["model_name_or_path"] = model_path
-        base_config["datasets_cache_dir"] = os.environ["HF_HUB_CACHE"]
-    return base_config
-
-
 def _maybe_assign_tokenized_path(base_config: dict, exp_args: dict, dataset_entries: list[str]) -> None:
     if base_config.get("tokenized_path") is not None or not should_run_pretokenize(exp_args):
         return
@@ -376,8 +302,13 @@ def _write_train_config(configs_dir: str, job_name: str, base_config: dict) -> s
 
 
 def construct_config_yaml(exp_args):
-    configs_dir = os.path.join(exp_args["experiments_dir"], "configs")
-    os.makedirs(configs_dir, exist_ok=True)
+    # Legacy SFT path - auto-derive job_name if not provided
+    job_setup = resolve_job_and_paths(
+        exp_args,
+        job_type_label="SFT",
+        derive_job_name_fn=derive_default_job_name,
+    )
+    configs_dir = str(job_setup.paths.configs)
 
     train_config_path = exp_args.get("train_config_path")
     checkpoints_dir = exp_args.get("checkpoints_dir")
@@ -401,6 +332,11 @@ def construct_config_yaml(exp_args):
         base_config["dataset_dir"] = "ONLINE"
 
     dataset_entries = _extract_dataset_entries(base_config.get("dataset"))
+
+    # Preserve original model name before HF resolution (for database registration)
+    original_model_name = base_config.get("model_name_or_path")
+    exp_args["_original_model_name_or_path"] = original_model_name
+
     artifacts = _materialize_dataset_and_model(base_config, exp_args, dataset_entries, datasets_dir)
 
     hub_model_id = base_config.get("hub_model_id")
@@ -417,7 +353,7 @@ def construct_config_yaml(exp_args):
         if artifacts.dataset_paths:
             base_config["dataset"] = ",".join(artifacts.dataset_paths)
 
-    base_config = _configure_reporting(base_config, exp_args, artifacts.model_path)
+    base_config = configure_sft_reporting(base_config, exp_args, artifacts.model_path)
     base_config = _configure_output_and_logging(base_config, exp_args, checkpoints_dir)
     base_config = maybe_compute_gradient_accumulation(base_config, exp_args)
     _maybe_assign_tokenized_path(base_config, exp_args, dataset_entries)
@@ -434,8 +370,13 @@ def submit_job(
     exp_args=None,
     dependency=None,
 ):
-    exp_args["logs_dir"] = os.path.join(exp_args["experiments_dir"], "logs")
-    os.makedirs(exp_args["logs_dir"], exist_ok=True)
+    # Legacy SFT path - auto-derive job_name if not provided
+    job_setup = resolve_job_and_paths(
+        exp_args or {},
+        job_type_label="SFT",
+        derive_job_name_fn=derive_default_job_name,
+    )
+    exp_args["logs_dir"] = str(job_setup.paths.logs)
 
     base_dependency = _merge_dependencies(exp_args.get("dependency"), dependency)
     current_dependency = base_dependency
@@ -465,49 +406,22 @@ def display_args(exp_args, name):
         print(f"{key}: {value}")
     print()
 
-def pre_validation(exp_args, cli_args):
-
-    # Add arguments to experiment from train config file
-    if "train_config_path" in cli_args and os.path.exists(
-        cli_args["train_config_path"]
-    ):
-        pass
-    elif "train_config_path" in cli_args:
-        raise FileNotFoundError(
-            f"Train config file {cli_args['train_config_path']} does not exist."
-        )
-
-    # Fill in sbatch template
-    if "train_sbatch_path" in exp_args and os.path.exists(
-        exp_args["train_sbatch_path"]
-    ):
-        template_keys = extract_template_keys(exp_args["train_sbatch_path"])
-        allowlist = {"train_config_path_out", "accelerate_config_block"}
-        for key in template_keys:
-            if (
-                key not in exp_args
-                and key not in cli_args
-                and key not in allowlist
-            ):
-                raise ValueError(
-                    f"Template key {key} not found in experiment arguments or cli arguments."
-                )
-    elif "train_sbatch_path" in exp_args:
-        raise FileNotFoundError(
-            f"Train sbatch file {exp_args['train_sbatch_path']} does not exist."
-        )
-
 def main():
     load_supabase_keys()
     # this is where defaults are stored for experiments_dir and deepspeed
     cli_args = parse_args()
+
+    # Apply job-type-specific argument remapping
+    job_type_raw = cli_args.get("job_type", "").lower()
+    if job_type_raw == "eval":
+        cli_args = remap_eval_cli_args(cli_args)
+
     # Storing all the arguments in a dictionary that we add to in order of precedence
     exp_args = dict()
 
     # Add arguments to experiment from automatically detecting HPC
     hpc = detect_hpc()
     set_environment(hpc)
-    _validate_sbatch_templates(hpc)
 
     # Add arguments and validate
     exp_args = update_exp_args(exp_args, hpc.model_dump())
@@ -517,12 +431,25 @@ def main():
     if explicit_cli_keys:
         exp_args["_explicit_cli_keys"] = list(explicit_cli_keys)
 
-    exp_args, job_type, _ = _apply_env_overrides(exp_args, cli_args_filtered, hpc)
+    exp_args, job_type, _ = apply_env_overrides(
+        exp_args,
+        cli_args_filtered,
+        hpc,
+        apply_mca_template_fn=apply_mca_training_template,
+        apply_cluster_overrides_fn=maybe_apply_cluster_specific_env_overrides,
+        prepare_datagen_fn=_prepare_datagen_configuration,
+        prepare_eval_fn=prepare_eval_configuration,
+    )
 
     # Job name
     if "job_name" not in exp_args:
         exp_args["job_name"] = get_job_name(cli_args)
     print(f"Job name: {exp_args['job_name']}")
+
+    # Experiments directory - set default if not specified
+    # This must be set early as many functions depend on it
+    if not exp_args.get("experiments_dir"):
+        exp_args["experiments_dir"] = os.path.join("experiments", exp_args["job_name"])
 
     if job_type == JobType.CONSOLIDATE.value:
         launch_consolidate_job(
@@ -535,61 +462,48 @@ def main():
 
     # Check if this is a data generation job
     if job_type == JobType.DATAGEN.value:
-        launch_datagen_job(exp_args, hpc)
+        launch_datagen_job_v2(exp_args, hpc)
         return  # Skip normal training flow
+
+    if job_type == JobType.EVAL.value:
+        launch_eval_job_v2(exp_args, hpc)
+        return
 
     if job_type == JobType.PRETOKENIZE.value:
         schedule_pretokenize(
             exp_args,
             update_exp_args_fn=update_exp_args,
             construct_config_yaml_fn=construct_config_yaml,
-            construct_sbatch_script_fn=construct_sbatch_script,
+            construct_sbatch_script_fn=lambda args: construct_sft_sbatch_script(args, hpc),
             submit_job_fn=submit_job,
         )
         return
 
-    # Pre-validation
-    pre_validation(exp_args, cli_args)
-
-    # Construct the config yaml
-    train_config, train_config_path_out = construct_config_yaml(exp_args)
-    exp_args = update_exp_args(exp_args, train_config)
-    exp_args = update_exp_args(
-        exp_args, {"train_config_path_out": train_config_path_out}
-    )
-    write_run_summary(exp_args, train_config)
-
-    # Construct the sbatch script
-    train_sbatch_path_out = construct_sbatch_script(exp_args)
-    exp_args = update_exp_args(
-        exp_args, {"train_sbatch_path_out": train_sbatch_path_out}
-    )
-
-    display_args(exp_args, "Train")
-    if exp_args.get("dry_run", False):
-        print(
-            "DRY RUN: Job would be submitted with the above parameters, but --dry_run flag was set."
+    if job_type in (JobType.SFT.value, JobType.SFT_MCA.value):
+        submit_sft_job(
+            exp_args,
+            cli_args,
+            hpc,
+            construct_config_yaml_fn=construct_config_yaml,
+            update_exp_args_fn=update_exp_args,
+            write_run_summary_fn=write_run_summary,
+            display_args_fn=display_args,
+            submit_job_fn=submit_job,
+            should_run_pretokenize_fn=should_run_pretokenize,
+            schedule_pretokenize_fn=schedule_pretokenize,
         )
-    else:
-        dependency = None
-        wants_pretokenize = should_run_pretokenize(exp_args, job_type)
-        if wants_pretokenize:
-            if os.path.exists(exp_args["tokenized_path"]):
-                print(f"Tokenized directory {exp_args['tokenized_path']} already exists, skipping pretokenization job submission")
-            else:
-                pretok_job_id = schedule_pretokenize(
-                    exp_args,
-                    update_exp_args_fn=update_exp_args,
-                    construct_config_yaml_fn=construct_config_yaml,
-                    construct_sbatch_script_fn=construct_sbatch_script,
-                    submit_job_fn=submit_job,
-                )
-                dependency = f"afterok:{pretok_job_id}"
+        return
 
-        train_job_id = submit_job(
-            exp_args=exp_args,
-            dependency=dependency,
-        )
+    if job_type == JobType.RL.value:
+        from hpc.rl_launch_utils import launch_rl_job
+        launch_rl_job(exp_args, hpc)
+        return
+
+    # If we reach here, the job type is not implemented or invalid
+    raise NotImplementedError(
+        f"Job type '{job_type}' is not yet implemented or is invalid. "
+        f"Supported job types: {', '.join(jt.value for jt in JobType)}"
+    )
 
 if __name__ == "__main__":
     main()

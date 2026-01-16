@@ -34,7 +34,7 @@ Each experiment automatically measures:
 ## Quick Start - Run One Experiment
 
 ```bash
-cd /scratch/10000/eguha3/ot-agent/data/vllm_experiments
+cd ${DCAGENT_DIR}/data/vllm_experiments
 
 # ⚠️ IMPORTANT: Update model path first!
 # Edit configs/focused/config_00_baseline_conservative_9b6f4b39.json
@@ -219,5 +219,5 @@ Each experiment produces a JSON file with all metrics:
 ---
 
 **Status**: ✅ Ready to launch
-**Location**: `/scratch/10000/eguha3/ot-agent/data/vllm_experiments/`
+**Location**: `${DCAGENT_DIR}/data/vllm_experiments/`
 **Command**: `sbatch run_9b6f4b39_head.sbatch` (single) or `./launch_all.sh` (all)

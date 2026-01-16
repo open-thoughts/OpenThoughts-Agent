@@ -108,8 +108,6 @@ Provide a score from 1-100 and brief reasoning.""",
         batch=False,
         generation_params={"temperature": 0.3},
         backend_params={
-            "max_requests_per_minute": 500,
-            "max_tokens_per_minute": 100_000,
             "max_retries": 3
         }
     )

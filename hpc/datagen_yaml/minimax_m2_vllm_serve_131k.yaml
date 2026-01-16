@@ -5,7 +5,7 @@ engine:
   healthcheck_interval: 300
   vllm_local: {}
 backend:
-  type: vllm
+  type: ray
   wait_for_endpoint: true
   tensor_parallel_size: 4
   pipeline_parallel_size: 2

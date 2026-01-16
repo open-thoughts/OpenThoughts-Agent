@@ -104,8 +104,8 @@ Utility entrypoints that support data generation, trace analysis, Harbor uploads
   ```bash
   python scripts/ray/wait_for_cluster.py --address ${RAY_ADDRESS} --expected-gpus 8 --expected-nodes 2 --timeout 900
   ```
-- `vllm/start_vllm_ray_controller.py` & `vllm/start_vllm_cluster.py` – bring up a vLLM OpenAI-compatible endpoint on top of Ray; pair with `vllm/wait_for_endpoint.py` to poll readiness.  
-  - Note: on some SLURM clusters, Ray's default `CUDA_VISIBLE_DEVICES` rewriting can cause vLLM to crash with `CUDA error: invalid device ordinal`; `start_vllm_ray_controller.py` sets `RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1` by default (override by exporting it yourself).  
+- `vllm/start_vllm_ray_controller.py` – bring up a vLLM OpenAI-compatible endpoint on top of Ray; pair with `vllm/wait_for_endpoint.py` to poll readiness.
+  - Note: Ray's default `CUDA_VISIBLE_DEVICES` rewriting can cause vLLM to crash with `CUDA error: invalid device ordinal`. The universal sbatch templates (`hpc/sbatch_*/universal_*.sbatch`) set `RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1` before the Ray cluster starts.  
   ```bash
   python scripts/vllm/start_vllm_ray_controller.py --model /checkpoint/qwen --ray-address auto --tensor-parallel-size 2
   ```

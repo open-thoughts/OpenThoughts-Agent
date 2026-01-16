@@ -808,6 +808,29 @@ def upsample_tasks_directory(
     return str(temp_dir)
 
 
+def upsample_list(items: List[Any], target_count: int) -> List[Any]:
+    """
+    Upsample a list by repeating items until reaching target count.
+
+    Args:
+        items: List of items to upsample
+        target_count: Target number of items after upsampling
+
+    Returns:
+        List of upsampled items (length = target_count)
+    """
+    if len(items) >= target_count:
+        return items[:target_count]
+
+    upsampled = []
+    idx = 0
+    while len(upsampled) < target_count:
+        upsampled.append(items[idx % len(items)])
+        idx += 1
+
+    return upsampled
+
+
 def clean_empty_structs(dataset: Dataset) -> Dataset:
     """
     Automatically detect and remove empty struct columns from a HuggingFace dataset.
@@ -1674,7 +1697,7 @@ def extract_hdf5_to_task_paths(
     output_dir: Optional[str] = None,
     task_indices: Optional[List[int]] = None,
     max_workers: Optional[int] = None
-) -> List[str]:
+) -> str:
     """
     Extract tasks from an HDF5 file back to individual task directories in parallel.
 
@@ -1685,7 +1708,7 @@ def extract_hdf5_to_task_paths(
         max_workers: Maximum number of parallel workers. If None, uses os.cpu_count().
 
     Returns:
-        List[str]: Paths to extracted task directories
+        str: Path to the parent directory containing extracted task directories
     """
     try:
         import h5py
@@ -1729,7 +1752,7 @@ def extract_hdf5_to_task_paths(
                 print(f"Error extracting {task_group_name}: {e}")
 
     print(f"Successfully extracted {len(extracted_paths)} tasks")
-    return extracted_paths
+    return str(output_path)
 
 
 def subsample_tasks_hdf5(
@@ -1988,6 +2011,109 @@ def generate_tasks_from_questions_hdf5(
                 )
 
     print(f"Successfully generated {len(questions)} tasks in HDF5 format")
+    return str(output_path)
+
+
+@gcs_cache()
+def generate_tasks_to_hdf5(
+    instructions: List[str],
+    metadata: Optional[List[Dict[str, Any]]] = None,
+    solutions: Optional[List[str]] = None,
+    test_sh: Optional[List[str]] = None,
+    test_py: Optional[List[str]] = None,
+    task_toml: Optional[List[str]] = None,
+    dockerfiles: Optional[List[str]] = None,
+    dataset_prefix: str = "task",
+    output_path: Optional[str] = None,
+) -> str:
+    """
+    Generate tasks from separate lists directly into HDF5 format.
+
+    Args:
+        instructions: List of task instructions/problem statements (required)
+        metadata: List of task metadata dicts (optional, same length as instructions)
+        solutions: List of solution script contents (optional)
+        test_sh: List of test.sh contents (optional)
+        test_py: List of test_state.py contents (optional)
+        task_toml: List of task.toml contents (optional)
+        dockerfiles: List of Dockerfile contents (optional)
+        dataset_prefix: Prefix for task naming
+        output_path: Path for output HDF5 file. If None, creates temp file.
+
+    Returns:
+        str: Path to created HDF5 file
+    """
+    try:
+        import h5py
+    except ImportError:
+        raise ImportError("h5py is required. Install with: pip install h5py")
+
+    n = len(instructions)
+
+    # Helper to get item from list or None
+    def get_item(lst, idx):
+        return lst[idx] if lst is not None and idx < len(lst) else None
+
+    if output_path is None:
+        fd, output_path = tempfile.mkstemp(suffix=".h5", prefix=f"{dataset_prefix}_tasks_")
+        os.close(fd)
+
+    output_path = Path(output_path)
+    print(f"Generating {n} tasks directly into HDF5: {output_path}")
+
+    with h5py.File(output_path, 'w') as h5file:
+        for i in tqdm(range(n), desc="Generating tasks to HDF5"):
+            instruction_content = instructions[i]
+            metadata_content = get_item(metadata, i)
+            solution_content = get_item(solutions, i)
+            test_sh_content = get_item(test_sh, i)
+            test_py_content = get_item(test_py, i)
+            task_toml_content = get_item(task_toml, i)
+            dockerfile_content = get_item(dockerfiles, i)
+
+            # Create group for this task
+            task_name = f"{dataset_prefix}-{i:04d}"
+            task_group = h5file.create_group(f"task_{i:04d}")
+
+            # Store task metadata as attributes
+            task_group.attrs['task_name'] = task_name
+            task_group.attrs['task_id'] = i
+            task_group.attrs['dataset_prefix'] = dataset_prefix
+
+            # Helper function to create dataset
+            def create_text_dataset(path, content):
+                if content is not None:
+                    task_group.create_dataset(
+                        path,
+                        data=content,
+                        dtype=h5py.string_dtype(encoding='utf-8')
+                    )
+
+            # Add all files
+            create_text_dataset("instruction.md", instruction_content)
+            create_text_dataset("task.toml", task_toml_content)
+            create_text_dataset("environment/Dockerfile", dockerfile_content)
+
+            # Add metadata.json in workspace
+            if metadata_content is not None:
+                if isinstance(metadata_content, (dict, list)):
+                    metadata_str = json.dumps(metadata_content, indent=2)
+                else:
+                    metadata_str = str(metadata_content)
+                create_text_dataset("environment/workspace/metadata.json", metadata_str)
+
+            # Add solution if provided
+            if solution_content is not None:
+                create_text_dataset("solution/solve.sh", solution_content)
+
+            # Add tests if provided
+            if test_sh_content is not None:
+                create_text_dataset("tests/test.sh", test_sh_content)
+
+            if test_py_content is not None:
+                create_text_dataset("tests/test_state.py", test_py_content)
+
+    print(f"Successfully generated {n} tasks in HDF5 format")
     return str(output_path)
 
 

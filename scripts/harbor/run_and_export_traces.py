@@ -645,7 +645,6 @@ def only_export_traces(
     )
     return _finalize_trace_dataset(ds)
 
-
 _BASH_JOB_CONTROL_WARNING = (
     "bash: initialize_job_control: no job control in background: Bad file descriptor"
 )

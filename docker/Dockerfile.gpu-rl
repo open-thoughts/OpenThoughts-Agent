@@ -1,0 +1,97 @@
+# syntax=docker/dockerfile:1
+#
+# Docker image for RL training with SkyRL
+#
+# This image includes a separate RL environment due to dependency conflicts:
+#   - RL (SkyRL): torch==2.8.0, vllm==0.11.0
+#   - datagen:    torch==2.9.0, vllm==0.11.2
+#
+# The RL environment is installed at /opt/openthoughts/envs/rl
+# SkyRL is cloned to /opt/skyrl
+#
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    ca-certificates \
+    build-essential \
+    python3 \
+    python3-pip \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast package management
+RUN pip3 install --upgrade pip uv
+
+# Create base venv for project infrastructure
+RUN uv venv --python 3.12 /opt/openthoughts/.venv
+ENV VIRTUAL_ENV=/opt/openthoughts/.venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+WORKDIR /opt/openthoughts
+COPY pyproject.toml ./
+COPY README.md ./
+COPY eval ./eval
+COPY hpc ./hpc
+COPY scripts ./scripts
+COPY data ./data
+COPY database ./database
+COPY sft ./sft
+COPY rl ./rl
+COPY assets ./assets
+COPY build_support.py ./
+COPY setup.py ./
+COPY CLAUDE.md ./
+COPY CONTRIBUTING.md ./
+COPY LICENSE.txt ./
+COPY docker ./docker
+COPY chat_templates ./chat_templates
+
+# Install base project (without conflicting ML dependencies)
+ENV UV_HTTP_TIMEOUT=300
+RUN . /opt/openthoughts/.venv/bin/activate && \
+    uv pip install -e ".[cloud]" && \
+    uv pip install pyyaml jinja2
+
+# =============================================================================
+# RL Environment Setup (separate venv due to dependency conflicts)
+# =============================================================================
+ENV RL_ENV_DIR=/opt/openthoughts/envs/rl
+
+# Create RL environment with Python 3.12
+RUN uv venv --python 3.12 $RL_ENV_DIR
+
+# Install RL dependencies (SkyRL with vllm from penfever fork)
+RUN . $RL_ENV_DIR/bin/activate && \
+    uv pip install "skyrl[vllm] @ git+https://github.com/penfever/SkyRL.git@penfever/working" && \
+    uv pip install Jinja2 pyyaml ray[default] && \
+    uv pip install -e /opt/openthoughts
+
+# =============================================================================
+# SkyRL Repository (for examples/terminal_bench entrypoints)
+# =============================================================================
+ENV SKYRL_HOME=/opt/skyrl
+ENV SKYRL_BRANCH=penfever/working
+
+RUN git clone --branch $SKYRL_BRANCH https://github.com/penfever/SkyRL.git $SKYRL_HOME
+
+# Set up PYTHONPATH for SkyRL
+ENV PYTHONPATH="$SKYRL_HOME/skyrl-train:/opt/openthoughts"
+
+# =============================================================================
+# Environment Configuration
+# =============================================================================
+# Set DCFT to project root for HPC utilities
+ENV DCFT=/opt/openthoughts
+ENV DCFT_RL_ENV=$RL_ENV_DIR
+
+# Increase file descriptor limit
+RUN echo "ulimit -n 65535" >> /etc/profile.d/openthoughts-ulimit.sh
+
+# Create activation helper
+RUN echo '#!/bin/bash\nsource /opt/openthoughts/envs/rl/bin/activate\nexec "$@"' > /usr/local/bin/rl-env && \
+    chmod +x /usr/local/bin/rl-env
+
+CMD ["bash"]

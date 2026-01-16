@@ -47,8 +47,7 @@ def generate_gpt_responses(questions: List[str], model: str = "gpt-5-nano-2025-0
         dataset=dataset,
         model=model,
         map_type="chat",
-        map_config=map_config,
-        max_requests_per_minute=500
+        map_config=map_config
     )
     
     # Extract responses

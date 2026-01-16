@@ -147,8 +147,6 @@ class BaseDataGenerator(ABC):
         config_path = getattr(args, "_datagen_config_path", getattr(args, "engine_config", None))
         if config_path:
             metadata.setdefault("engine_config_path", config_path)
-        if getattr(args, "trace_eval_only", False):
-            metadata.setdefault("trace_eval_only", True)
         request = GenerationRequest(
             engine_type=engine_value,
             engine_kwargs=engine_kwargs,
@@ -904,10 +902,15 @@ class BaseDataGenerator(ABC):
                 trace_jobs_dir = (trace_config_path.parent / config_jobs_dir).resolve()
         trace_jobs_dir.mkdir(parents=True, exist_ok=True)
 
-        trace_eval_only = bool(
-            metadata.get("trace_eval_only")
+        trace_eval_only_requested = bool(
+            metadata.pop("trace_eval_only", False)
             or getattr(args, "trace_eval_only", False)
         )
+        if trace_eval_only_requested:
+            self.logger.warning(
+                "trace_eval_only is deprecated. Launch eval workloads via "
+                "`python -m hpc.launch --job_type eval` instead."
+            )
 
         trace_n_concurrent = (
             metadata.get("trace_n_concurrent")
@@ -1130,31 +1133,8 @@ class BaseDataGenerator(ABC):
                 verifier_timeout_sec=getattr(args, "trace_verifier_timeout_sec", None),
                 disable_verification=disable_verification,
             )
-        except NotImplementedError as exc:
-            if trace_eval_only:
-                self.logger.warning(
-                    "Trace export not supported for agent %s: %s. "
-                    "Continuing in eval-only mode with Harbor outputs only.",
-                    trace_agent_name,
-                    exc,
-                )
-                trace_dataset = None
-            else:
-                raise
-
-        if trace_eval_only:
-            request.metadata.setdefault("trace_model", trace_model_for_dispatch)
-            if served_model:
-                request.metadata.setdefault("trace_model_served", served_model)
-            request.metadata.setdefault("trace_eval_only", True)
-            dataset_location = job_dir
-            artifacts = dict(base_artifacts)
-            return GenerationResult(
-                dataset_path=str(dataset_location),
-                status=GenerationStatus.SUCCESS,
-                uploaded_repo=None,
-                artifacts=artifacts,
-            )
+        except NotImplementedError:
+            raise
 
         if trace_dataset is None:
             raise GenerationError("Trace export returned no dataset")

@@ -84,15 +84,15 @@ Use `--dry_run` to inspect generated sbatch scripts without submitting a job.
 ## Datagen Jobs
 Datagen jobs build datasets (tasks, traces, or both). Key flags:
 - `--datagen_script`: generator entry point (e.g. `data/nl2bash/generate_abstract.py`).
+- `--datagen_config`: YAML config describing the inference engine and backend (e.g., `hpc/datagen_yaml/<model>_vllm_serve.yaml`).
 - `--datagen_target_repo`: Hugging Face repo for uploading generated tasks.
-- `--datagen_engine`: inference backend (`openai`, `anthropic`, `vllm_local`, `none`).
 - `--datagen_extra_args`: extra CLI switches forwarded to the generator.
 
 Optional trace generation:
 - `--enable_trace_gen` / `--trace_script` / `--trace_target_repo`: analogous settings for trace export.
 - `--trace_engine`, `--trace_backend`, `--trace_harbor_config`: configure the inference stack and Harbor job definition used during trace collection.
 - `--trace_model`, `--trace_agent_name`, `--trace_agent_kwargs`, `--trace_n_concurrent`, `--trace_env`: override fields from the Harbor YAML without editing the file.
-- `--trace_input_path`: reuse an existing tasks dataset instead of regenerating tasks.
+- `--tasks_input_path`: reuse an existing tasks dataset instead of regenerating tasks.
 - `--chunk_size`: optionally split trace generation into parallel chunks when the task count exceeds the given size; each chunk is launched as its own SLURM job with an incremented `--trace_target_repo`.
 
 Example (tasks + traces using a vLLM endpoint):
@@ -100,15 +100,16 @@ Example (tasks + traces using a vLLM endpoint):
 python -m hpc.launch \
   --job_type datagen \
   --datagen_script data/nl2bash/generate_abstract.py \
+  --datagen_config hpc/datagen_yaml/qwen3_coder_30b_a3b_vllm_serve.yaml \
   --datagen_target_repo my-org/nl2bash-tasks \
-  --datagen_engine vllm_local \
-  --datagen_extra_args "--stage both --limit 200" \
+  --enable_task_gen True \
+  --enable_trace_gen True \
   --trace_target_repo my-org/nl2bash-traces \
   --trace_harbor_config path/to/harbor_config.yaml \
   --experiments_dir "$DCFT/experiments" \
   --time_limit 12:00:00
 ```
-Adjust `--datagen_extra_args` to pass dataset-specific switches such as sampling bounds or input paths.
+Use `--datagen_extra_args` to pass dataset-specific switches such as `--limit` or `--no-upload`.
 
 ## SFT Jobs
 Training runs rely on llama-factory configs stored under `sft/hp_settings`. Supply the path to a YAML alongside optional overrides:

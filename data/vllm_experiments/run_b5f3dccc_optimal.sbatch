@@ -5,13 +5,13 @@
 #SBATCH --ntasks-per-node 1
 #SBATCH --cpus-per-task=64
 #SBATCH --account CCR24067
-#SBATCH --output=/scratch/10000/eguha3/ot-agent/data/vllm_experiments/logs/vllm_b5f3dccc_%j.out
+#SBATCH --output=${DCAGENT_DIR}/data/vllm_experiments/logs/vllm_b5f3dccc_%j.out
 #SBATCH --job-name=vllm_optimal
 
 set -eo pipefail
 
-EXPERIMENTS_DIR="/scratch/10000/eguha3/ot-agent/data/vllm_experiments"
-CONFIG_FILE="/scratch/10000/eguha3/ot-agent/data/vllm_experiments/configs/focused/config_22_optimal.json"
+EXPERIMENTS_DIR="${DCAGENT_DIR}/data/vllm_experiments"
+CONFIG_FILE="${DCAGENT_DIR}/data/vllm_experiments/configs/focused/config_22_optimal.json"
 CONFIG_HASH="b5f3dccc"
 CONFIG_NAME="optimal"
 

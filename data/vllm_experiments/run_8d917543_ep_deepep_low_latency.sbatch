@@ -5,13 +5,13 @@
 #SBATCH --ntasks-per-node 1
 #SBATCH --cpus-per-task=64
 #SBATCH --account CCR24067
-#SBATCH --output=/scratch/10000/eguha3/ot-agent/data/vllm_experiments/logs/vllm_8d917543_%j.out
+#SBATCH --output=${DCAGENT_DIR}/data/vllm_experiments/logs/vllm_8d917543_%j.out
 #SBATCH --job-name=vllm_ep_deepep_low_latency
 
 set -eo pipefail
 
-EXPERIMENTS_DIR="/scratch/10000/eguha3/ot-agent/data/vllm_experiments"
-CONFIG_FILE="/scratch/10000/eguha3/ot-agent/data/vllm_experiments/configs/focused/config_12_ep_deepep_low_latency_6c70d821.json"
+EXPERIMENTS_DIR="${DCAGENT_DIR}/data/vllm_experiments"
+CONFIG_FILE="${DCAGENT_DIR}/data/vllm_experiments/configs/focused/config_12_ep_deepep_low_latency_6c70d821.json"
 CONFIG_HASH="8d917543"
 CONFIG_NAME="ep_deepep_low_latency"
 

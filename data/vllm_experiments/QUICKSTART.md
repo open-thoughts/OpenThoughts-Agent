@@ -13,7 +13,7 @@ Get your vLLM experiments running in 5 minutes.
 ### 1. One-Command Setup (Recommended)
 
 ```bash
-cd /scratch/10000/eguha3/ot-agent/data/vllm_experiments
+cd ${DCAGENT_DIR}/data/vllm_experiments
 
 # Quick test (single experiment)
 ./setup_experiments.sh quick

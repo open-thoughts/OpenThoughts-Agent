@@ -3,6 +3,9 @@ engine:
   model: moonshotai/Kimi-K2-Thinking
   max_output_tokens: 8192
   healthcheck_interval: 300
+  request_params:
+    temperature: 1.0
+    top_p: 0.01
   vllm_local: {}
 backend:
   type: ray

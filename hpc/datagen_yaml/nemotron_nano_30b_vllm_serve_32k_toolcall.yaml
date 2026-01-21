@@ -1,0 +1,49 @@
+# vLLM serve config for NVIDIA Nemotron Nano 30B with tool calling support
+#
+# Nemotron uses the Hermes tool calling format (function calling via special tokens)
+# This config enables native vLLM tool parsing for OpenHands compatibility
+#
+# Usage:
+#   python -m hpc.launch \
+#       --job_type eval \
+#       --vllm_serve_config hpc/datagen_yaml/nemotron_nano_30b_vllm_serve_32k_toolcall.yaml \
+#       --harbor_yaml hpc/harbor_yaml/trace_16concurrency_openhands_eval_ctx32k_toolcall.yaml \
+#       ...
+
+engine:
+  type: vllm_local
+  model: nvidia/Nemotron-3-Nano-30B-A3B-BF16
+  max_output_tokens: 8192
+  healthcheck_interval: 300
+  vllm_local: {}
+
+backend:
+  type: ray
+  wait_for_endpoint: true
+
+vllm_server:
+  model_path: nvidia/Nemotron-3-Nano-30B-A3B-BF16
+  num_replicas: 1
+  tensor_parallel_size: 1
+  pipeline_parallel_size: 1
+  data_parallel_size: 1
+  time_limit: '48:00:00'
+  max_model_len: 32768
+  max_num_seqs: 32
+  gpu_memory_utilization: 0.9
+  swap_space: 12
+
+  # Tool calling configuration - Nemotron uses Hermes format
+  enable_auto_tool_choice: true
+  tool_call_parser: hermes
+
+  extra_args:
+  - --dtype
+  - bfloat16
+  - --block-size
+  - '16'
+  - --enable-chunked-prefill
+  - --max-num-partial-prefills
+  - '1'
+  - --enable-prefix-caching
+  - --trust-remote-code

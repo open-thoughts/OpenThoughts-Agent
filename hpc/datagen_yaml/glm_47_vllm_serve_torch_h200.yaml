@@ -1,6 +1,6 @@
 engine:
   type: vllm_local
-  model: QuantTrio/GLM-4.6-AWQ
+  model: QuantTrio/GLM-4.7-AWQ
   max_output_tokens: 16384
   healthcheck_interval: 300
   request_params:
@@ -17,7 +17,7 @@ backend:
   healthcheck_max_attempts: 160
   healthcheck_retry_delay: 15
 vllm_server:
-  model_path: QuantTrio/GLM-4.6-AWQ
+  model_path: QuantTrio/GLM-4.7-AWQ
   num_replicas: 1
   tensor_parallel_size: 8
   pipeline_parallel_size: 1

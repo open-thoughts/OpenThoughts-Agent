@@ -18,6 +18,7 @@ from hpc.launch_utils import (
     sanitize_repo_component,
     resolve_job_and_paths,
     derive_default_job_name,
+    setup_hosted_vllm_api_key,
     update_exp_args,
 )
 from hpc.pretokenize_launch_utils import schedule_pretokenize, should_run_pretokenize
@@ -422,6 +423,9 @@ def main():
     # Add arguments to experiment from automatically detecting HPC
     hpc = detect_hpc()
     set_environment(hpc)
+
+    # Set placeholder API keys for hosted_vllm models (Harbor agents require these)
+    setup_hosted_vllm_api_key()
 
     # Add arguments and validate
     exp_args = update_exp_args(exp_args, hpc.model_dump())

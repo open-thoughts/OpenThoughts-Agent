@@ -192,6 +192,14 @@ class VLLMServer:
             print(f"vLLM server already started at {self.endpoint}")
             return self.endpoint
 
+        # Clean up any stale endpoint JSON from a previous job to avoid IP mismatch
+        if self.config.endpoint_json_path and os.path.exists(self.config.endpoint_json_path):
+            print(f"Removing stale endpoint JSON: {self.config.endpoint_json_path}")
+            try:
+                os.remove(self.config.endpoint_json_path)
+            except OSError as e:
+                print(f"  Warning: could not remove stale endpoint file: {e}")
+
         print(f"=== Starting vLLM Server ===")
         print(f"  Model: {self.config.model_path}")
         print(f"  Tensor Parallel: {self.config.tensor_parallel_size}")

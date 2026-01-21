@@ -317,7 +317,7 @@ def launch_datagen_job_v2(exp_args: dict, hpc) -> None:
             agent=exp_args.get("trace_agent_name") or "",
             trace_env=exp_args.get("trace_env") or get_harbor_env_from_config(harbor_config_resolved),
             n_concurrent=int(exp_args.get("trace_n_concurrent") or 64),
-            n_attempts=int(exp_args.get("trace_n_attempts") or 3),
+            n_attempts=int(exp_args.get("trace_n_attempts") or 1),
             agent_kwargs=agent_kwargs,
             num_nodes=int(exp_args.get("num_nodes") or 1),
             gpus_per_node=gpus_per_node,
@@ -327,6 +327,9 @@ def launch_datagen_job_v2(exp_args: dict, hpc) -> None:
             hf_repo_id=exp_args.get("upload_hf_repo") or trace_target_repo,
             hf_private=bool(exp_args.get("upload_hf_private")),
             hf_episodes=exp_args.get("upload_hf_episodes") or "last",
+            # Pinggy tunnel settings (for cloud backends that can't reach local vLLM)
+            pinggy_persistent_url=exp_args.get("pinggy_persistent_url"),
+            pinggy_token=exp_args.get("pinggy_token"),
         )
 
         # Write trace config JSON
@@ -628,7 +631,7 @@ class TracegenJobConfig:
     agent: str = ""
     trace_env: str = "daytona"
     n_concurrent: int = 64
-    n_attempts: int = 3
+    n_attempts: int = 1
 
     # Agent kwargs (serialized as JSON)
     agent_kwargs: Dict[str, Any] = field(default_factory=dict)
@@ -643,6 +646,10 @@ class TracegenJobConfig:
     num_nodes: int = 1
     gpus_per_node: Optional[int] = None
     cpus_per_node: Optional[int] = None
+
+    # Pinggy tunnel settings (for cloud backends that can't reach local vLLM)
+    pinggy_persistent_url: Optional[str] = None
+    pinggy_token: Optional[str] = None
 
 
 class TracegenJobRunner:
@@ -796,7 +803,47 @@ class TracegenJobRunner:
                 extra_env_vars=extra_env_vars if extra_env_vars else None,
             )
             with vllm_server:
-                return self._run_harbor(endpoint=vllm_server.endpoint)
+                # Check if we need Pinggy tunnel for cloud backends with installed agents
+                from hpc.pinggy_utils import (
+                    needs_pinggy_tunnel,
+                    PinggyTunnel,
+                    PinggyConfig,
+                    parse_endpoint_host_port,
+                )
+
+                # Evaluate Pinggy conditions with diagnostic logging
+                has_url = bool(self.config.pinggy_persistent_url)
+                has_token = bool(self.config.pinggy_token)
+                needs_tunnel = needs_pinggy_tunnel(self.config.agent, self.config.trace_env)
+                use_pinggy = has_url and has_token and needs_tunnel
+
+                print(f"[TracegenJobRunner] Pinggy check: url={has_url}, token={has_token}, "
+                      f"needs_tunnel={needs_tunnel} (agent={self.config.agent}, env={self.config.trace_env})")
+                print(f"[TracegenJobRunner] use_pinggy={use_pinggy}, vllm_endpoint={vllm_server.endpoint}")
+
+                if use_pinggy:
+                    # Parse the vLLM endpoint to get the actual host:port
+                    # (vLLM may bind to a specific IP, not localhost)
+                    local_host, local_port = parse_endpoint_host_port(vllm_server.endpoint)
+                    print(f"[TracegenJobRunner] Starting Pinggy tunnel: {local_host}:{local_port} -> {self.config.pinggy_persistent_url}")
+                    pinggy_cfg = PinggyConfig(
+                        persistent_url=self.config.pinggy_persistent_url,
+                        token=self.config.pinggy_token,
+                        local_port=local_port,
+                        local_host=local_host,
+                    )
+                    pinggy_log = log_dir / f"{self.config.job_name}_pinggy.log"
+                    pinggy_tunnel = PinggyTunnel(pinggy_cfg, log_path=pinggy_log)
+
+                    with pinggy_tunnel:
+                        # Use Pinggy's public endpoint instead of local vLLM endpoint
+                        public_endpoint = pinggy_tunnel.public_endpoint
+                        print(f"[TracegenJobRunner] Using Pinggy endpoint for Harbor: {public_endpoint}")
+                        return self._run_harbor(endpoint=public_endpoint)
+                else:
+                    # Use local vLLM endpoint directly
+                    print(f"[TracegenJobRunner] Using local vLLM endpoint for Harbor: {vllm_server.endpoint}")
+                    return self._run_harbor(endpoint=vllm_server.endpoint)
 
     def _run_harbor(self, endpoint: Optional[str]) -> int:
         """Execute the Harbor CLI for trace generation."""

@@ -414,7 +414,7 @@ capella = HPC(
         "NCCL_DEBUG": "INFO",
         "TORCH_NCCL_ASYNC_ERROR_HANDLING": "1",
         "CUDA_LAUNCH_BLOCKING": "0",
-        "PYTORCH_CUDA_ALLOC_CONF": "garbage_collection_threshold:0.6,max_split_size_mb:128",
+        "PYTORCH_ALLOC_CONF": "garbage_collection_threshold:0.6,max_split_size_mb:128",
     },
     # NCCL/networking settings for SFT training (InfiniBand)
     nccl_settings={
@@ -521,7 +521,7 @@ vista = HPC(
         "PYTHONFAULTHANDLER": "1",
         "NCCL_TIMEOUT": "1800",
         "NCCL_IB_TIMEOUT": "23",
-        "PYTORCH_CUDA_ALLOC_CONF": "garbage_collection_threshold:0.6,max_split_size_mb:128",
+        "PYTORCH_ALLOC_CONF": "garbage_collection_threshold:0.6,max_split_size_mb:128",
     },
     library_paths={
         "TRITON_CC": "/home1/apps/gcc/15.1.0/bin/gcc",
@@ -612,7 +612,7 @@ nyutorch = HPC(
     partition="",
     gpus_per_node=8,
     cpus_per_node=96,  # H200 nodes have ~128 cores; request 96 to leave headroom
-    mem_per_node="1536G",  # H200 nodes have ~2TB RAM; request 1.5TB to leave headroom
+    mem_per_node="1800G",  # H200 nodes have ~2TB RAM; request less to leave headroom
     internet_node=True,
     gpus_type="H200 141GB / L40S 48GB",
     total_partition_nodes=48,
@@ -630,7 +630,7 @@ nyutorch = HPC(
         "PYTHONFAULTHANDLER": "1",
         "NCCL_TIMEOUT": "1800",
         "NCCL_IB_TIMEOUT": "23",
-        "PYTORCH_CUDA_ALLOC_CONF": "garbage_collection_threshold:0.6,max_split_size_mb:128",
+        "PYTORCH_ALLOC_CONF": "garbage_collection_threshold:0.6,max_split_size_mb:128",
     },
     library_paths={
         "TRITON_CC": "/usr/bin/gcc",

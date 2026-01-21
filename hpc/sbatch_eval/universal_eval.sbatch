@@ -68,7 +68,7 @@ export HF_HOME="/tmp/hf_home"
 export PYTHONFAULTHANDLER=1
 export NCCL_TIMEOUT=1800
 export NCCL_IB_TIMEOUT=23
-export PYTORCH_CUDA_ALLOC_CONF="garbage_collection_threshold:0.6,max_split_size_mb:128"
+export PYTORCH_ALLOC_CONF="garbage_collection_threshold:0.6,max_split_size_mb:128"
 export PYTHONPATH="$WORKDIR:${PYTHONPATH:-}"
 
 # --- Ray/vLLM GPU visibility fix ---

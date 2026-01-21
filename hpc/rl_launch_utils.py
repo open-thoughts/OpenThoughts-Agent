@@ -409,6 +409,14 @@ class RLJobConfig:
     needs_ssh_tunnel: bool = False
     needs_cuda_detection: bool = False
 
+    # Pinggy tunnel settings (for cloud backends with installed agents)
+    pinggy_persistent_url: Optional[str] = None
+    pinggy_token: Optional[str] = None
+
+    # Agent/environment info (for needs_pinggy_tunnel decision)
+    agent_name: str = "terminus-2"
+    harbor_env: str = "daytona"
+
 
 def build_skyrl_command_string(config: RLJobConfig) -> str:
     """Build the full SkyRL command string for the sbatch template.
@@ -444,7 +452,7 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> str:
         substitute_template,
         build_sbatch_directives,
     )
-    from hpc.rl_config_utils import parse_rl_config, build_skyrl_hydra_args
+    from hpc.rl_config_utils import parse_rl_config, build_skyrl_hydra_args, extract_terminal_bench_agent_env
 
     print("\n=== RL MODE (Universal Launcher) ===")
 
@@ -455,6 +463,15 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> str:
 
     parsed = parse_rl_config(rl_config_path, model_override=exp_args.get("model_path"))
     print(f"Loaded RL config from: {parsed.config_path}")
+
+    # Extract agent name and harbor_env from terminal_bench config
+    yaml_agent_name, yaml_harbor_env = extract_terminal_bench_agent_env(parsed)
+
+    # CLI overrides YAML for harbor_env
+    harbor_env = exp_args.get("harbor_env") or yaml_harbor_env or "daytona"
+    agent_name = yaml_agent_name  # Agent name comes from YAML only
+
+    print(f"Terminal bench: agent={agent_name}, harbor_env={harbor_env}")
 
     # Resolve train_data: extract HF datasets to local task directories
     # This must happen BEFORE building Hydra args so the local paths are used
@@ -534,6 +551,11 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> str:
         export_path=derive_skyrl_export_path(experiments_subdir, job_name),
         needs_ssh_tunnel=hpc.needs_ssh_tunnel,
         needs_cuda_detection=getattr(hpc, "needs_cuda_detection", False),
+        # Pinggy tunnel settings (for cloud backends with installed agents)
+        pinggy_persistent_url=exp_args.get("pinggy_persistent_url"),
+        pinggy_token=exp_args.get("pinggy_token"),
+        agent_name=agent_name,
+        harbor_env=harbor_env,
     )
 
     # Write config JSON
@@ -821,7 +843,50 @@ class RLJobRunner:
             print(f"Ray cluster ready at {ray_cluster.address}", flush=True)
             print(f"Total GPUs available: {ray_cluster.total_gpus}", flush=True)
 
-            return self._run_skyrl()
+            # Check if Pinggy tunnel is needed for installed agents in cloud backends
+            from hpc.pinggy_utils import (
+                needs_pinggy_tunnel,
+                PinggyTunnel,
+                PinggyConfig,
+            )
+
+            has_url = bool(self.config.pinggy_persistent_url)
+            has_token = bool(self.config.pinggy_token)
+            needs_tunnel = needs_pinggy_tunnel(self.config.agent_name, self.config.harbor_env)
+            use_pinggy = has_url and has_token and needs_tunnel
+
+            print(f"[RLJobRunner] Pinggy check: url={has_url}, token={has_token}, "
+                  f"needs_tunnel={needs_tunnel} (agent={self.config.agent_name}, "
+                  f"env={self.config.harbor_env})", flush=True)
+
+            if use_pinggy:
+                # SkyRL's vLLM HTTP endpoint typically runs on port 8000
+                # The tunnel must be started BEFORE SkyRL so the port is available
+                vllm_port = 8000
+
+                pinggy_cfg = PinggyConfig(
+                    persistent_url=self.config.pinggy_persistent_url,
+                    token=self.config.pinggy_token,
+                    local_port=vllm_port,
+                    local_host="localhost",
+                )
+
+                log_dir = Path(self.config.experiments_dir) / "logs"
+                log_dir.mkdir(parents=True, exist_ok=True)
+                pinggy_log = log_dir / f"{self.config.job_name}_pinggy.log"
+
+                print(f"[RLJobRunner] Starting Pinggy tunnel: localhost:{vllm_port} -> "
+                      f"{self.config.pinggy_persistent_url}", flush=True)
+
+                with PinggyTunnel(pinggy_cfg, log_path=pinggy_log) as tunnel:
+                    # Set environment variable for SkyRL/Harbor to use public endpoint
+                    # Terminal bench reads this to configure the hosted_vllm backend
+                    os.environ["HARBOR_MODEL_ENDPOINT"] = tunnel.public_endpoint
+                    print(f"[RLJobRunner] HARBOR_MODEL_ENDPOINT={tunnel.public_endpoint}", flush=True)
+                    return self._run_skyrl()
+            else:
+                print(f"[RLJobRunner] No Pinggy tunnel needed, using local vLLM", flush=True)
+                return self._run_skyrl()
 
     def _run_skyrl(self) -> int:
         """Execute SkyRL training.

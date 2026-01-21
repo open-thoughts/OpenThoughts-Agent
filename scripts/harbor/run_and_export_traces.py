@@ -650,6 +650,30 @@ _BASH_JOB_CONTROL_WARNING = (
 )
 
 
+def _clean_bash_warning_value(value):
+    """Recursively clean bash job control warnings from a value.
+
+    Defined at module level (not nested) so it can be pickled by HF datasets.
+    """
+    if isinstance(value, str):
+        cleaned = value.replace(f"{_BASH_JOB_CONTROL_WARNING}\n", "")
+        cleaned = cleaned.replace(f"\n{_BASH_JOB_CONTROL_WARNING}", "")
+        return cleaned.replace(_BASH_JOB_CONTROL_WARNING, "")
+    if isinstance(value, list):
+        return [_clean_bash_warning_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _clean_bash_warning_value(val) for key, val in value.items()}
+    return value
+
+
+def _sanitize_bash_warning_record(record):
+    """Sanitize a single record by cleaning bash warnings from all values.
+
+    Defined at module level (not nested) so it can be pickled by HF datasets.
+    """
+    return {key: _clean_bash_warning_value(val) for key, val in record.items()}
+
+
 def _sanitize_bash_warnings(dataset):
     """Strip bash job control warnings from trace datasets to avoid agent confusion."""
     try:
@@ -657,24 +681,10 @@ def _sanitize_bash_warnings(dataset):
     except Exception:
         return dataset
 
-    def _clean_value(value):
-        if isinstance(value, str):
-            cleaned = value.replace(f"{_BASH_JOB_CONTROL_WARNING}\n", "")
-            cleaned = cleaned.replace(f"\n{_BASH_JOB_CONTROL_WARNING}", "")
-            return cleaned.replace(_BASH_JOB_CONTROL_WARNING, "")
-        if isinstance(value, list):
-            return [_clean_value(item) for item in value]
-        if isinstance(value, dict):
-            return {key: _clean_value(val) for key, val in value.items()}
-        return value
-
-    def _sanitize_record(record):
-        return {key: _clean_value(val) for key, val in record.items()}
-
     if isinstance(dataset, DatasetDict):
         return DatasetDict({k: _sanitize_bash_warnings(v) for k, v in dataset.items()})
     if isinstance(dataset, Dataset):
-        return dataset.map(_sanitize_record, load_from_cache_file=False)
+        return dataset.map(_sanitize_bash_warning_record, load_from_cache_file=False)
     return dataset
 
 

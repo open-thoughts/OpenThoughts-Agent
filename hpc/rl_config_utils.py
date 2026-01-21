@@ -232,6 +232,33 @@ def parse_rl_config(
     )
 
 
+def extract_terminal_bench_agent_env(parsed: ParsedRLConfig) -> tuple:
+    """Extract agent name and environment type from terminal_bench config.
+
+    This is used to determine whether a Pinggy tunnel is needed for RL training
+    with installed agents (like OpenHands) running in cloud environments.
+
+    Args:
+        parsed: ParsedRLConfig from parse_rl_config().
+
+    Returns:
+        Tuple of (agent_name, harbor_env) where:
+        - agent_name: Harbor agent name (e.g., "terminus-2", "openhands")
+        - harbor_env: Harbor environment type (e.g., "daytona", "docker", "modal")
+    """
+    tb = parsed.terminal_bench or {}
+    harbor = tb.get("harbor", {})
+
+    # Agent name from harbor.name (default: terminus-2)
+    agent_name = harbor.get("name", "terminus-2")
+
+    # Environment type - can be explicit in terminal_bench config or default to daytona
+    # Most cloud backends (Daytona, Modal) need Pinggy for installed agents
+    harbor_env = tb.get("harbor_env", "daytona")
+
+    return agent_name, harbor_env
+
+
 def _flatten_dict(d: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
     """Flatten a nested dictionary to dotted keys.
 

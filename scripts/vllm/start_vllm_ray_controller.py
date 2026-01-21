@@ -113,6 +113,7 @@ def build_vllm_command(args: argparse.Namespace, extra_args: List[str]) -> List[
         str(args.tensor_parallel_size),
         "--distributed-executor-backend",
         "ray",
+        "--trust-remote-code",
     ]
 
     # Data parallel size

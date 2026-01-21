@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 # Headroom scales with node size to handle CUDA graph capture and system overhead
 DEFAULT_MEMORY_HEADROOM_MB = 32768  # 32GB default headroom
 MIN_MEMORY_HEADROOM_MB = 16384  # 16GB minimum
-MEMORY_HEADROOM_PERCENT = 0.03  # 3% of total memory as headroom for large nodes
+MEMORY_HEADROOM_PERCENT = 0.05  # 5% of total memory as headroom for large nodes
 DEFAULT_OBJECT_STORE_MEMORY_BYTES = 40 * 1024 * 1024 * 1024  # 40GB for Ray plasma store
 
 
@@ -270,6 +270,17 @@ class RayCluster:
         self._start_node(self.node_list[0], is_head=True)
         print(f"  Started Ray head on {self.node_list[0]}", flush=True)
 
+        # Wait for Ray head to register with SLURM before proceeding
+        # This prevents "Socket timed out" / "Expired or invalid job" errors
+        # when running subsequent srun commands too quickly after the head starts
+        time.sleep(10)
+
+        # Verify the Ray head process is still running
+        if self._ray_procs and self._ray_procs[0].poll() is not None:
+            raise RuntimeError(
+                f"Ray head process exited prematurely with code {self._ray_procs[0].returncode}"
+            )
+
         # Start worker nodes with delay
         for i, node in enumerate(self.node_list[1:], start=1):
             self._start_node(node, is_head=False)
@@ -424,12 +435,48 @@ class RayCluster:
         ]
 
         print(f"  Waiting for cluster ({self.total_gpus} GPUs, {len(self.node_list)} nodes)...", flush=True)
-        try:
-            subprocess.run(srun_cmd, check=True)
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(
-                f"Ray cluster failed to start within {self.config.startup_timeout}s"
-            ) from e
+
+        # Retry logic for transient SLURM communication errors
+        # (e.g., "Socket timed out", "Expired or invalid job" when slurmctld is slow)
+        max_retries = 3
+        retry_delay = 5
+        last_error = None
+
+        for attempt in range(max_retries):
+            try:
+                # Run with stderr captured but stdout visible to user
+                result = subprocess.run(
+                    srun_cmd,
+                    check=True,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                return  # Success
+            except subprocess.CalledProcessError as e:
+                last_error = e
+                stderr = e.stderr or ""
+                # Check for transient SLURM communication errors
+                if "Socket timed out" in stderr or "Unable to confirm allocation" in stderr:
+                    if attempt < max_retries - 1:
+                        print(
+                            f"  SLURM communication error (attempt {attempt + 1}/{max_retries}), "
+                            f"retrying in {retry_delay}s...",
+                            flush=True,
+                        )
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                # Log stderr for debugging if available
+                if stderr:
+                    print(f"  srun stderr: {stderr}", file=sys.stderr, flush=True)
+                # Non-transient error or max retries reached
+                break
+
+        # All retries failed
+        raise RuntimeError(
+            f"Ray cluster failed to start within {self.config.startup_timeout}s "
+            f"(last error: {last_error})"
+        ) from last_error
 
     def _fallback_wait(self) -> None:
         """Fallback wait using ray.init() to check cluster status.

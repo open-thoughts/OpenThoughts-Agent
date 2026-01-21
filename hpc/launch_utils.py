@@ -39,6 +39,10 @@ _VALID_TRACE_BACKENDS = {"vllm", "ray", "vllm_local", "none"}
 _HOSTED_VLLM_PREFIX = "hosted_vllm/"
 """Provider prefix expected by LiteLLM when routing to managed vLLM endpoints."""
 
+# Placeholder API key for local vLLM endpoints (Harbor agents require this to be set)
+_HOSTED_VLLM_DUMMY_API_KEY = "EMPTY"
+"""Dummy API key for hosted_vllm models. vLLM doesn't validate API keys, but Harbor agents require one."""
+
 # Cloud/SkyPilot job name length limit (DNS label constraint)
 CLOUD_JOB_NAME_MAX_LENGTH = 63
 """Maximum job name length for cloud runs (SkyPilot/Kubernetes DNS label limit)."""
@@ -167,6 +171,38 @@ def strip_hosted_vllm_alias(model_name: Optional[str]) -> str:
     if is_hosted_vllm_alias(model_name):
         return str(model_name)[len(_HOSTED_VLLM_PREFIX) :]
     return str(model_name)
+
+
+def setup_hosted_vllm_api_key(*, force: bool = False) -> bool:
+    """Set a placeholder API key for hosted_vllm models if not already set.
+
+    Harbor agents (OpenHands, mini-SWE-Agent, SWE-Agent) require API key environment
+    variables to be set even for local vLLM endpoints. Since vLLM doesn't validate
+    API keys, we set a dummy value ("EMPTY") to satisfy Harbor's validation.
+
+    This function sets both HOSTED_VLLM_API_KEY and LLM_API_KEY as fallback,
+    since different code paths may check different variables.
+
+    Args:
+        force: If True, overwrite existing values. If False (default), only set
+               if the variable is not already present.
+
+    Returns:
+        True if any environment variable was set, False otherwise.
+
+    Example:
+        >>> # Call early in launcher to ensure Harbor agents work
+        >>> setup_hosted_vllm_api_key()
+        True
+    """
+    changed = False
+    for key in ("HOSTED_VLLM_API_KEY", "LLM_API_KEY"):
+        if force or key not in os.environ:
+            os.environ[key] = _HOSTED_VLLM_DUMMY_API_KEY
+            changed = True
+    if changed:
+        print(f"[launch_utils] Set placeholder API keys for hosted_vllm models")
+    return changed
 
 
 # =============================================================================
@@ -874,10 +910,12 @@ def derive_default_job_name(cli_args: Mapping[str, Any]) -> str:
             for chunk in job_name.split("_")
         )
         if len(job_name) > 96:
-            raise ValueError(
-                f"Job name {job_name} is still too long (96 characters) after truncation. "
-                "Try renaming the dataset or providing a shorter YAML config."
+            # Hard truncate to 96 chars with warning instead of failing
+            print(
+                f"Warning: Job name still {len(job_name)} chars after smart truncation, "
+                f"hard truncating to 96 chars: {job_name[:96]}"
             )
+            job_name = job_name[:96]
 
     return job_name or "ot_agent_job"
 
@@ -1599,6 +1637,7 @@ __all__ = [
     "normalize_cli_args",
     # vLLM utilities
     "default_vllm_endpoint_path",
+    "setup_hosted_vllm_api_key",
     # Local execution
     "is_local_mode",
     "run_local_script",

@@ -1,0 +1,52 @@
+# MiniMax-M2-AWQ on 4xA100 80GB GPUs
+# Adapted from minimax_m2_vllm_serve_131k.yaml for smaller GPU count
+#
+# Key changes from 8-GPU config:
+#   - tensor_parallel_size: 4 (all GPUs in TP)
+#   - pipeline_parallel_size: 1 (no PP with only 4 GPUs)
+#   - max_model_len: 32768 (reduced from 131k for memory)
+#   - max_num_seqs: 16 (reduced for KV cache memory)
+#   - swap_space: 32 (reduced proportionally)
+#
+# Note: MiniMax-M2-AWQ is a large MoE model. With 4xA100 80GB (320GB total),
+# we have enough VRAM for the model weights but limited KV cache space.
+# If you need longer context, consider using 8+ GPUs with the 131k config.
+
+engine:
+  type: vllm_local
+  model: QuantTrio/MiniMax-M2-AWQ
+  max_output_tokens: 8192
+  healthcheck_interval: 300
+  vllm_local: {}
+backend:
+  type: ray
+  wait_for_endpoint: true
+  tensor_parallel_size: 4
+  pipeline_parallel_size: 1
+  healthcheck_max_attempts: 120
+  healthcheck_retry_delay: 15
+vllm_server:
+  model_path: QuantTrio/MiniMax-M2-AWQ
+  num_replicas: 1
+  tensor_parallel_size: 4
+  pipeline_parallel_size: 1
+  time_limit: '166:00:00'
+  max_model_len: 32768
+  max_num_seqs: 16
+  gpu_memory_utilization: 0.90
+  swap_space: 32
+  enable_expert_parallel: true
+  enable_auto_tool_choice: true
+  tool_call_parser: minimax_m2
+  reasoning_parser: minimax_m2
+  trust_remote_code: true
+  extra_args:
+  - --dtype
+  - bfloat16
+  - --kv-cache-dtype
+  - fp8
+  - --enable-prefix-caching
+  - --max-num-batched-tokens
+  - '32768'
+  - --all2all-backend
+  - pplx

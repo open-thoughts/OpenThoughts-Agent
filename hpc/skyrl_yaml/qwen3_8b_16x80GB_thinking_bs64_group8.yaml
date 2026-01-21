@@ -1,8 +1,12 @@
-# SkyRL Configuration: Qwen3 8B on 16x80GB GPUs (OpenHands Agent)
-# Ablation: Uses OpenHands agent instead of Terminus-2
+# SkyRL Configuration: Qwen3 8B on 16x80GB GPUs (Interleaved Thinking)
+# Ablation: Enables interleaved thinking mode for Terminus-2 agent
 #
-# AGENT: OpenHands (openhands) - All Hands AI agent
+# AGENT: Terminus-2 with interleaved thinking enabled
 # Base config: qwen3_8b_16x80GB_binary.yaml
+#
+# INTERLEAVED THINKING:
+# - interleaved_thinking: true - includes reasoning content in chat history
+# - extra_body.chat_template_kwargs.enable_thinking: true - enables thinking in LLM
 #
 # Hardware: 16 GPUs with 80GB VRAM each (e.g., 2x8 H100/A100-80GB or 4x4)
 # Model: Qwen3 8B Base (~16GB bf16 weights)
@@ -11,22 +15,18 @@
 #   - max_generate_length: 8k tokens (agent responses)
 #   - vLLM enforces total context <= max_model_len (32k)
 #
-# OpenHands-specific notes:
-# - Uses its own context management (no enable_summarize)
-# - Has its own trajectory format (no store_all_messages)
-# - Supports reasoning_effort parameter
-# - Runs as a separate process with its own environment handling
+# Note: Interleaved thinking may increase context usage due to reasoning tokens
+# being included in the chat history. Consider enabling summarization if
+# context limits become an issue.
 #
 # Usage:
 #   python -m hpc.launch \
 #       --job_type rl \
-#       --rl_config qwen3_8b_16x80GB_openhands.yaml \
-#       --job_name qwen3_8b_openhands \
+#       --rl_config qwen3_8b_16x80GB_thinking.yaml \
+#       --job_name qwen3_8b_thinking \
 #       --train_data '["mlfoundations-dev/your-dataset"]' \
 #       --model_path Qwen/Qwen3-8B \
-#       --num_nodes 2 \
-#       --pinggy_persistent_url your-tunnel.a.pinggy.link \
-#       --pinggy_token your_token
+#       --num_nodes 2
 
 # SkyRL entrypoint module
 entrypoint: examples.terminal_bench.entrypoints.main_tbench
@@ -40,11 +40,6 @@ terminal_bench:
   # trials_dir: Directory for Harbor trial artifacts (derived from experiments_dir if null)
   trials_dir: null
 
-  # Harbor environment backend: daytona (cloud), docker (local/podman), modal
-  # Installed agents (openhands, etc.) running in cloud backends need Pinggy tunnels
-  # to reach the vLLM endpoint on the HPC cluster
-  harbor_env: daytona
-
   # Harbor configuration - schema-driven mapping to TrialConfig
   # See examples/terminal_bench/harbor_config.py for full list of supported fields.
   # Unknown fields will generate warnings (typo protection + version compatibility).
@@ -52,19 +47,29 @@ terminal_bench:
     # ==========================================================================
     # Agent settings (maps to Harbor AgentConfig)
     # ==========================================================================
-    # Agent name - OpenHands agent
-    name: openhands
+    # Agent name - must be a valid Harbor AgentName (e.g., terminus-2, oracle)
+    name: terminus-2
     # Max agent-environment turns before Harbor forces termination
     max_episodes: 64
+    # Disable summarization, consistent with prior RL work
+    enable_summarize: false
+    # Store full message history for trajectory reconstruction
+    store_all_messages: true
 
-    # OpenHands-specific kwargs
-    # reasoning_effort: Reasoning effort level (low, medium, high)
-    reasoning_effort: medium
-    # disable_tool_calls: Whether to disable native function calling
-    # disable_tool_calls: false
+    # ==========================================================================
+    # Interleaved Thinking Settings (KEY ABLATION)
+    # ==========================================================================
+    # Include reasoning content in chat history and send to LLM in next round
+    interleaved_thinking: true
+    # Enable thinking in the LLM via chat template kwargs
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
 
     # Agent timeout overrides
-    override_timeout_sec: 1200 #OpenHands takes longer because it's an installed agent
+    override_timeout_sec: 240        # Agent execution timeout (seconds)
+    # override_setup_timeout_sec: 120  # Agent setup timeout
+    # max_timeout_sec: 1800          # Cap timeout (useful for runaway tasks)
 
     # ==========================================================================
     # Environment settings (maps to Harbor EnvironmentConfig)
@@ -73,33 +78,45 @@ terminal_bench:
     override_cpus: 1
     override_memory_mb: 2048
     override_storage_mb: 2048
+    # override_gpus: 0              # GPU allocation per sandbox
+    # environment_type: daytona     # Environment backend (daytona, docker, modal)
+
+    # ==========================================================================
+    # Trial-level settings (maps to Harbor TrialConfig)
+    # ==========================================================================
+    # timeout_multiplier: 1.0       # Multiply all timeouts by this factor
 
     # ==========================================================================
     # Verifier settings (maps to Harbor VerifierConfig)
     # ==========================================================================
+    # verifier_disable: false       # Disable verification (for debugging)
     verifier_override_timeout_sec: 120  # Override verifier timeout
 
     # ==========================================================================
     # Retry settings (maps to Harbor RetryConfig for QueueOrchestrator)
     # ==========================================================================
+    # Retry logic with exponential backoff for transient failures
     max_retries: 2                 # Max retry attempts per trial
     min_wait_sec: 1.0              # Initial backoff delay (seconds)
     max_wait_sec: 60.0             # Maximum backoff delay
     wait_multiplier: 2.0           # Exponential backoff multiplier
 
     # Exception filtering - don't retry permanent failures
+    # Default Harbor exclusions: AgentTimeoutError, VerifierTimeoutError,
+    #   RewardFileNotFoundError, RewardFileEmptyError, VerifierOutputParseError
+    # We add ContextLengthExceededError since summarization is disabled
     exclude_exceptions:
       - AgentTimeoutError
       - VerifierTimeoutError
       - RewardFileNotFoundError
       - RewardFileEmptyError
       - VerifierOutputParseError
-      - ContextLengthExceededError
+      - ContextLengthExceededError  # Permanent when enable_summarize=false
 
     # ==========================================================================
     # Orchestrator settings (QueueOrchestrator concurrency control)
     # ==========================================================================
-    n_concurrent_trials: 16        # Number of parallel trial workers
+    n_concurrent_trials: 256        # Number of parallel trial workers. train_batch_size * n_samples_per_prompt
 
     # ==========================================================================
     # Logging settings
@@ -139,10 +156,9 @@ trainer:
 
   # Batch sizes optimized for sync RL
   # IMPORTANT: train_batch_size must be >= total GPUs (data parallel size)
-  # For 4 nodes x 4 GPUs = 16 GPUs, use train_batch_size >= 16
   # Override with --skyrl_override trainer.train_batch_size=N if needed
-  train_batch_size: 16
-  policy_mini_batch_size: 8  # 2 gradient steps per batch
+  train_batch_size: 64
+  policy_mini_batch_size: 64  # 1 gradient step per batch
   eval_batch_size: 32
 
   # Micro batch sizes - set to 1 for long context to avoid OOM
@@ -169,7 +185,7 @@ trainer:
   # Policy optimizer - conservative LR for base model fine-tuning
   policy:
     optimizer_config:
-      lr: 5.0e-7
+      lr: 1e-6
       weight_decay: 0.01
       adam_betas: [0.9, 0.999]
       # Gradient clipping important for long sequences
@@ -204,7 +220,7 @@ generator:
   num_inference_engines: null
 
   # GRPO typically uses 4-8 samples per prompt for advantage estimation
-  n_samples_per_prompt: 4
+  n_samples_per_prompt: 8
   eval_n_samples_per_prompt: 4
 
   # Memory utilization - aggressive but leave headroom for 32k KV cache
@@ -226,12 +242,8 @@ generator:
   run_engines_locally: true
   weight_sync_backend: nccl
   async_engine: true
-  batched: true
+  batched: false
   enable_http_endpoint: true
-
-  # Multi-turn agentic conversation handling
-  append_eos_token_after_stop_str_in_multi_turn: true
-  max_turns: 64  # Match max_episodes
 
   # Sampling parameters for generation
   sampling_params:

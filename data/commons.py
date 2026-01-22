@@ -469,6 +469,33 @@ def create_standard_task_toml() -> str:
 """
 
 
+def create_llm_verifier_task_toml() -> str:
+    """
+    Create task.toml for LLM verifier tasks with OPENAI_API_KEY env var.
+
+    Returns:
+        str: Task TOML content with env var for verifier
+    """
+    return """
+    version = "1.0"
+
+    [agent]
+    timeout_sec = 900.0
+
+    [metadata]
+    author_name = "Sandboxes"
+    author_email = "sandboxes@sandboxes.com"
+    difficulty = "medium"
+    category = "sandbox"
+    tags = ["sandbox", "llm-verifier"]
+
+    [verifier]
+    restart_environment = false
+    timeout_sec = 720.0
+    env = { OPENAI_API_KEY = "${OPENAI_API_KEY}" }
+"""
+
+
 def create_standard_dockerfile() -> str:
     """
     Create a standard Python-based Dockerfile for all datasets.
@@ -1894,7 +1921,7 @@ def generate_tasks_from_questions_hdf5(
     making it much faster and more efficient.
 
     Args:
-        questions: List of questions/instructions or tuples with (instruction, metadata, solution, test_sh, test_py)
+        questions: List of questions/instructions or tuples with (instruction, metadata, solution, test_sh, test_py, task_toml)
         dataset_prefix: Prefix for task naming
         output_path: Path for output HDF5 file. If None, creates temp file.
         compression: HDF5 compression algorithm
@@ -1928,12 +1955,14 @@ def generate_tasks_from_questions_hdf5(
                 solution_content = None
                 test_sh_content = None
                 test_py_content = None
+                task_toml_content = None
             else:
                 instruction_content = dataset[0]
                 metadata = dataset[1] if len(dataset) > 1 else None
                 solution_content = dataset[2] if len(dataset) > 2 else None
                 test_sh_content = dataset[3] if len(dataset) > 3 else None
                 test_py_content = dataset[4] if len(dataset) > 4 else None
+                task_toml_content = dataset[5] if len(dataset) > 5 else None
 
             # Create group for this task
             task_name = f"{dataset_prefix}-{i:04d}"
@@ -1951,10 +1980,10 @@ def generate_tasks_from_questions_hdf5(
                 dtype=h5py.string_dtype(encoding='utf-8')
             )
 
-            # Create task.toml
+            # Create task.toml (use custom if provided, otherwise use standard)
             task_group.create_dataset(
                 "task.toml",
-                data=standard_task_toml,
+                data=task_toml_content if task_toml_content else standard_task_toml,
                 dtype=h5py.string_dtype(encoding='utf-8')
             )
 
@@ -1975,9 +2004,7 @@ def generate_tasks_from_questions_hdf5(
                 task_group.create_dataset(
                     "metadata.json",
                     data=metadata_str,
-                    dtype=h5py.string_dtype(encoding='utf-8'),
-                    compression=compression,
-                    compression_opts=compression_opts if compression == 'gzip' else None
+                    dtype=h5py.string_dtype(encoding='utf-8')
                 )
 
             # Add solution/solve.sh if provided
@@ -1985,9 +2012,7 @@ def generate_tasks_from_questions_hdf5(
                 task_group.create_dataset(
                     "solution/solve.sh",
                     data=solution_content,
-                    dtype=h5py.string_dtype(encoding='utf-8'),
-                    compression=compression,
-                    compression_opts=compression_opts if compression == 'gzip' else None
+                    dtype=h5py.string_dtype(encoding='utf-8')
                 )
 
             # Add tests/test.sh if provided
@@ -1995,9 +2020,7 @@ def generate_tasks_from_questions_hdf5(
                 task_group.create_dataset(
                     "tests/test.sh",
                     data=test_sh_content,
-                    dtype=h5py.string_dtype(encoding='utf-8'),
-                    compression=compression,
-                    compression_opts=compression_opts if compression == 'gzip' else None
+                    dtype=h5py.string_dtype(encoding='utf-8')
                 )
 
             # Add tests/test_state.py if provided
@@ -2005,9 +2028,7 @@ def generate_tasks_from_questions_hdf5(
                 task_group.create_dataset(
                     "tests/test_state.py",
                     data=test_py_content,
-                    dtype=h5py.string_dtype(encoding='utf-8'),
-                    compression=compression,
-                    compression_opts=compression_opts if compression == 'gzip' else None
+                    dtype=h5py.string_dtype(encoding='utf-8')
                 )
 
     print(f"Successfully generated {len(questions)} tasks in HDF5 format")

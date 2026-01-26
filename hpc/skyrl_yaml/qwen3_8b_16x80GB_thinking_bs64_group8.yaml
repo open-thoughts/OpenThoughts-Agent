@@ -161,9 +161,9 @@ trainer:
   policy_mini_batch_size: 64  # 1 gradient step per batch
   eval_batch_size: 32
 
-  # Micro batch sizes - set to 1 for long context to avoid OOM
-  micro_forward_batch_size_per_gpu: 1
-  micro_train_batch_size_per_gpu: 1
+  # Micro batch sizes - set back to 2 or 1 if OOM
+  micro_forward_batch_size_per_gpu: 4
+  micro_train_batch_size_per_gpu: 4
 
   max_prompt_length: 999999
 

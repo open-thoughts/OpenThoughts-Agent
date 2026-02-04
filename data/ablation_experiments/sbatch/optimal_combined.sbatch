@@ -5,38 +5,52 @@
 #SBATCH --ntasks-per-node 1
 #SBATCH --cpus-per-task=64
 #SBATCH --account CCR24067
-#SBATCH --output=/scratch/10000/eguha3/dc-agent/data/sbatches/logs/openhands_32node_8way_dp_%j.out
-#SBATCH --job-name=openhands_32node_8way_dp
+#SBATCH --output=/scratch/10000/eguha3/dc-agent/data/ablation_experiments/logs/optimal_combined_%j.out
+#SBATCH --job-name=abl_optimal
 
 set -eo pipefail
 
 source /scratch/10000/eguha3/old-dc-agent/secret.env
 
-if [ -z "$1" ]; then
-    echo "Usage: sbatch openhands.sbatch <hf_dataset_repo_id>"
-    exit 1
-fi
+# =============================================================================
+# OPTIMAL COMBINED CONFIG
+# =============================================================================
+# Combines the best improvements from ablation experiments:
+#   1. interleaved_thinking=true  (from full_thinking:    +1.39% avg improvement)
+#   2. enable_summarize=false     (from summarize_off:    +1.26% avg improvement)
+#   3. max_tokens=8192            (from max_tokens_8192:  +0.90% avg improvement)
+#   4. max_episodes=512           (from max_episodes_512: +0.29% avg improvement)
+#
+# Expected combined improvement: ~3.8% over baseline (if additive)
+# =============================================================================
 
-INPUT_REPO_ID="$1"
-DATASET_NAME="${INPUT_REPO_ID##*/}"
-OUTPUT_REPO_ID="DCAgent/${DATASET_NAME}_glm_4.7_traces_openhands"
+EXPERIMENT_NAME="optimal_combined"
+INPUT_REPO_ID="mlfoundations-dev/stackexchange-tezos-sandboxes"
+OUTPUT_REPO_ID="DCAgent/exp_tas_optimal_combined_traces"
 
-SBATCHES_DIR="${DCAGENT_DIR}/data/sbatches"
+EXPERIMENTS_DIR="${DCAGENT_DIR}/data/ablation_experiments"
 NUM_SHARDS=8
 NODES_PER_SHARD=4
 
 echo "============================================"
-echo "vLLM + Harbor OpenHands 8-Way Data Parallel"
+echo "Ablation Experiment: $EXPERIMENT_NAME"
 echo "============================================"
 echo "Total Nodes: $SLURM_JOB_NUM_NODES"
 echo "Shards: $NUM_SHARDS"
-echo "Nodes per shard: $NODES_PER_SHARD"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Input Dataset: $INPUT_REPO_ID"
 echo "Output Traces: $OUTPUT_REPO_ID"
 echo "============================================"
+echo ""
+echo "OPTIMAL CONFIG CHANGES FROM BASELINE:"
+echo "  - interleaved_thinking: false -> true  (+1.39%)"
+echo "  - enable_summarize: true -> false      (+1.26%)"
+echo "  - max_tokens: 16384 -> 8192            (+0.90%)"
+echo "  - max_episodes: 128 -> 512             (+0.29%)"
+echo "============================================"
 
-mkdir -p "$SBATCHES_DIR/logs"
+mkdir -p "$EXPERIMENTS_DIR/logs"
+mkdir -p "$EXPERIMENTS_DIR/results/$EXPERIMENT_NAME"
 
 echo ""
 echo "=== Step 1: Environment Setup ==="
@@ -59,6 +73,8 @@ export UV_CACHE_DIR=/scratch/10000/eguha3/uv_cache_dir
 export HYDRA_FULL_ERROR=1
 export HF_CACHE_DIR=/scratch/08134/negin/dc-agent-shared/.hf_cache
 export HF_HUB_CACHE=$SCRATCH/hub
+
+source /scratch/10000/eguha3/old-dc-agent/secret.env
 
 ln -sf /home1/apps/gcc/15.1.0/lib64/libstdc++.so.6 /scratch/10000/eguha3/vllm_sandboxes_backup/lib/libstdc++.so.6
 export LD_LIBRARY_PATH=/home1/apps/gcc/15.1.0/lib64:/scratch/10000/eguha3/vllm_sandboxes_backup/lib/python3.12/site-packages/torch/lib:$LD_LIBRARY_PATH
@@ -95,6 +111,7 @@ echo "=== Step 2: Downloading and Sharding Dataset ==="
 export PYTHONPATH="${DCAGENT_DIR}:${DCAGENT_DIR}/scripts/harbor:$PYTHONPATH"
 TEACHER_SCRIPTS_DIR="${DCAGENT_DIR}/data/sbatches/teacher_scripts"
 
+# Download and shard dataset (handles caching internally)
 SHARD_OUTPUT_FILE=$(mktemp)
 LD_LIBRARY_PATH="" /scratch/10000/eguha3/vllm_sandboxes_backup/bin/python3 "$TEACHER_SCRIPTS_DIR/shard_dataset.py" "$INPUT_REPO_ID" "$NUM_SHARDS" "$SHARD_OUTPUT_FILE"
 source "$SHARD_OUTPUT_FILE"
@@ -115,13 +132,9 @@ declare -a VLLM_PIDS
 declare -a RAY_PORTS
 declare -a API_PORTS
 declare -a HEAD_IPS
-declare -a HEAD_NODES
-declare -a NGROK_PIDS
-declare -a NGROK_URLS
 
 BASE_RAY_PORT=6379
 BASE_API_PORT=8000
-NGROK_PATH="/scratch/08134/negin/ngrok"
 
 start_ray_cluster_for_shard() {
     local shard_idx=$1
@@ -136,8 +149,6 @@ start_ray_cluster_for_shard() {
 
     local head_node=${shard_nodes[0]}
     local ray_temp_dir="/tmp/ray_${USER}_shard${shard_idx}"
-
-    HEAD_NODES[$shard_idx]=$head_node
 
     echo "  Shard $shard_idx: Nodes ${shard_nodes[@]}"
     echo "    Head: $head_node, Ray port: $ray_port, API port: $api_port"
@@ -187,13 +198,14 @@ echo "=== Step 4: Starting $NUM_SHARDS vLLM Servers ==="
 
 start_vllm_for_shard() {
     local shard_idx=$1
-    local head_node=${HEAD_NODES[$shard_idx]}
+    local start_node_idx=$((shard_idx * NODES_PER_SHARD))
+    local head_node=${ALL_NODES_ARRAY[$start_node_idx]}
     local head_ip=${HEAD_IPS[$shard_idx]}
     local ray_port=${RAY_PORTS[$shard_idx]}
     local api_port=${API_PORTS[$shard_idx]}
     local ray_address="${head_ip}:${ray_port}"
 
-    local vllm_log="${SBATCHES_DIR}/logs/vllm_openhands_${DATASET_NAME}_shard${shard_idx}_${SLURM_JOB_ID}.log"
+    local vllm_log="${EXPERIMENTS_DIR}/logs/vllm_${EXPERIMENT_NAME}_shard${shard_idx}_${SLURM_JOB_ID}.log"
 
     echo "  Starting vLLM for shard $shard_idx on $head_node (port $api_port)..."
 
@@ -219,10 +231,8 @@ start_vllm_for_shard() {
             VLLM_ENABLE_CHUNKED_PREFILL="true" \
             VLLM_ALL2ALL_BACKEND="pplx" \
             VLLM_ENABLE_EPLB="false" \
-            VLLM_TOOL_CALL_PARSER="glm45" \
-            VLLM_REASONING_PARSER="glm45" \
             SERVE_HTTP_PORT="$api_port" \
-        $PYTHON_BIN ${DCAGENT_DIR}/scripts/vllm/openhands_dp_debug.py \
+        $PYTHON_BIN ${DCAGENT_DIR}/scripts/vllm/dp_debug.py \
         >> "$vllm_log" 2>&1 &
 
     VLLM_PIDS[$shard_idx]=$!
@@ -237,7 +247,8 @@ echo ""
 echo "Waiting for all vLLM servers to become healthy..."
 
 for shard_idx in $(seq 0 $((NUM_SHARDS - 1))); do
-    head_node=${HEAD_NODES[$shard_idx]}
+    start_node_idx=$((shard_idx * NODES_PER_SHARD))
+    head_node=${ALL_NODES_ARRAY[$start_node_idx]}
     api_port=${API_PORTS[$shard_idx]}
     health_url="http://127.0.0.1:${api_port}/v1/models"
 
@@ -258,97 +269,41 @@ done
 echo "All vLLM servers are ready!"
 
 echo ""
-echo "=== Step 5: Starting $NUM_SHARDS ngrok Tunnels ==="
-
-start_ngrok_for_shard() {
-    local shard_idx=$1
-    local head_node=${HEAD_NODES[$shard_idx]}
-    local api_port=${API_PORTS[$shard_idx]}
-    local ngrok_log="${SBATCHES_DIR}/logs/ngrok_shard${shard_idx}_${SLURM_JOB_ID}.log"
-
-    # Kill any existing ngrok on head node
-    srun --nodes=1 --ntasks=1 --overlap -w "$head_node" pkill -u $USER -f ngrok 2>/dev/null || true
-    sleep 1
-
-    echo "  Starting ngrok for shard $shard_idx on $head_node (port $api_port)..."
-
-    srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$head_node" \
-        $NGROK_PATH http $api_port --log=stdout > "$ngrok_log" 2>&1 &
-
-    NGROK_PIDS[$shard_idx]=$!
-    echo "    PID: ${NGROK_PIDS[$shard_idx]}, Log: $ngrok_log"
-}
-
-for shard_idx in $(seq 0 $((NUM_SHARDS - 1))); do
-    start_ngrok_for_shard $shard_idx
-done
-
-echo "Waiting for ngrok tunnels to establish..."
-sleep 15
-
-# Get ngrok URLs for each shard
-for shard_idx in $(seq 0 $((NUM_SHARDS - 1))); do
-    head_node=${HEAD_NODES[$shard_idx]}
-
-    for attempt in $(seq 1 10); do
-        ngrok_url=$(srun --nodes=1 --ntasks=1 --overlap -w "$head_node" \
-            curl -s localhost:4040/api/tunnels 2>/dev/null | grep -o '"public_url":"https://[^"]*"' | head -1 | cut -d'"' -f4)
-        if [ -n "$ngrok_url" ]; then
-            NGROK_URLS[$shard_idx]="$ngrok_url"
-            echo "  Shard $shard_idx ngrok URL: $ngrok_url"
-            break
-        fi
-        if [ "$attempt" -eq 10 ]; then
-            echo "ERROR: Failed to get ngrok URL for shard $shard_idx"
-            exit 1
-        fi
-        sleep 3
-    done
-done
-
-echo "All ngrok tunnels established!"
-
-echo ""
-echo "=== Step 6: Running $NUM_SHARDS Harbor Jobs in Parallel ==="
+echo "=== Step 5: Running $NUM_SHARDS Harbor Jobs in Parallel ==="
 
 HARBOR_CONFIG="${DCAGENT_DIR}/eval/tacc/dcagent_eval_config.yaml"
-CONFIG_NAME="openhands_${DATASET_NAME}_${DATASET_FINGERPRINT}"
+# Use deterministic job name based on experiment name and dataset fingerprint (not timestamp)
+CONFIG_NAME="${EXPERIMENT_NAME}_${DATASET_FINGERPRINT}"
 
 declare -a HARBOR_PIDS
 declare -a HARBOR_LOGS
 
 run_harbor_for_shard() {
     local shard_idx=$1
-    local head_node=${HEAD_NODES[$shard_idx]}
-    local ngrok_url=${NGROK_URLS[$shard_idx]}
+    local start_node_idx=$((shard_idx * NODES_PER_SHARD))
+    local head_node=${ALL_NODES_ARRAY[$start_node_idx]}
+    local api_port=${API_PORTS[$shard_idx]}
     local shard_dataset="$SHARD_DIR/shard_${shard_idx}"
     local run_tag="${CONFIG_NAME}_shard${shard_idx}"
-    local harbor_log="${SBATCHES_DIR}/logs/harbor_openhands_${DATASET_NAME}_shard${shard_idx}_${SLURM_JOB_ID}.log"
+    local harbor_log="${EXPERIMENTS_DIR}/logs/harbor_${EXPERIMENT_NAME}_shard${shard_idx}_${SLURM_JOB_ID}.log"
 
     HARBOR_LOGS[$shard_idx]="$harbor_log"
 
     echo "  Starting Harbor for shard $shard_idx..."
     echo "    Dataset: $shard_dataset"
-    echo "    ngrok URL: $ngrok_url"
+    echo "    API port: $api_port"
     echo "    Run tag: $run_tag"
 
+    # ==========================================================================
+    # OPTIMAL CONFIG - Key changes from baseline marked with [OPTIMIZED]
+    # ==========================================================================
     srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$head_node" \
-        env LLM_BASE_URL="${ngrok_url}/v1" \
-            LLM_API_KEY="fake_key" \
-            LLM_MODEL="openai/glm" \
-            LITELLM_LOCAL_MODEL_COST_MAP=true \
-            OPENHANDS_LLM_NATIVE_TOOL_CALLING=true \
-            LLM_NATIVE_TOOL_CALLING=true \
         harbor jobs start \
             -p "$shard_dataset" \
             --n-concurrent 64 \
-            --agent openhands \
-            --model "openai/glm" \
+            --agent terminus-2 \
+            --model "hosted_vllm/glm" \
             --env "daytona" \
-            --agent-kwarg "api_base=${ngrok_url}/v1" \
-            --agent-kwarg "key=fake_key" \
-            --agent-kwarg "max_tokens=65536" \
-            --agent-kwarg 'model_info={"max_output_tokens":65536,"max_input_tokens":262144}' \
             --n-attempts 1 \
             --max-retries 0 \
             --job-name "$run_tag" \
@@ -356,8 +311,19 @@ run_harbor_for_shard() {
             --timeout-multiplier 2.0 \
             --config "$HARBOR_CONFIG" \
             --disable-verification \
-            --agent-kwarg 'trajectory_config={"linear_history":true}' \
+            --agent-kwarg "api_base=http://localhost:${api_port}/v1" \
+            --agent-kwarg "key=fake_key" \
+            --agent-kwarg "temperature=1.0" \
+            --agent-kwarg "max_episodes=512" \
+            --agent-kwarg "enable_summarize=false" \
+            --agent-kwarg "proactive_summarization_threshold=8192" \
+            --agent-kwarg "interleaved_thinking=true" \
+            --agent-kwarg "parser_name=json" \
+            --agent-kwarg "tmux_pane_width=160" \
+            --agent-kwarg "tmux_pane_height=40" \
+            --agent-kwarg 'trajectory_config={"raw_content":true,"linear_history":true}' \
             --agent-kwarg 'extra_body={"chat_template_kwargs":{"enable_thinking":true}}' \
+            --agent-kwarg 'extra_completion_params={"max_tokens":8192}' \
         >> "$harbor_log" 2>&1 &
 
     HARBOR_PIDS[$shard_idx]=$!
@@ -378,7 +344,7 @@ for shard_idx in $(seq 0 $((NUM_SHARDS - 1))); do
 done
 
 echo ""
-echo "=== Step 7: Exporting and Uploading Expert Traces ==="
+echo "=== Step 6: Exporting and Uploading Expert Traces ==="
 
 JOB_DIRS=""
 for shard_idx in $(seq 0 $((NUM_SHARDS - 1))); do
@@ -392,6 +358,7 @@ done
 echo "Job directories: $JOB_DIRS"
 echo "Uploading traces to: $OUTPUT_REPO_ID"
 
+# Upload traces using external script
 LD_LIBRARY_PATH="" TRANSFORMERS_NO_TORCH=1 /scratch/10000/eguha3/vllm_sandboxes_backup/bin/python3 "$TEACHER_SCRIPTS_DIR/upload_traces.py" "$OUTPUT_REPO_ID" $JOB_DIRS
 
 EXPORT_EXIT=$?
@@ -402,20 +369,16 @@ else
 fi
 
 echo ""
-echo "=== Step 8: Cleanup ==="
+echo "=== Step 7: Cleanup ==="
 
 for shard_idx in $(seq 0 $((NUM_SHARDS - 1))); do
     if [ -n "${VLLM_PIDS[$shard_idx]}" ]; then
         kill "${VLLM_PIDS[$shard_idx]}" 2>/dev/null || true
     fi
-    if [ -n "${NGROK_PIDS[$shard_idx]}" ]; then
-        kill "${NGROK_PIDS[$shard_idx]}" 2>/dev/null || true
-    fi
 done
 
 for node in "${ALL_NODES_ARRAY[@]}"; do
     srun --nodes=1 --ntasks=1 --overlap -w "$node" $RAY_BIN stop --force 2>/dev/null &
-    srun --nodes=1 --ntasks=1 --overlap -w "$node" pkill -u $USER -f ngrok 2>/dev/null &
 done
 wait
 
@@ -424,12 +387,12 @@ conda deactivate || true
 echo ""
 echo "============================================"
 if [ $FAILED -eq 0 ]; then
-    echo "Experiment COMPLETED"
+    echo "Experiment COMPLETED: $EXPERIMENT_NAME"
     echo "  Input: $INPUT_REPO_ID"
     echo "  Output: $OUTPUT_REPO_ID"
     echo "  All $NUM_SHARDS shards completed successfully!"
 else
-    echo "Experiment PARTIALLY FAILED"
+    echo "Experiment PARTIALLY FAILED: $EXPERIMENT_NAME"
     echo "  $FAILED out of $NUM_SHARDS shards failed"
 fi
 echo "============================================"

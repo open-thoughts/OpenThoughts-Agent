@@ -292,7 +292,6 @@ def force_resume(
     )
     return ds
 
-@gcs_cache()
 def run_dataset_to_traces(
     dataset_path: Path | str | None = None,
     *,

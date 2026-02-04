@@ -93,7 +93,7 @@ echo ""
 echo "=== Step 2: Downloading and Sharding Dataset ==="
 
 export PYTHONPATH="${DCAGENT_DIR}:${DCAGENT_DIR}/scripts/harbor:$PYTHONPATH"
-TEACHER_SCRIPTS_DIR="${DCAGENT_DIR}/data/ablation_experiments/sbatch/teacher_scripts"
+TEACHER_SCRIPTS_DIR="${DCAGENT_DIR}/data/sbatches/teacher_scripts"
 
 SHARD_OUTPUT_FILE=$(mktemp)
 LD_LIBRARY_PATH="" /scratch/10000/eguha3/vllm_sandboxes_backup/bin/python3 "$TEACHER_SCRIPTS_DIR/shard_dataset.py" "$INPUT_REPO_ID" "$NUM_SHARDS" "$SHARD_OUTPUT_FILE"

@@ -94,6 +94,639 @@ PROGRESS_COLUMNS = (
     TimeRemainingColumn(),
 )
 
+# =============================================================================
+# Language-Specific Dockerfiles
+# =============================================================================
+
+DOCKERFILES = {
+    "python": """FROM python:3.10-slim
+WORKDIR /app
+RUN pip install --no-cache-dir pytest
+""",
+    "python-ubuntu": """FROM ubuntu:24.04
+WORKDIR /app
+RUN apt-get update && apt-get install -y python3 python3-pip python3-venv bash && rm -rf /var/lib/apt/lists/*
+RUN python3 -m venv /app/.venv && /app/.venv/bin/pip install --no-cache-dir pytest
+""",
+    "node": """FROM node:20-slim
+WORKDIR /app
+RUN npm install -g jest mocha chai
+RUN echo 'module.exports = { testEnvironment: "node", testMatch: ["**/tests/**/*.js", "**/*.test.js", "**/*.spec.js"] };' > /app/jest.config.js
+""",
+    "go": """FROM golang:1.21-alpine
+WORKDIR /app
+RUN apk add --no-cache bash git
+""",
+    "java": """FROM openjdk:17-slim
+WORKDIR /app
+RUN apt-get update && apt-get install -y maven bash && rm -rf /var/lib/apt/lists/*
+""",
+    "java-gradle": """FROM openjdk:17-slim
+WORKDIR /app
+RUN apt-get update && apt-get install -y gradle bash && rm -rf /var/lib/apt/lists/*
+""",
+    "cpp": """FROM gcc:12
+WORKDIR /app
+RUN apt-get update && apt-get install -y cmake googletest bash && rm -rf /var/lib/apt/lists/*
+""",
+    "rust": """FROM rust:1.75-slim
+WORKDIR /app
+RUN apt-get update && apt-get install -y pkg-config libssl-dev bash && rm -rf /var/lib/apt/lists/*
+""",
+    "ruby": """FROM ruby:3.2-slim
+WORKDIR /app
+RUN apt-get update && apt-get install -y build-essential bash && rm -rf /var/lib/apt/lists/*
+RUN gem install rspec minitest
+""",
+    "csharp": """FROM mcr.microsoft.com/dotnet/sdk:7.0
+WORKDIR /app
+RUN apt-get update && apt-get install -y bash && rm -rf /var/lib/apt/lists/*
+""",
+    "php": """FROM php:8.2-cli
+WORKDIR /app
+RUN apt-get update && apt-get install -y unzip git bash && rm -rf /var/lib/apt/lists/*
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+RUN composer global require phpunit/phpunit
+ENV PATH="${PATH}:/root/.composer/vendor/bin"
+""",
+}
+
+
+def get_dockerfile(language: str, custom_additions: str = "") -> str:
+    """
+    Get a language-specific Dockerfile.
+
+    Args:
+        language: Language name (python, node, go, java, cpp, rust, ruby, csharp, php)
+        custom_additions: Additional Dockerfile commands to append
+
+    Returns:
+        str: Dockerfile content
+
+    Raises:
+        ValueError: If language is not supported
+    """
+    language = language.lower()
+    if language not in DOCKERFILES:
+        supported = ", ".join(DOCKERFILES.keys())
+        raise ValueError(f"Unsupported language: {language}. Supported: {supported}")
+
+    dockerfile = DOCKERFILES[language]
+    if custom_additions:
+        dockerfile += f"\n{custom_additions}\n"
+    return dockerfile
+
+
+def create_generic_test_sh(
+    test_command: str,
+    setup_commands: str = "",
+    working_dir: str = "/app",
+) -> str:
+    """
+    Create a generic test.sh script.
+
+    Args:
+        test_command: The command to run tests (e.g., "pytest /tests/test_solution.py")
+        setup_commands: Optional setup commands to run before tests
+        working_dir: Working directory for test execution
+
+    Returns:
+        str: test.sh content
+    """
+    setup_block = f"\n# Setup\n{setup_commands}\n" if setup_commands else ""
+
+    return f'''#!/bin/bash
+set -e
+
+mkdir -p /logs/verifier
+
+cleanup() {{
+    if [ $? -eq 0 ]; then
+        echo "1" > /logs/verifier/reward.txt
+    else
+        echo "0" > /logs/verifier/reward.txt
+    fi
+}}
+trap cleanup EXIT
+
+cd {working_dir}
+{setup_block}
+echo "Running tests..."
+{test_command} 2>&1 | tee /logs/verifier/test_output.txt
+
+exit ${{PIPESTATUS[0]}}
+'''
+
+
+def create_pytest_test_sh(test_file: str = "/tests/test_solution.py") -> str:
+    """Create a test.sh for pytest tests."""
+    return create_generic_test_sh(
+        test_command=f"pytest {test_file} -v --tb=short",
+        setup_commands="pip3 install --quiet pytest 2>/dev/null || true"
+    )
+
+
+def create_unittest_test_sh(test_file: str = "/tests/test_solution.py") -> str:
+    """Create a test.sh for unittest tests."""
+    return create_generic_test_sh(
+        test_command=f"python3 -m unittest {test_file} -v"
+    )
+
+
+def create_jest_test_sh(test_file: str = "/tests/test_solution.js") -> str:
+    """Create a test.sh for Jest tests."""
+    return create_generic_test_sh(
+        test_command=f"npx jest {test_file} --verbose",
+        setup_commands="npm install --silent jest 2>/dev/null || true"
+    )
+
+
+def create_go_test_sh(test_file: str = "/tests/") -> str:
+    """Create a test.sh for Go tests."""
+    return create_generic_test_sh(
+        test_command=f"go test -v {test_file}..."
+    )
+
+
+def create_junit_test_sh(test_class: str = "TestSolution") -> str:
+    """Create a test.sh for JUnit tests."""
+    return create_generic_test_sh(
+        test_command=f"mvn test -Dtest={test_class}",
+        setup_commands="mvn compile -q 2>/dev/null || true"
+    )
+
+
+def create_io_test_sh(
+    solution_cmd: str = "python3 /app/solution.py",
+    input_dir: str = "/tests/inputs",
+    output_dir: str = "/tests/outputs",
+) -> str:
+    """
+    Create a test.sh for competitive programming I/O tests.
+
+    Compares solution output against expected output files.
+
+    Args:
+        solution_cmd: Command to run the solution
+        input_dir: Directory containing input files (input_0.txt, input_1.txt, ...)
+        output_dir: Directory containing expected output files
+
+    Returns:
+        str: test.sh content
+    """
+    return f'''#!/bin/bash
+set -e
+
+mkdir -p /logs/verifier
+
+PASSED=0
+FAILED=0
+TOTAL=0
+
+cd /app
+
+for input_file in {input_dir}/input_*.txt; do
+    if [ ! -f "$input_file" ]; then
+        continue
+    fi
+
+    TOTAL=$((TOTAL + 1))
+    test_num=$(basename "$input_file" | sed 's/input_//;s/.txt//')
+    expected_file="{output_dir}/output_$test_num.txt"
+
+    if [ ! -f "$expected_file" ]; then
+        echo "Missing expected output for test $test_num"
+        FAILED=$((FAILED + 1))
+        continue
+    fi
+
+    echo "Running test $test_num..."
+    actual_output=$({solution_cmd} < "$input_file" 2>&1) || true
+    expected_output=$(cat "$expected_file")
+
+    # Normalize whitespace for comparison
+    actual_normalized=$(echo "$actual_output" | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')
+    expected_normalized=$(echo "$expected_output" | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')
+
+    if [ "$actual_normalized" = "$expected_normalized" ]; then
+        echo "Test $test_num: PASSED"
+        PASSED=$((PASSED + 1))
+    else
+        echo "Test $test_num: FAILED"
+        echo "Expected: $expected_output"
+        echo "Actual: $actual_output"
+        FAILED=$((FAILED + 1))
+    fi
+done
+
+echo ""
+echo "Results: $PASSED/$TOTAL passed"
+
+if [ $FAILED -eq 0 ] && [ $TOTAL -gt 0 ]; then
+    echo "1" > /logs/verifier/reward.txt
+    exit 0
+else
+    echo "0" > /logs/verifier/reward.txt
+    exit 1
+fi
+'''
+
+
+def create_harbor_task_directory_generic(
+    output_dir: Path,
+    task_id: int,
+    instruction: str,
+    dockerfile: str,
+    test_sh: str,
+    test_files: Dict[str, str],
+    dataset_prefix: str,
+    metadata: Optional[Dict] = None,
+    solution_files: Optional[Dict[str, str]] = None,
+) -> Path:
+    """
+    Create a generic harbor-format task directory.
+
+    Args:
+        output_dir: Parent directory for tasks
+        task_id: Unique task identifier
+        instruction: Content for instruction.md
+        dockerfile: Dockerfile content
+        test_sh: test.sh script content
+        test_files: Dict mapping filename -> content for test files
+        dataset_prefix: Prefix for task directory name
+        metadata: Optional metadata dict
+        solution_files: Optional dict mapping filename -> content for solution files
+
+    Returns:
+        Path to created task directory
+    """
+    task_dir = output_dir / f"{dataset_prefix}-{task_id:04d}"
+    task_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create environment directory with Dockerfile
+    env_dir = task_dir / "environment"
+    env_dir.mkdir(exist_ok=True)
+    (env_dir / "Dockerfile").write_text(dockerfile, encoding="utf-8")
+
+    # Create tests directory
+    tests_dir = task_dir / "tests"
+    tests_dir.mkdir(exist_ok=True)
+
+    # Write test.sh
+    test_sh_path = tests_dir / "test.sh"
+    test_sh_path.write_text(test_sh, encoding="utf-8")
+    os.chmod(test_sh_path, 0o755)
+
+    # Write test files
+    for filename, content in test_files.items():
+        file_path = tests_dir / filename
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content, encoding="utf-8")
+
+    # Create instruction.md
+    (task_dir / "instruction.md").write_text(instruction, encoding="utf-8")
+
+    # Create task.toml
+    (task_dir / "task.toml").write_text(create_standard_task_toml(), encoding="utf-8")
+
+    # Create metadata.json if provided
+    if metadata:
+        (task_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+
+    # Create solution files if provided
+    if solution_files:
+        solution_dir = task_dir / "solution"
+        solution_dir.mkdir(exist_ok=True)
+        for filename, content in solution_files.items():
+            file_path = solution_dir / filename
+            file_path.write_text(content, encoding="utf-8")
+            if filename.endswith(".sh"):
+                os.chmod(file_path, 0o755)
+
+    return task_dir
+
+
+def generate_harbor_tasks_batch(
+    samples: List[Dict],
+    instruction_fn: Callable[[Dict], str],
+    dockerfile_fn: Callable[[Dict], str],
+    test_sh_fn: Callable[[Dict], str],
+    test_files_fn: Callable[[Dict], Dict[str, str]],
+    dataset_prefix: str,
+    metadata_fn: Optional[Callable[[Dict], Dict]] = None,
+    solution_files_fn: Optional[Callable[[Dict], Dict[str, str]]] = None,
+) -> str:
+    """
+    Generate harbor-format tasks from a batch of samples.
+
+    Args:
+        samples: List of sample dicts
+        instruction_fn: Function to generate instruction from sample
+        dockerfile_fn: Function to generate dockerfile from sample
+        test_sh_fn: Function to generate test.sh from sample
+        test_files_fn: Function to generate test files dict from sample
+        dataset_prefix: Prefix for task directory names
+        metadata_fn: Optional function to generate metadata from sample
+        solution_files_fn: Optional function to generate solution files from sample
+
+    Returns:
+        Path to the output directory containing all tasks
+    """
+    temp_dir = Path(tempfile.mkdtemp(prefix=f"{dataset_prefix}_tasks_"))
+    print(f"Generating harbor tasks in: {temp_dir}")
+
+    for i, sample in enumerate(tqdm(samples, desc="Creating tasks")):
+        create_harbor_task_directory_generic(
+            output_dir=temp_dir,
+            task_id=i,
+            instruction=instruction_fn(sample),
+            dockerfile=dockerfile_fn(sample),
+            test_sh=test_sh_fn(sample),
+            test_files=test_files_fn(sample),
+            dataset_prefix=dataset_prefix,
+            metadata=metadata_fn(sample) if metadata_fn else None,
+            solution_files=solution_files_fn(sample) if solution_files_fn else None,
+        )
+
+    print(f"Generated {len(samples)} harbor tasks successfully!")
+    return str(temp_dir)
+
+
+# =============================================================================
+# LLM Prompts for Task Generation
+# =============================================================================
+
+FOCAL_TO_INSTRUCTION_PROMPT = """Given this function signature and implementation, create a task description:
+
+Function:
+{{focal_function}}
+
+The task should:
+1. Describe what functionality needs to be implemented
+2. Include input/output requirements based on the function signature
+3. Be self-contained and actionable
+4. The solution should be placed in /app/
+
+Create a clear task description (just the task, no preamble):"""
+
+TEST_TO_INSTRUCTION_PROMPT = """You are an expert at creating coding tasks from test code.
+
+Given the following test code, create a clear, specific task description that an AI agent could complete. The task should:
+1. Describe what functionality needs to be implemented (not just "make the tests pass")
+2. Include specific requirements that would make the tests pass
+3. Be self-contained and actionable
+4. The solution should be placed in /app/
+
+Test code:
+{{text}}
+
+Create a task description (just the task, no preamble):"""
+
+PROBLEM_STATEMENT_CLEANUP_PROMPT = """Clean up and format the following programming problem description for a coding task. The task should:
+1. Be clear and well-formatted
+2. Include input/output format specifications if present
+3. Include examples if available
+4. The solution should be placed in /app/
+
+Problem:
+{{description}}
+
+Formatted task description:"""
+
+
+# New well-specified prompt that extracts exact function signatures
+TEST_TO_WELL_SPECIFIED_INSTRUCTION_PROMPT = """You are an expert at creating precise coding task specifications from test code.
+
+Analyze the test code below and create a WELL-SPECIFIED task instruction. Your instruction MUST:
+
+1. **Extract the EXACT function/class names** from the test code (look for function calls, class instantiations)
+2. **Include function signatures with backticks** like: Implement `function_name(param1, param2)`
+3. **Specify return types** when evident from assertions
+4. **Include example input/output** from the test assertions
+5. **Specify edge case behavior** when tested
+
+CRITICAL: The function/class names in your instruction MUST EXACTLY MATCH those in the test code.
+
+Test code:
+{{text}}
+
+Create a well-specified task instruction in this format:
+
+# Task: [Task Name]
+
+Implement `function_name(params)` that [description of what it does].
+
+**Parameters**:
+- `param1`: [description]
+- `param2`: [description]
+
+**Returns**: [return type] - [description]
+
+**Example**:
+```python
+function_name(example_input) == expected_output
+```
+
+## Requirements
+
+- Write your solution in `solution.py`
+- Make sure all tests pass
+
+---
+
+Now generate the instruction:"""
+
+
+def extract_function_signatures_from_test(test_code: str) -> dict:
+    """
+    Extract function/class names and signatures from test code.
+
+    Returns a dict with:
+    - functions: list of {name, args, expected}
+    - classes: list of {name, methods}
+    """
+    import re
+
+    result = {
+        "functions": [],
+        "classes": [],
+        "imports_from_solution": []
+    }
+
+    # Find imports from solution
+    import_pattern = r'from\s+solution\s+import\s+([^\n]+)'
+    import_match = re.search(import_pattern, test_code)
+    if import_match:
+        imports = import_match.group(1)
+        if imports.strip() == '*':
+            # Need to find actual names from usage
+            pass
+        else:
+            result["imports_from_solution"] = [
+                name.strip() for name in imports.split(',')
+            ]
+
+    # Find function calls in assertions
+    # Pattern: assert func_name(args) == expected
+    func_assert_pattern = r'assert\s+(\w+)\s*\(([^)]*)\)\s*==\s*([^\n]+)'
+    for match in re.finditer(func_assert_pattern, test_code):
+        func_name = match.group(1)
+        args = match.group(2).strip()
+        expected = match.group(3).strip()
+
+        # Skip built-in functions
+        if func_name in ['len', 'str', 'int', 'float', 'list', 'dict', 'set', 'type', 'isinstance']:
+            continue
+
+        result["functions"].append({
+            "name": func_name,
+            "args": args,
+            "expected": expected
+        })
+
+    # Find function calls with 'is' comparisons
+    is_pattern = r'assert\s+(\w+)\s*\(([^)]*)\)\s+is\s+(not\s+)?(\w+)'
+    for match in re.finditer(is_pattern, test_code):
+        func_name = match.group(1)
+        args = match.group(2).strip()
+        negated = match.group(3)
+        expected = match.group(4)
+
+        if func_name in ['len', 'str', 'int', 'float', 'list', 'dict', 'set', 'type', 'isinstance']:
+            continue
+
+        result["functions"].append({
+            "name": func_name,
+            "args": args,
+            "expected": f"{'not ' if negated else ''}{expected}"
+        })
+
+    # Find class instantiations
+    class_pattern = r'(\w+)\s*=\s*([A-Z]\w+)\s*\(([^)]*)\)'
+    for match in re.finditer(class_pattern, test_code):
+        var_name = match.group(1)
+        class_name = match.group(2)
+        args = match.group(3).strip()
+
+        # Find method calls on this instance
+        method_pattern = rf'{var_name}\.(\w+)\s*\(([^)]*)\)'
+        methods = []
+        for method_match in re.finditer(method_pattern, test_code):
+            method_name = method_match.group(1)
+            method_args = method_match.group(2).strip()
+            methods.append({
+                "name": method_name,
+                "args": method_args
+            })
+
+        result["classes"].append({
+            "name": class_name,
+            "init_args": args,
+            "methods": methods
+        })
+
+    # Deduplicate functions by name
+    seen_funcs = set()
+    unique_funcs = []
+    for f in result["functions"]:
+        if f["name"] not in seen_funcs:
+            seen_funcs.add(f["name"])
+            unique_funcs.append(f)
+    result["functions"] = unique_funcs
+
+    return result
+
+
+def generate_well_specified_instruction(
+    test_code: str,
+    task_title: str = "Task",
+    additional_context: str = ""
+) -> str:
+    """
+    Generate a well-specified instruction from test code.
+
+    This function programmatically extracts function signatures
+    and generates precise instructions without using an LLM.
+
+    Args:
+        test_code: The test code to analyze
+        task_title: Title for the task
+        additional_context: Additional context to include
+
+    Returns:
+        Well-specified instruction markdown
+    """
+    extracted = extract_function_signatures_from_test(test_code)
+
+    lines = [f"# Task: {task_title}", ""]
+
+    # Add functions
+    for func in extracted["functions"]:
+        func_name = func["name"]
+        args = func["args"]
+        expected = func["expected"]
+
+        # Try to infer parameter names from args
+        param_names = []
+        if args:
+            for i, arg in enumerate(args.split(',')):
+                arg = arg.strip()
+                if arg.startswith(("'", '"', '[', '{', '(')):
+                    param_names.append(f"arg{i+1}")
+                elif arg.replace('.', '').replace('-', '').replace('+', '').isdigit():
+                    param_names.append(f"n" if i == 0 else f"arg{i+1}")
+                else:
+                    # Use the actual variable name if it's a simple identifier
+                    clean_arg = arg.split('[')[0].split('.')[0].strip()
+                    if clean_arg.isidentifier():
+                        param_names.append(clean_arg)
+                    else:
+                        param_names.append(f"arg{i+1}")
+
+        sig = f"{func_name}({', '.join(param_names)})" if param_names else f"{func_name}()"
+
+        lines.append(f"Implement `{sig}` that performs the required operation.")
+        lines.append("")
+
+        if expected:
+            lines.append("**Example**:")
+            lines.append("```python")
+            lines.append(f"{func_name}({args}) == {expected}")
+            lines.append("```")
+            lines.append("")
+
+    # Add classes
+    for cls in extracted["classes"]:
+        class_name = cls["name"]
+        init_args = cls["init_args"]
+        methods = cls["methods"]
+
+        lines.append(f"Implement class `{class_name}`:")
+        lines.append("")
+
+        if init_args:
+            lines.append(f"- Constructor: `__init__({init_args})`")
+
+        for method in methods:
+            method_sig = f"{method['name']}({method['args']})"
+            lines.append(f"- Method: `{method_sig}`")
+
+        lines.append("")
+
+    # Add context if provided
+    if additional_context:
+        lines.append(additional_context)
+        lines.append("")
+
+    # Standard requirements
+    lines.append("## Requirements")
+    lines.append("")
+    lines.append("- Write your solution in `solution.py`")
+    lines.append("- Make sure all tests pass")
+    lines.append("")
+
+    return "\n".join(lines)
+
 
 def finalize_dataset_output(
     source_dir: Union[str, Path],
@@ -267,6 +900,139 @@ def upload_tasks_to_hf(
     logger.info(f"Upload result: {result}")
     
     return repo_url
+
+
+def upsample_hf_dataset(
+    source_repo_id: str,
+    target_repo_id: str,
+    target_count: int = 10000,
+    token: Optional[str] = None,
+    private: bool = False,
+) -> str:
+    """
+    Upsample a HuggingFace dataset to reach a target count by cycling through samples.
+
+    Args:
+        source_repo_id: Source HuggingFace repository ID
+        target_repo_id: Target HuggingFace repository ID for upsampled dataset
+        target_count: Target number of samples (default: 10000)
+        token: HuggingFace token for authentication
+        private: Whether to create a private repository
+
+    Returns:
+        URL of the uploaded upsampled dataset
+    """
+    logger = setup_logging()
+
+    token = token or os.environ.get("HF_TOKEN")
+    if not token:
+        raise ValueError("HF_TOKEN environment variable or token parameter required")
+
+    logger.info(f"Loading source dataset from {source_repo_id}")
+
+    # Download source dataset
+    source_path = download_hf_dataset(repo_id=source_repo_id, use_snapshot=True)
+    source_path = Path(source_path)
+
+    # Find all task directories
+    task_dirs = sorted([d for d in source_path.iterdir() if d.is_dir() and (d / "instruction.md").exists()])
+
+    ds = None
+    if not task_dirs:
+        # Try to find parquet file and load as dataset
+        parquet_files = list(source_path.rglob("*.parquet"))
+        if parquet_files:
+            logger.info("Found parquet dataset, loading directly")
+            ds = load_dataset(source_repo_id, split="train")
+            original_count = len(ds)
+        else:
+            raise ValueError(f"No task directories or parquet files found in {source_repo_id}")
+    else:
+        original_count = len(task_dirs)
+
+    logger.info(f"Source dataset has {original_count} samples, target is {target_count}")
+
+    if original_count >= target_count:
+        logger.info("Source already has enough samples, no upsampling needed")
+        return f"https://huggingface.co/datasets/{source_repo_id}"
+
+    # Create temp directory for upsampled tasks
+    with tempfile.TemporaryDirectory(prefix="upsample_", dir=os.environ.get("TMPDIR", "/tmp")) as temp_dir:
+        temp_path = Path(temp_dir)
+
+        # Copy/duplicate tasks to reach target count
+        for i in tqdm(range(target_count), desc="Upsampling tasks"):
+            source_idx = i % original_count
+
+            if task_dirs:
+                # Copy from task directories
+                source_task = task_dirs[source_idx]
+                target_task = temp_path / f"task-{i:05d}"
+                shutil.copytree(source_task, target_task)
+
+                # Update task ID in metadata if exists
+                metadata_file = target_task / "metadata.json"
+                if metadata_file.exists():
+                    with open(metadata_file) as f:
+                        metadata = json.load(f)
+                    metadata["task_id"] = f"task-{i:05d}"
+                    metadata["original_task_id"] = source_task.name
+                    metadata["upsampled"] = True
+                    with open(metadata_file, "w") as f:
+                        json.dump(metadata, f, indent=2)
+            elif ds is not None:
+                # Create task directory from parquet data
+                source_sample = ds[source_idx]
+                target_task = temp_path / f"task-{i:05d}"
+                target_task.mkdir(parents=True)
+
+                # Create instruction.md
+                instruction = source_sample.get("instruction", source_sample.get("task_description", ""))
+                (target_task / "instruction.md").write_text(instruction)
+
+                # Create environment/Dockerfile
+                env_dir = target_task / "environment"
+                env_dir.mkdir()
+                dockerfile = source_sample.get("dockerfile", "FROM python:3.10-slim\nWORKDIR /app\n")
+                (env_dir / "Dockerfile").write_text(dockerfile)
+
+                # Create tests directory and test.sh
+                tests_dir = target_task / "tests"
+                tests_dir.mkdir()
+                test_sh = source_sample.get("test_sh", "#!/bin/bash\nexit 0\n")
+                (tests_dir / "test.sh").write_text(test_sh)
+
+                # Create metadata.json
+                metadata = {
+                    "task_id": f"task-{i:05d}",
+                    "original_idx": source_idx,
+                    "upsampled": True,
+                    "source_repo": source_repo_id,
+                }
+                # Add other fields from source sample
+                for key in ["language", "dataset", "difficulty"]:
+                    if key in source_sample:
+                        metadata[key] = source_sample[key]
+                (target_task / "metadata.json").write_text(json.dumps(metadata, indent=2))
+
+                # Create task.toml if not exists
+                task_toml = f'''[task]
+id = "task-{i:05d}"
+upsampled = true
+'''
+                (target_task / "task.toml").write_text(task_toml)
+
+        logger.info(f"Created {target_count} upsampled tasks")
+
+        # Upload to HuggingFace
+        result_url = upload_tasks_to_hf(
+            dataset_path=str(temp_path),
+            repo_id=target_repo_id,
+            private=private,
+            token=token,
+        )
+
+    return result_url
 
 
 def upload_logs_to_hf(
@@ -507,7 +1273,8 @@ def create_standard_dockerfile() -> str:
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y python3 python3-pip && rm -rf /var/lib/apt/lists/*
+# Install python, pip, and bsdutils (for script command needed by terminus-2 agent)
+RUN apt-get update && apt-get install -y python3 python3-pip python3-venv bsdutils && rm -rf /var/lib/apt/lists/*
 """
 
 

@@ -190,6 +190,7 @@ trainer:
 generator:
   backend: vllm
   model_dtype: bfloat16
+  enforce_eager: false
 
   # Tensor parallelism = 4 (OpenHands: TP=4 for 32B model)
   # For 8B model we could use TP=2, but TP=4 gives more KV cache headroom

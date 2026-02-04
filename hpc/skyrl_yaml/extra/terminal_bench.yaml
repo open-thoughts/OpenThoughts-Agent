@@ -142,6 +142,7 @@ trainer:
 # Generator (vLLM inference)
 generator:
   backend: vllm
+  enforce_eager: false
   # Computed: (num_nodes * gpus_per_node) / tensor_parallel_size
   num_inference_engines: null
   inference_engine_tensor_parallel_size: 1

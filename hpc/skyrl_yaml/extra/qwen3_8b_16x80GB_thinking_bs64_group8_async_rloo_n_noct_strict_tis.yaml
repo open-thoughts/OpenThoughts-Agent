@@ -206,6 +206,7 @@ trainer:
 generator:
   backend: vllm
   model_dtype: bfloat16
+  enforce_eager: false
 
   inference_engine_tensor_parallel_size: 1
   num_inference_engines: 8

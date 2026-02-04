@@ -203,6 +203,7 @@ trainer:
 generator:
   backend: vllm
   model_dtype: bfloat16
+  enforce_eager: false
 
   # Tensor parallelism = 1 for 1.7B model (fits easily on single GPU)
   # This gives us 4 inference engines (4 GPUs / TP=1)

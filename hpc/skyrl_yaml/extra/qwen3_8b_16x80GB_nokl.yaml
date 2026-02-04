@@ -211,6 +211,7 @@ trainer:
 generator:
   backend: vllm
   model_dtype: bfloat16
+  enforce_eager: false
 
   # Tensor parallelism = 2 for 32k context with 8B model
   # This gives us 8 engines (16 GPUs / TP=2)

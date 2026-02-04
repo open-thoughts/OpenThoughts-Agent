@@ -211,6 +211,7 @@ trainer:
 generator:
   backend: vllm
   model_dtype: bfloat16
+  enforce_eager: false
 
   # ==========================================================================
   # ASYNC TRAINING: Inference engine configuration

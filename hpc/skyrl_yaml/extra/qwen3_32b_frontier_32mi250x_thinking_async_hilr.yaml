@@ -148,6 +148,7 @@ trainer:
 generator:
   backend: vllm
   model_dtype: bfloat16
+  enforce_eager: false
 
   # TP=2 for 32B model on 64GB GCDs
   inference_engine_tensor_parallel_size: 2

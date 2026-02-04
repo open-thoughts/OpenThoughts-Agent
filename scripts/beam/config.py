@@ -119,6 +119,10 @@ class Beta9Config:
     gateway_grpc_port: int = 1993
     gateway_service_name: str = "beta9-gateway"
 
+    # JuiceFS filesystem name - used as S3 prefix for storage
+    # Change this to deploy multiple clusters to the same S3 bucket
+    juicefs_fs_name: str = "beta9-fs"
+
     # Resource configuration for CPU-only deployment
     worker_cpu_request: str = "1"
     worker_memory_request: str = "1Gi"
@@ -127,11 +131,15 @@ class Beta9Config:
 
 @dataclass
 class PinggyConfig:
-    """Configuration for Pinggy tunnel exposure."""
+    """Configuration for Pinggy tunnel exposure.
+
+    Note: Beta9 SDK uses gRPC (port 1993) for sandbox operations, not HTTP (1994).
+    When tunneling, we expose gRPC and the SDK connects on port 443 (HTTPS/TLS).
+    """
 
     persistent_url: str
     token: str
-    local_port: int = 1994
+    local_port: int = 1993  # gRPC port - Beta9 SDK needs this for sandbox operations
     local_host: str = "localhost"
     pinggy_host: str = "pro.pinggy.io"
     health_check_timeout: int = 60
@@ -145,6 +153,8 @@ class PinggyConfig:
             f'-o StrictHostKeyChecking=no '
             f'-o ServerAliveInterval=30 '
             f'-o ExitOnForwardFailure=yes '
+            f'-o PubkeyAuthentication=no '
+            f'-o PreferredAuthentications=keyboard-interactive '
             f'{self.token}@{self.pinggy_host}; '
             f'sleep 10; '
             f'done'
@@ -153,6 +163,10 @@ class PinggyConfig:
     def get_public_url(self) -> str:
         """Return the public HTTPS URL for the tunnel."""
         return f"https://{self.persistent_url}"
+
+    def get_sdk_port(self) -> int:
+        """Return the port the Beta9 SDK should connect to (443 for Pinggy TLS)."""
+        return 443
 
 
 @dataclass

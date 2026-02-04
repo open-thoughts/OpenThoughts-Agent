@@ -117,10 +117,10 @@ class LogCollector:
 
         while not self._stop_event.is_set():
             try:
-                # Get list of pods with their container info
+                # Get list of pods with their container info (including init containers)
                 result = subprocess.run(
                     ["kubectl", "get", "pods", "-n", self.namespace, "-o",
-                     "jsonpath={range .items[*]}{.metadata.name},{.status.phase},{.status.containerStatuses[*].name},{.status.containerStatuses[*].restartCount}|{end}"],
+                     "jsonpath={range .items[*]}{.metadata.name},{.status.phase},{.status.containerStatuses[*].name},{.status.containerStatuses[*].restartCount},{.status.initContainerStatuses[*].name}|{end}"],
                     capture_output=True,
                     text=True,
                     timeout=30,
@@ -136,6 +136,18 @@ class LogCollector:
                             pod_phase = parts[1]
                             containers = parts[2].split() if len(parts) > 2 else []
                             restart_counts = parts[3].split() if len(parts) > 3 else []
+                            init_containers = parts[4].split() if len(parts) > 4 else []
+
+                            # Collect logs for each init container (completed ones)
+                            for init_container in init_containers:
+                                self._collect_container_logs(
+                                    pod_name,
+                                    init_container,
+                                    pod_phase,
+                                    0,  # Init containers don't restart
+                                    last_log_hash,
+                                    is_init=True
+                                )
 
                             # Collect logs for each container
                             for i, container in enumerate(containers):
@@ -157,7 +169,8 @@ class LogCollector:
         container: str,
         pod_phase: str,
         restart_count: int,
-        last_log_hash: dict[str, str]
+        last_log_hash: dict[str, str],
+        is_init: bool = False
     ):
         """Collect logs from a specific container, including previous crash logs."""
         log_key = f"{pod_name}/{container}"
@@ -176,7 +189,8 @@ class LogCollector:
                 log_hash = hash(result.stdout)
                 if last_log_hash.get(log_key) != log_hash:
                     last_log_hash[log_key] = log_hash
-                    header = f"LOGS: {pod_name} -c {container} (phase={pod_phase}, restarts={restart_count})"
+                    container_type = "INIT" if is_init else "LOGS"
+                    header = f"{container_type}: {pod_name} -c {container} (phase={pod_phase}, restarts={restart_count})"
                     self._write_log(header, result.stdout)
 
             # If container has restarted, also get previous logs
@@ -458,10 +472,11 @@ def _build_config_json(s3_config: Optional[S3StorageConfig]) -> str:
     }
 
     if s3_config:
-        # Use external MinIO
-        # NOTE: awsS3Bucket must be a FULL URL (endpoint + bucket/path), not just bucket name!
-        # Beta9/JuiceFS expects format like: https://endpoint:port/bucket/prefix
-        juicefs_bucket_url = f"{s3_config.endpoint_url}/{s3_config.bucket_name}/beta9-juicefs"
+        # Use external S3-compatible storage
+        # NOTE: awsS3Bucket must be endpoint + bucket, NOT with extra path suffix!
+        # JuiceFS manages its own directory structure using fsName (beta9-fs).
+        # Format: https://endpoint:port/bucket (no extra path segments)
+        juicefs_bucket_url = f"{s3_config.endpoint_url}/{s3_config.bucket_name}"
 
         logger.info(f"[CONFIG] Using EXTERNAL S3 storage (not LocalStack)")
         logger.info(f"[CONFIG]   JuiceFS bucket URL: {juicefs_bucket_url}")
@@ -471,6 +486,7 @@ def _build_config_json(s3_config: Optional[S3StorageConfig]) -> str:
             "awsS3Bucket": juicefs_bucket_url,
             "awsAccessKey": s3_config.access_key,
             "awsSecretKey": s3_config.secret_key,
+            "storageType": "minio",  # Use minio for S3-compatible storage (not AWS S3)
         })
 
         # Workspace storage (container images) - uses separate prefix
@@ -565,19 +581,24 @@ def deploy_beta9(
 
     # Inject S3 config directly into the Helm values (goes into mounted config file)
     if s3_config:
-        juicefs_bucket_url = f"{s3_config.endpoint_url}/{s3_config.bucket_name}/beta9-juicefs"
+        # Format: https://endpoint:port/bucket (no extra path - JuiceFS uses fsName for internal paths)
+        juicefs_bucket_url = f"{s3_config.endpoint_url}/{s3_config.bucket_name}"
 
         logger.info(f"[CONFIG] Using EXTERNAL S3 storage (not LocalStack)")
         logger.info(f"[CONFIG]   JuiceFS bucket URL: {juicefs_bucket_url}")
+        logger.info(f"[CONFIG]   JuiceFS fsName: {config.juicefs_fs_name}")
         logger.info(f"[CONFIG]   Workspace endpoint: {s3_config.endpoint_url}")
 
         # Add S3 config to Helm values - this updates the mounted config file
         values["config"] = {
+            "debugMode": True,  # Enable debug logging to see what config is loaded
             "storage": {
+                "fsName": config.juicefs_fs_name,  # Configurable JuiceFS prefix
                 "juicefs": {
                     "awsS3Bucket": juicefs_bucket_url,
                     "awsAccessKey": s3_config.access_key,
                     "awsSecretKey": s3_config.secret_key,
+                    "storageType": "minio",  # Use minio for S3-compatible storage
                 },
                 "workspaceStorage": {
                     "defaultAccessKey": s3_config.access_key,
@@ -589,10 +610,13 @@ def deploy_beta9(
     else:
         logger.warning("[CONFIG] FALLBACK: No S3 config provided, using LocalStack defaults!")
         logger.warning("[CONFIG]   JuiceFS bucket URL: http://localstack:4566/juicefs")
+        logger.warning("[CONFIG]   JuiceFS fsName: {config.juicefs_fs_name}")
         logger.warning("[CONFIG]   This will FAIL if LocalStack is not deployed!")
 
         values["config"] = {
+            "debugMode": True,  # Enable debug logging to see what config is loaded
             "storage": {
+                "fsName": config.juicefs_fs_name,  # Configurable JuiceFS prefix
                 "juicefs": {
                     "awsS3Bucket": "http://localstack:4566/juicefs",
                     "awsAccessKey": "test",

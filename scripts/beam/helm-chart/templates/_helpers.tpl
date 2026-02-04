@@ -48,6 +48,11 @@ controllers:
           repository: {{ .Values.images.gateway.repository }}
           tag: "{{ .Values.images.gateway.tag | default .Chart.AppVersion }}"
           pullPolicy: {{ .Values.images.gateway.pullPolicy | default "IfNotPresent" }}
+        {{- if .Values.config }}
+        env:
+          CONFIG_PATH:
+            value: "/config-copy/beta9-config.yaml"
+        {{- end }}
         probes:
           readiness:
             enabled: true
@@ -88,8 +93,8 @@ persistence:
     type: secret
     name: beta9-config-helm
     globalMounts:
-    - path: /etc/beta9.d/config.yaml
-      subPath: config.yaml
+    # Mount as directory, not single file - subPath can cause issues with config loading
+    - path: /etc/beta9.d
       readOnly: true
 {{- end -}}
 

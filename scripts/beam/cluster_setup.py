@@ -41,6 +41,7 @@ from scripts.beam.gke_provision import (
 from scripts.beam.s3_storage import (
     S3Storage,
     check_s3_configured,
+    cleanup_juicefs_storage,
     init_s3_storage,
 )
 from scripts.beam.beta9_deploy import (
@@ -105,7 +106,9 @@ def cmd_create(args) -> int:
         machine_type=args.machine_type,
     )
 
-    beta9_config = Beta9Config()
+    beta9_config = Beta9Config(
+        juicefs_fs_name=getattr(args, "juicefs_prefix", "beta9-fs"),
+    )
 
     # Load S3 config for shared storage (optional for create command)
     s3_config = S3StorageConfig.from_env_optional()
@@ -193,7 +196,9 @@ def cmd_create(args) -> int:
     # Step 4: Validate
     if not args.skip_validation and not args.dry_run and public_url:
         logger.info("Running validation tests...")
-        report = run_validation_suite(public_url, num_lifecycle_tests=2)
+        # Use port 443 for Pinggy (TLS tunnel), 1993 for direct gRPC access
+        gateway_port = 443 if args.expose_method == "pinggy" else 1993
+        report = run_validation_suite(public_url, num_lifecycle_tests=2, gateway_port=gateway_port)
         if report.failed > 0:
             logger.warning(f"Validation: {report.failed} tests failed")
     else:
@@ -241,7 +246,9 @@ def cmd_destroy(args) -> int:
         region=args.region,
     )
 
-    beta9_config = Beta9Config()
+    beta9_config = Beta9Config(
+        juicefs_fs_name=getattr(args, "juicefs_prefix", "beta9-fs"),
+    )
 
     # Step 1: Stop exposure processes
     logger.info("Stopping exposure processes...")
@@ -322,10 +329,14 @@ def cmd_validate(args) -> int:
         logger.error("--gateway-url required for validate command")
         return 1
 
+    # Use port 443 for Pinggy (TLS tunnel), 1993 for direct gRPC access
+    gateway_port = getattr(args, 'gateway_port', 443)
+
     report = run_validation_suite(
         args.gateway_url,
         num_lifecycle_tests=args.num_tests,
         include_isolation_test=not args.skip_isolation,
+        gateway_port=gateway_port,
     )
 
     return 0 if report.failed == 0 else 1
@@ -344,7 +355,9 @@ def cmd_test(args) -> int:
         machine_type=args.machine_type,
     )
 
-    beta9_config = Beta9Config()
+    beta9_config = Beta9Config(
+        juicefs_fs_name=getattr(args, "juicefs_prefix", "beta9-fs"),
+    )
 
     # Initialize S3 storage for artifact caching (optional but recommended)
     s3_storage = None
@@ -414,6 +427,15 @@ def cmd_test(args) -> int:
                 raise RuntimeError("S3 storage initialization failed")
 
             logger.info(f"S3 storage ready: s3://{s3_config.bucket_name}/{s3_config.namespace}/")
+
+            # Clean up JuiceFS storage from previous deployments
+            # JuiceFS refuses to format if the storage path is not empty
+            logger.info(f"Cleaning up JuiceFS storage ({beta9_config.juicefs_fs_name}) from previous deployments...")
+            if not cleanup_juicefs_storage(
+                bucket_name=s3_config.bucket_name,
+                juicefs_prefix=beta9_config.juicefs_fs_name,
+            ):
+                logger.warning("JuiceFS cleanup failed - deployment may fail if storage is not empty")
             # List existing cached artifacts
             artifacts = s3_storage.list_artifacts()
             if artifacts:
@@ -465,10 +487,13 @@ def cmd_test(args) -> int:
         logger.info("")
         logger.info("[5/5] Running validation tests...")
         if not args.dry_run and public_url:
+            # Use port 443 for Pinggy (TLS tunnel), 1993 for direct gRPC access
+            gateway_port = 443 if args.expose_method == "pinggy" else 1993
             report = run_validation_suite(
                 public_url,
                 num_lifecycle_tests=args.num_tests,
                 include_isolation_test=not args.skip_isolation,
+                gateway_port=gateway_port,
             )
             validation_passed = report.failed == 0
         else:
@@ -580,6 +605,8 @@ Examples:
     create_parser.add_argument("--skip-beta9", action="store_true", help="Skip Beta9 deployment")
     create_parser.add_argument("--skip-expose", action="store_true", help="Skip internet exposure")
     create_parser.add_argument("--skip-validation", action="store_true", help="Skip validation tests")
+    create_parser.add_argument("--juicefs-prefix", default="beta9-fs",
+                               help="JuiceFS S3 prefix (change for multiple clusters)")
     create_parser.add_argument("--dry-run", action="store_true", help="Print commands without executing")
 
     # Destroy command
@@ -589,6 +616,8 @@ Examples:
     destroy_parser.add_argument("--region", default="us-central1", help="GCP region")
     destroy_parser.add_argument("--skip-gke", action="store_true", help="Skip GKE deletion")
     destroy_parser.add_argument("--skip-beta9", action="store_true", help="Skip Beta9 uninstall")
+    destroy_parser.add_argument("--juicefs-prefix", default="beta9-fs",
+                               help="JuiceFS S3 prefix (for cleaning up storage)")
     destroy_parser.add_argument("--dry-run", action="store_true", help="Print commands without executing")
 
     # Status command
@@ -600,6 +629,8 @@ Examples:
     # Validate command
     validate_parser = subparsers.add_parser("validate", help="Run validation tests")
     validate_parser.add_argument("--gateway-url", help="Beta9 gateway URL")
+    validate_parser.add_argument("--gateway-port", type=int, default=443,
+                                 help="Gateway gRPC port (443 for Pinggy tunnels, 1993 for direct)")
     validate_parser.add_argument("--num-tests", type=int, default=3, help="Number of lifecycle tests")
     validate_parser.add_argument("--skip-isolation", action="store_true", help="Skip isolation test")
 
@@ -617,6 +648,8 @@ Examples:
     test_parser.add_argument("--num-tests", type=int, default=3, help="Number of validation tests")
     test_parser.add_argument("--skip-isolation", action="store_true", help="Skip isolation test")
     test_parser.add_argument("--keep-cluster", action="store_true", help="Don't delete cluster after test")
+    test_parser.add_argument("--juicefs-prefix", default="beta9-fs",
+                               help="JuiceFS S3 prefix (change for multiple clusters)")
     test_parser.add_argument("--dry-run", action="store_true", help="Print commands without executing")
 
     args = parser.parse_args()

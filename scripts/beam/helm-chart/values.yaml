@@ -52,9 +52,11 @@ config:
 
 images:
   gateway:
-    repository: public.ecr.aws/n4e0e1y0/beta9-gateway
-    tag:        # Defaults to chart's app version
-    pullPolicy: # Defaults to IfNotPresent
+    # Using forked beta9 with minio storage type support
+    # Original: public.ecr.aws/n4e0e1y0/beta9-gateway
+    repository: gcr.io/soe-datacomp/beta9-gateway
+    tag: minio-fix
+    pullPolicy: Always  # Always pull to get latest fixes
 
 controllers:
   gateway:
@@ -71,6 +73,75 @@ controllers:
         # Placeholder here - will be overridden by --set-json in helm command
         env: {}
     initContainers:
+      debug-config:
+        image:
+          repository: busybox
+          tag: 1.37.0
+        command:
+        - sh
+        - -c
+        - |
+          echo "========================================"
+          echo "DEBUG: Checking /etc/beta9.d/ contents"
+          echo "========================================"
+          echo ""
+          echo ">>> ls -la /etc/beta9.d/"
+          ls -la /etc/beta9.d/ 2>&1 || echo "ERROR: Directory does not exist!"
+          echo ""
+          echo ">>> Contents of config files:"
+          for f in /etc/beta9.d/*.yaml /etc/beta9.d/*.yml; do
+            if [ -f "$f" ]; then
+              echo "--- $f ---"
+              cat "$f"
+              echo ""
+            fi
+          done
+          echo ""
+          echo ">>> Checking for awsS3Bucket in config:"
+          grep -r "awsS3Bucket" /etc/beta9.d/ 2>&1 || echo "NOT FOUND"
+          echo ""
+          echo "========================================"
+          echo "DEBUG: Config check complete"
+          echo "========================================"
+      copy-config:
+        image:
+          repository: busybox
+          tag: 1.37.0
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          echo "========================================"
+          echo "COPY-CONFIG: Copying config to real file"
+          echo "========================================"
+
+          SOURCE="/etc/beta9.d/config.yaml"
+          DEST="/config-copy/beta9-config.yaml"
+
+          echo ">>> Source file info:"
+          ls -la "$SOURCE" 2>&1 || { echo "FATAL: Source file $SOURCE does not exist!"; exit 1; }
+
+          echo ""
+          echo ">>> Copying $SOURCE -> $DEST"
+          cp "$SOURCE" "$DEST" || { echo "FATAL: Failed to copy config file!"; exit 1; }
+
+          echo ""
+          echo ">>> Verifying destination:"
+          ls -la "$DEST" || { echo "FATAL: Destination file not created!"; exit 1; }
+
+          echo ""
+          echo ">>> Destination content (first 50 lines):"
+          head -50 "$DEST"
+
+          echo ""
+          echo ">>> Checking awsS3Bucket in destination:"
+          grep "awsS3Bucket" "$DEST" || { echo "FATAL: awsS3Bucket not found in copied config!"; exit 1; }
+
+          echo ""
+          echo "========================================"
+          echo "COPY-CONFIG: Success!"
+          echo "========================================"
       wait-on-backends:
         image:
           repository: busybox
@@ -91,6 +162,13 @@ persistence:
     existingClaim: images  # Created by manifests.resources above
     globalMounts:
     - path: /images
+  # emptyDir volume for copying config from symlinked secret to real file
+  # This is needed because the gateway may have issues reading symlinked k8s secrets
+  config-copy:
+    enabled: true
+    type: emptyDir
+    globalMounts:
+    - path: /config-copy
 
 # Note: The 'images' PVC is created via manifests.resources in this chart
 # using GKE standard storage (ReadWriteOnce, sufficient for single gateway replica)

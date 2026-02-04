@@ -1,0 +1,239 @@
+# SkyRL Configuration: Qwen3 8B on 16x80GB GPUs (RLOO-N + Strict JSON + Auto Snapshot)
+# Based on: qwen3_8b_16x80GB_thinking_bs64_group8_async_rloo_n_noct_strict_micro2x4.yaml
+#
+# AUTO SNAPSHOT VARIANT: Uses Daytona auto_snapshot feature to reduce rate limits
+#   - auto_snapshot: true (automatically create/reuse snapshots based on Dockerfile hash)
+#   - Snapshot naming: harbor__<hash[:12]>__snapshot
+#   - First trial creates snapshot, subsequent trials reuse it
+#
+# All other settings are identical to the micro2x4 variant:
+#   - micro_train_batch_size_per_gpu: 2
+#   - micro_forward_batch_size_per_gpu: 4
+#   - strict_json_parser: true
+#   - kl_loss_coef: 0.01 (10x KL penalty)
+#   - RLOO-N advantage estimator with error classification
+#
+# Usage:
+#   python -m hpc.launch \
+#       --job_type rl \
+#       --rl_config qwen3_8b_16x80GB_thinking_bs64_group8_async_rloo_n_noct_strict_micro2x4_autosnap.yaml \
+#       --job_name qwen3_8b_agentic_async_rloo_n_strict_autosnap \
+#       --train_data '["mlfoundations-dev/your-dataset"]' \
+#       --model_path Qwen/Qwen3-8B \
+#       --num_nodes 2
+
+# SkyRL entrypoint module
+entrypoint: examples.terminal_bench.entrypoints.main_tbench
+
+# Hydra config groups (+ prefix in CLI)
+config_groups:
+  terminal_bench_config: terminal_bench
+
+# Terminal bench / agentic environment settings
+terminal_bench:
+  # trials_dir: Directory for Harbor trial artifacts (derived from experiments_dir if null)
+  trials_dir: null
+
+  # Harbor configuration - schema-driven mapping to TrialConfig
+  harbor:
+    # Agent settings
+    name: terminus-2
+    max_episodes: 64
+    enable_summarize: false
+    store_all_messages: true
+    # Disable episode-* folder creation to reduce disk I/O (SkyRL uses TrialResult directly)
+    enable_episode_logging: false
+
+    # Strict JSON parser
+    strict_json_parser: true
+
+    # Interleaved Thinking Settings
+    interleaved_thinking: true
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+
+    # Timeout settings
+    override_timeout_sec: 240
+
+    # Environment settings
+    override_cpus: 1
+    override_memory_mb: 2048
+    override_storage_mb: 2048
+
+    # ==========================================================================
+    # AUTO SNAPSHOT: Reduce Daytona rate limits with hash-based snapshot caching
+    # ==========================================================================
+    # When true, automatically creates a snapshot from the Dockerfile on first use,
+    # then reuses it for all subsequent sandboxes with the same Dockerfile content.
+    # Snapshots are named: harbor__<sha256[:12]>__snapshot
+    auto_snapshot: true
+
+    # Verifier settings
+    verifier_override_timeout_sec: 120
+
+    # Retry settings
+    max_retries: 3
+    min_wait_sec: 60.0
+    max_wait_sec: 600.0
+    wait_multiplier: 2.0
+
+    exclude_exceptions:
+      - AgentTimeoutError
+      - VerifierTimeoutError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - VerifierOutputParseError
+      - ContextLengthExceededError
+
+    # Orchestrator settings
+    n_concurrent_trials: 192
+
+    # Logging settings
+    log_level: INFO
+
+    # Reward shaping (disabled - binary rewards)
+    enable_reward_shaping: false
+
+    # RLOO-N error classification
+    enable_error_classification: true
+    mask_exceptions:
+      - DaytonaError
+      - EnvironmentStartTimeoutError
+      - NetworkError
+      - ConnectionError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+    zero_exceptions:
+      - AgentTimeoutError
+      - ContextLengthExceededError
+    default_error_treatment: zero
+
+  # Model info for Harbor's hosted_vllm validation
+  model_info:
+    max_input_tokens: 24576
+    max_output_tokens: 8192
+
+  archiving:
+    # Enable trial archiving callback
+    enabled: false
+
+# Trainer configuration
+trainer:
+  strategy: fsdp2
+  algorithm:
+    advantage_estimator: rloo_n
+    use_kl_loss: true
+    # 10x KL penalty (key change for reward hacking prevention)
+    kl_loss_coef: 0.01
+    eps_clip_low: 0.2
+    eps_clip_high: 0.2
+    loss_reduction: token_mean
+
+  # Training loop settings
+  epochs: 10
+  update_epochs_per_batch: 1
+
+  # Batch sizes
+  train_batch_size: 64
+  policy_mini_batch_size: 64
+  eval_batch_size: 64
+
+  # Micro batch sizes (increased for better GPU utilization)
+  micro_forward_batch_size_per_gpu: 4
+  micro_train_batch_size_per_gpu: 2
+
+  max_prompt_length: 999999
+
+  # Evaluation and checkpointing
+  eval_interval: 999999
+  eval_before_train: false
+  # Resumable checkpointing
+  ckpt_interval: 10
+  resume_mode: latest
+  # HF upload-ready checkpoints
+  hf_save_interval: 20
+
+  # Logging
+  project_name: OpenThoughts-Agent
+  log_level: INFO
+  tracker_commit_each_step: true
+
+  # Paths
+  run_name: null
+  ckpt_path: null
+  export_path: null
+
+  # Policy optimizer
+  policy:
+    optimizer_config:
+      lr: 1e-6
+      weight_decay: 0.01
+      adam_betas: [0.9, 0.999]
+      max_grad_norm: 1.0
+    fsdp_config:
+      cpu_offload: false
+      reshard_after_forward: false
+      fsdp_size: 4
+  # Reference model
+  ref:
+    fsdp_config:
+      cpu_offload: false
+      reshard_after_forward: false
+      fsdp_size: 4
+
+  # Model placement (async training)
+  placement:
+    colocate_all: false
+    policy_num_nodes: 2
+    ref_num_nodes: 2
+    policy_num_gpus_per_node: 4
+    ref_num_gpus_per_node: 4
+
+  # Fully async generation
+  fully_async:
+    max_staleness_steps: 8
+    num_parallel_generation_workers: 128
+
+# Generator configuration
+generator:
+  backend: vllm
+  timeout_multiplier: 2.0
+  model_dtype: bfloat16
+
+  inference_engine_tensor_parallel_size: 1
+  num_inference_engines: 8
+
+  n_samples_per_prompt: 8
+  eval_n_samples_per_prompt: 8
+
+  gpu_memory_utilization: 0.90
+
+  max_num_seqs: 32
+  max_num_batched_tokens: 32768
+
+  enable_prefix_caching: true
+  enable_chunked_prefill: true
+
+  run_engines_locally: true
+  weight_sync_backend: nccl
+  async_engine: true
+  batched: false
+  enable_http_endpoint: true
+
+  append_eos_token_after_stop_str_in_multi_turn: true
+  max_turns: 64
+
+  sampling_params:
+    max_generate_length: 8192
+    temperature: 1.0
+    top_p: 0.95
+    top_k: -1
+
+  engine_init_kwargs:
+    max_model_len: 32768
+
+# Data paths
+data:
+  train_data: []
+  val_data: ["open-thoughts/OpenThoughts-TB-dev"]

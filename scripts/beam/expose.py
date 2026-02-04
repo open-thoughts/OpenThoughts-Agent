@@ -106,6 +106,9 @@ def start_pinggy_tunnel(config: PinggyConfig, dry_run: bool = False) -> Optional
         "-o", "ServerAliveInterval=30",
         "-o", "ExitOnForwardFailure=yes",
         "-o", "LogLevel=ERROR",
+        # Disable public key auth to prevent passphrase prompts - Pinggy uses token auth
+        "-o", "PubkeyAuthentication=no",
+        "-o", "PreferredAuthentications=keyboard-interactive",
         f"{config.token}@{config.pinggy_host}",
     ]
 
@@ -142,6 +145,9 @@ def setup_pinggy_exposure(
 ) -> tuple[Optional[subprocess.Popen], Optional[subprocess.Popen], str]:
     """Set up full Pinggy exposure (port-forward + tunnel).
 
+    Beta9 SDK uses gRPC for sandbox operations, so we tunnel the gRPC port (1993),
+    not the HTTP port (1994). The SDK then connects via TLS on port 443.
+
     Args:
         beta9_config: Beta9 configuration.
         pinggy_config: Pinggy configuration.
@@ -150,12 +156,13 @@ def setup_pinggy_exposure(
     Returns:
         Tuple of (port_forward_proc, tunnel_proc, public_url).
     """
-    # Start port-forward
+    # Start port-forward for gRPC port (1993)
+    # The pinggy_config.local_port should be 1993 for gRPC
     pf_proc = start_port_forward(
         namespace=beta9_config.namespace,
         service=beta9_config.gateway_service_name,
         local_port=pinggy_config.local_port,
-        remote_port=beta9_config.gateway_http_port,
+        remote_port=beta9_config.gateway_grpc_port,  # Use gRPC port, not HTTP
         dry_run=dry_run,
     )
 

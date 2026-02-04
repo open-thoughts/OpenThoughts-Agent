@@ -140,6 +140,13 @@ class S3Storage:
         if self._client is None:
             import boto3
 
+            # Unset AWS_SESSION_TOKEN to prevent conflicts with explicit credentials.
+            # boto3 will use session token from env even when explicit creds are provided,
+            # causing "InvalidTokenId" errors with S3-compatible storage (MinIO, JSC S3).
+            if "AWS_SESSION_TOKEN" in os.environ:
+                logger.debug("Unsetting AWS_SESSION_TOKEN to use explicit S3 credentials")
+                del os.environ["AWS_SESSION_TOKEN"]
+
             self._client = boto3.client(
                 "s3",
                 endpoint_url=self.config.endpoint_url,
@@ -154,6 +161,11 @@ class S3Storage:
         """Lazy-load s3fs filesystem interface."""
         if self._s3fs is None:
             import s3fs
+
+            # Unset AWS_SESSION_TOKEN to prevent conflicts (same reason as boto3 client)
+            if "AWS_SESSION_TOKEN" in os.environ:
+                logger.debug("Unsetting AWS_SESSION_TOKEN to use explicit S3 credentials")
+                del os.environ["AWS_SESSION_TOKEN"]
 
             self._s3fs = s3fs.S3FileSystem(
                 endpoint_url=self.config.endpoint_url,
@@ -546,3 +558,82 @@ def init_s3_storage() -> Optional[S3Storage]:
     if config is None:
         return None
     return S3Storage(config)
+
+
+def cleanup_juicefs_storage(
+    bucket_name: Optional[str] = None,
+    juicefs_prefix: str = "beta9-fs",
+) -> bool:
+    """Clean up JuiceFS storage in S3 to allow fresh cluster deployments.
+
+    JuiceFS refuses to format if the storage path is not empty. This function
+    deletes all objects under the JuiceFS prefix to allow a fresh deployment.
+
+    Args:
+        bucket_name: S3 bucket name (default: from LAION_BUCKET_NAME env var).
+        juicefs_prefix: JuiceFS storage prefix (default: "beta9-fs").
+
+    Returns:
+        True if cleanup successful, False otherwise.
+    """
+    import boto3
+
+    # Get config from environment
+    config = S3StorageConfig.from_env_optional()
+    if config is None:
+        logger.error("S3 storage not configured. Set LAION_* environment variables.")
+        return False
+
+    bucket = bucket_name or config.bucket_name
+
+    # Unset AWS_SESSION_TOKEN to prevent credential conflicts
+    if "AWS_SESSION_TOKEN" in os.environ:
+        logger.debug("Unsetting AWS_SESSION_TOKEN to use explicit S3 credentials")
+        del os.environ["AWS_SESSION_TOKEN"]
+
+    try:
+        client = boto3.client(
+            "s3",
+            endpoint_url=config.endpoint_url,
+            aws_access_key_id=config.access_key,
+            aws_secret_access_key=config.secret_key,
+            region_name=config.region,
+        )
+
+        # List all objects under the JuiceFS prefix
+        paginator = client.get_paginator("list_objects_v2")
+        pages = paginator.paginate(Bucket=bucket, Prefix=f"{juicefs_prefix}/")
+
+        objects_to_delete = []
+        for page in pages:
+            for obj in page.get("Contents", []):
+                objects_to_delete.append({"Key": obj["Key"]})
+
+        if not objects_to_delete:
+            logger.info(f"JuiceFS storage s3://{bucket}/{juicefs_prefix}/ is already empty")
+            return True
+
+        # Delete in batches of 1000 (S3 limit)
+        total_deleted = 0
+        for i in range(0, len(objects_to_delete), 1000):
+            batch = objects_to_delete[i : i + 1000]
+            response = client.delete_objects(
+                Bucket=bucket,
+                Delete={"Objects": batch, "Quiet": True},
+            )
+            deleted = len(batch) - len(response.get("Errors", []))
+            total_deleted += deleted
+
+            if response.get("Errors"):
+                for error in response["Errors"]:
+                    logger.warning(f"Failed to delete {error['Key']}: {error['Message']}")
+
+        logger.info(
+            f"Cleaned up JuiceFS storage: deleted {total_deleted} objects from "
+            f"s3://{bucket}/{juicefs_prefix}/"
+        )
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to clean up JuiceFS storage: {e}")
+        return False

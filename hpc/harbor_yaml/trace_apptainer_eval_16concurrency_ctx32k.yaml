@@ -44,6 +44,7 @@ orchestrator:
     - RewardFileNotFoundError
     - RewardFileEmptyError
     - VerifierOutputParseError
+    - SandboxBuildFailedError
     wait_multiplier: 2.0
     min_wait_sec: 1.0
     max_wait_sec: 90.0

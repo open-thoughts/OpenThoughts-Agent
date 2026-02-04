@@ -187,6 +187,7 @@ trainer:
 # Generator configuration
 generator:
   backend: vllm
+  timeout_multiplier: 2.0
   model_dtype: bfloat16
   enforce_eager: false
 

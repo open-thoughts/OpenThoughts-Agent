@@ -1,0 +1,107 @@
+#!/bin/bash
+#SBATCH --partition={{ partition }}
+#SBATCH --time={{ time_limit }}
+#SBATCH --nodes={{ num_nodes }}
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task={{ cpus_per_node }}
+#SBATCH --account={{ account }}
+#SBATCH --gres=gpu:4
+#SBATCH --output={{ experiments_dir }}/logs/%x_%j.log
+#SBATCH --job-name={{ job_name }}
+
+
+ulimit -c 0
+ml purge
+# Set up environment variables
+export VLLM_USE_V1=1
+export RAY_RUNTIME_ENV_HOOK=ray._private.runtime_env.uv_runtime_env_hook.hook
+export RAY_ADDRESS=$RAY_ADDRESS
+export VLLM_CACHE_ROOT={{ vllm_cache_root }}
+export VLLM_CONFIG_ROOT={{ vllm_config_root }}
+export TRITON_DUMP_DIR={{ triton_dump_dir }}
+export TRITON_OVERRIDE_DIR={{ triton_override_dir }}
+export TRITON_CACHE_DIR={{ triton_cache_dir }}
+export FLASHINFER_WORKSPACE_BASE={{ flashinfer_workspace_base }}
+export UV_CACHE_DIR={{ uv_cache_dir }}
+export HYDRA_FULL_ERROR=1
+export PARTITION={{ partition }}
+export ACCOUNT={{ account }}
+export TIME_LIMIT={{ time_limit }}
+
+
+export NCCL_DEBUG=INFO
+export NCCL_SOCKET_IFNAME=ib0
+export GLOO_SOCKET_IFNAME=ib0
+# export NCCL_ALGO=Ring,Tree
+
+# if SSH_KEY is set start the ssh tunnel
+
+# Activate conda environment
+${DC_AGENT_ACTIVATE_ENV}
+
+# SkyRL paths
+export SKYRL_HOME={{ skyrl_home }}
+export SKYRL_OUTPUT_DIR={{ skyrl_output_dir }}
+cd "$SKYRL_HOME/skyrl-train"
+
+# Set up data and checkpoint directories"
+CHECKPOINT_PATH="${CHECKPOINTS_DIR}"
+mkdir -p $CHECKPOINT_PATH
+
+# check if internet access is available
+if ping -c 1 google.com &> /dev/null; then
+    echo "Internet access is available."
+    export INTERNET_AVAILABLE=1
+else
+    echo "Internet access is not available."
+    export INTERNET_AVAILABLE=0
+fi
+
+MASTER_NODE=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
+MASTER_ADDR="${MASTER_NODE}-interconnect-1.leonardo.local"
+# MASTER_ADDR=$MASTER_NODE
+MASTER_ADDR_IP=$(nslookup $MASTER_ADDR | grep 'Address' | tail -n1 | awk '{print $2}')
+export head_node=$MASTER_NODE
+
+echo "Master node: $MASTER_NODE"
+echo "Master node IP: $MASTER_ADDR_IP"
+export head_node=$MASTER_NODE
+export head_node_ip=$MASTER_ADDR
+
+CMD_PREFIX=""
+# if internet is not available, set up proxy tunnel
+if [ "$INTERNET_AVAILABLE" -eq 0 ]; then
+    echo "Setting up proxy tunnel..."
+    CMD_PREFIX=$(bash {{ dc_agent_path }}/OpenThoughts-Agent/rl/hpc/sbatch/start_proxy_tunnel_lrdn.sh)
+fi
+
+APPTAINER_ARG=""
+if [ -n "$APPTAINER_IMAGE_PATH" ]; then
+    APPTAINER_ARG="apptainer exec \
+    --bind $DC_AGENT:$DC_AGENT \
+    --env PYTHONPATH=$PYTHONPATH \
+    --nv $APPTAINER_IMAGE_PATH"
+    echo "Using Apptainer image at $APPTAINER_IMAGE_PATH"
+    CMD_PREFIX="$CMD_PREFIX $APPTAINER_ARG"
+fi
+
+echo CMD_PREFIX: $CMD_PREFIX
+
+# Set up Ray server
+bash {{ dc_agent_path }}/OpenThoughts-Agent/eval/leonardo/start_ray_server.sh "$CMD_PREFIX"
+
+sleep 30
+
+
+# SkyRL configuration
+export SKYRL_CONFIG={{ skyrl_config_path }}
+ray status
+
+
+SKYRL_CMD="{{ skyrl_command_string }}"
+
+# override generator.http_endpoint_host=$MASTER_ADDR
+SKYRL_CMD+=" ++generator.http_endpoint_host=${MASTER_NODE} ++generator.http_endpoint_port=28000"
+echo "SkyRL command: $SKYRL_CMD"
+echo $CMD_PREFIX
+srun --ntasks=1 --nodes=1 -w $MASTER_NODE $CMD_PREFIX $SKYRL_CMD

@@ -129,8 +129,22 @@ tacc_lonestar = HPC(
     qos="",
 )
 
+leonardo = HPC(
+    name="leonardo",
+    hostname_pattern=r"^.+\.leonardo\.local",
+    train_sbatch_jinja_filename="leonardo_train.j2",
+    dotenv_filename="leonardo.env",
+    account="aifac_5c0_174",
+    partition="boost_usr_prod",
+    gpus_per_node=4,
+    cpus_per_node=32,
+    internet_node=True,
+    gpus_type="A100 80GB",
+    total_partition_nodes=200,
+)
+
 # List of all available clusters
-clusters = [jsc_jureca, jsc_jupiter, jsc_juwels, tacc_vista, tacc_lonestar]
+clusters = [jsc_jureca, jsc_jupiter, jsc_juwels, tacc_vista, tacc_lonestar, leonardo]
 
 
 def detect_hpc() -> HPC:

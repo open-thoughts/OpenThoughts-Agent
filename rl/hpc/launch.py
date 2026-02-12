@@ -25,7 +25,7 @@ import subprocess
 import time
 import threading
 from collections import defaultdict
-from .launch_utils import login_watchdog, login_watchdog_chain
+# from .launch_utils import login_watchdog, login_watchdog_chain
 from .launch_utils import pre_download_dataset
 
 try:
@@ -38,9 +38,9 @@ except ImportError:
 
 # Import parquet converter
 import sys
-# Get to ot-agent root (two levels up from hpc/launch.py)
-ot_agent_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, ot_agent_root)
+# Get to dc-agent root (two levels up from hpc/launch.py)
+dc_agent_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, dc_agent_root)
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -88,7 +88,11 @@ def construct_sbatch_script(exp_args):
 
     TODO(Charlie): Check JSC support for Jinja2 templating.
     """
-    jinja_template_path = exp_args["train_sbatch_jinja_path"]
+    if "eval" in exp_args and exp_args["eval"]:
+        jinja_template_path = exp_args["eval_sbatch_jinja_path"]
+    else:
+        jinja_template_path = exp_args["train_sbatch_jinja_path"]
+    print(f"Constructing sbatch script from Jinja2 template: {jinja_template_path}")
     assert os.path.exists(jinja_template_path), f"Jinja2 template {jinja_template_path} does not exist."
 
     # Prepare template variables
@@ -105,10 +109,9 @@ def construct_sbatch_script(exp_args):
         "uv_cache_dir": os.environ.get("UV_CACHE_DIR", ""),
         "secret_env_path": os.environ.get("SECRET_ENV_PATH", ""),
         "conda_activate_path": os.environ.get("CONDA_ACTIVATE_PATH", ""),
-        "extra_pythonpath": os.environ.get("EXTRA_PYTHONPATH", ""),  # TODO(Charlie): handle when it is not provided. This is optional.
         "conda_env_path": os.environ.get("CONDA_ENV_PATH", ""),
         "skyrl_home": os.environ.get("SKYRL_HOME", ""),
-        "ot_agent_path": os.environ.get("OT_AGENT", "/scratch/08134/negin/dc-agent-shared/dc-agent"),
+        "dc_agent_path": os.environ.get("DC_AGENT", "/scratch/08134/negin/dc-agent-shared/dc-agent"),
     }
     # assert that all the directories exists to prevent erroring out on compute node after queuing
     for key, value in tacc_vars.items():
@@ -177,6 +180,8 @@ def inplace_update_skyrl_args(skyrl_args, exp_args):
     }
 
     for exp_key, skyrl_key in exp_args_to_skyrl_keys.items():
+        if exp_key in ["train_data", "val_data"] and "eval" in exp_args and exp_args["eval"]:
+            continue  # Skip train_data and val_data update if eval is True
         assert exp_key in exp_args, f"Experiment argument {exp_key} not found in exp_args"
         if skyrl_key in skyrl_args:
             raise ValueError(
@@ -315,9 +320,6 @@ def main():
     pre_validation(exp_args, cli_args)
 
     # Clean dataset names by removing square brackets
-    exp_args["original_model_name"] = exp_args.get("model_path")
-    exp_args["original_train_data"] = exp_args.get("train_data", []).copy()
-    
     if "train_data" in exp_args:
         exp_args["train_data"] = [d.strip("[]") for d in exp_args["train_data"]]
     if "val_data" in exp_args:
@@ -329,8 +331,11 @@ def main():
     skyrl_args = exp_args["skyrl_args"]  # those passed in with -S key=value
     del exp_args["skyrl_args"]
     skyrl_args = inplace_update_skyrl_args(skyrl_args, exp_args)
-    exp_args["skyrl_command_string"] = build_skyrl_command_string(exp_args["skyrl_entrypoint"], skyrl_args)
-    print(f"Running SkyRL command in sbatch: {exp_args['skyrl_command_string']}")
+    if "eval" in exp_args and exp_args["eval"]:
+        print("Evaluation mode enabled. Skipping train_data and val_data setup.")
+    else:
+        exp_args["skyrl_command_string"] = build_skyrl_command_string(exp_args["skyrl_entrypoint"], skyrl_args)
+        print(f"Running SkyRL command in sbatch: {exp_args['skyrl_command_string']}")
 
     # Construct the sbatch script
     print()
@@ -344,13 +349,6 @@ def main():
     for key, value in exp_args.items():
         print(f"{key}: {value}")
     print("=" * 50)
-    
-    # Set upload sbatch template path if not already set
-    if "train_sbatch_jinja_path" in exp_args:
-        train_template = exp_args["train_sbatch_jinja_path"]
-        if "tacc_train.j2" in train_template:
-            exp_args["upload_sbatch_jinja_path"] = train_template.replace("tacc_train.j2", "tacc_upload.j2")
-            print(f"\nAuto-configured upload template: {exp_args['upload_sbatch_jinja_path']}")
 
     # Dry run with no job submission
     if exp_args.get("dry_run", False):
@@ -386,13 +384,13 @@ def main():
             if len(train_job_ids) > 1:
                 # Multiple jobs in restart chain - use smart chain watchdog
                 target_func = login_watchdog_chain
-                target_args = (train_job_ids, model_upload_path, hf_repo_name, hf_token, check_interval, exp_args)
+                target_args = (train_job_ids, model_upload_path, hf_repo_name, hf_token, check_interval)
                 print(f"\nStarting login watchdog chain for {len(train_job_ids)} jobs")
                 print(f"Job chain: {train_job_ids}")
             else:
                 # Single job - use original watchdog
                 target_func = login_watchdog
-                target_args = (train_job_id, model_upload_path, hf_repo_name, hf_token, check_interval, exp_args)
+                target_args = (train_job_id, model_upload_path, hf_repo_name, hf_token, check_interval)
                 print(f"\nStarting login watchdog for job {train_job_id}")
 
             # Common logging and thread setup

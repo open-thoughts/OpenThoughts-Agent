@@ -1,4 +1,5 @@
 -- Complete Schema for OT-Agents Registration System
+-- Merged with DC-Agents additions (duplicate_of support)
 -- Run this file to set up all required tables
 
 -- Enable UUID extension
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS models (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
     base_model_id UUID REFERENCES models(id),
+    duplicate_of UUID REFERENCES models(id) ON DELETE RESTRICT,
     created_by TEXT NOT NULL,
     creation_location TEXT NOT NULL,
     creation_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -70,7 +72,10 @@ CREATE TABLE IF NOT EXISTS models (
     agent_id UUID REFERENCES agents(id) NOT NULL,
     training_type TEXT CHECK (training_type IN ('SFT', 'RL')),
     traces_location_s3 TEXT,
-    description TEXT
+    description TEXT,
+
+    -- Prevent self-reference for duplicate_of
+    CONSTRAINT models_no_self_duplicate CHECK (duplicate_of IS NULL OR duplicate_of != id)
 );
 
 -- Indexes for models
@@ -79,6 +84,7 @@ CREATE INDEX idx_models_created_by ON models(created_by);
 CREATE INDEX idx_models_agent_id ON models(agent_id);
 CREATE INDEX idx_models_dataset_id ON models(dataset_id);
 CREATE INDEX idx_models_base_model_id ON models(base_model_id);
+CREATE INDEX idx_models_duplicate_of ON models(duplicate_of);
 CREATE INDEX idx_models_training_type ON models(training_type);
 CREATE INDEX idx_models_creation_time ON models(creation_time DESC);
 CREATE INDEX idx_models_training_start ON models(training_start DESC);
@@ -90,15 +96,20 @@ CREATE TABLE IF NOT EXISTS benchmarks (
     name TEXT NOT NULL,
     benchmark_version_hash CHAR(64),
     is_external BOOLEAN NOT NULL DEFAULT false,
+    duplicate_of UUID REFERENCES benchmarks(id) ON DELETE RESTRICT,
     external_link TEXT,
     description TEXT,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+    -- Prevent self-reference for duplicate_of
+    CONSTRAINT benchmarks_no_self_duplicate CHECK (duplicate_of IS NULL OR duplicate_of != id)
 );
 
 -- Indexes for benchmarks
 CREATE INDEX idx_benchmarks_name ON benchmarks(name);
 CREATE INDEX idx_benchmarks_benchmark_version_hash ON benchmarks(benchmark_version_hash);
 CREATE INDEX idx_benchmarks_is_external ON benchmarks(is_external);
+CREATE INDEX idx_benchmarks_duplicate_of ON benchmarks(duplicate_of);
 CREATE INDEX idx_benchmarks_updated_at ON benchmarks(updated_at DESC);
 
 -- ==================== UPDATE TRIGGERS ====================
@@ -182,12 +193,14 @@ COMMENT ON TABLE models IS 'Table storing ML model metadata and training informa
 COMMENT ON COLUMN models.training_type IS 'Type of training: SFT (Supervised Fine-Tuning) or RL (Reinforcement Learning)';
 COMMENT ON COLUMN models.is_external IS 'Whether this model is external (e.g., from HuggingFace)';
 COMMENT ON COLUMN models.training_parameters IS 'JSON containing all training hyperparameters and configuration';
+COMMENT ON COLUMN models.duplicate_of IS 'UUID of the canonical model this entry is a duplicate of (for deduplication tracking)';
 
 -- Benchmarks table
 COMMENT ON TABLE benchmarks IS 'Table storing evaluation benchmark metadata';
 COMMENT ON COLUMN benchmarks.name IS 'Name of the benchmark';
 COMMENT ON COLUMN benchmarks.benchmark_version_hash IS 'SHA-256 hash of the benchmark version (64 characters)';
 COMMENT ON COLUMN benchmarks.is_external IS 'Whether this benchmark is external (not hosted internally)';
+COMMENT ON COLUMN benchmarks.duplicate_of IS 'UUID of the canonical benchmark this entry is a duplicate of (for deduplication tracking)';
 COMMENT ON COLUMN benchmarks.external_link IS 'Link to external benchmark if applicable';
 COMMENT ON COLUMN benchmarks.description IS 'Description of the benchmark and its purpose';
 COMMENT ON COLUMN benchmarks.updated_at IS 'Timestamp when the benchmark was last updated';

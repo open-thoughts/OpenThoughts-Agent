@@ -1,7 +1,7 @@
 # Essential dependencies for DC-Agents Dataset Registration
 
 # Database and API
-supabase==2.22.3
+supabase>=2.0.0,<3.0.0
 
 # Data processing
 pandas>=2.0.0

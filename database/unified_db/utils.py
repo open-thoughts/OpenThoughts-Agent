@@ -6,15 +6,19 @@ This module provides utility functions for dataset registration using Supabase
 with support for both HuggingFace and local parquet file datasets.
 """
 
+import io
 import json
 import logging
 import os
+import tarfile
+import tempfile
 import time
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
-from uuid import UUID
 import warnings
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path, PurePosixPath
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Union
+from uuid import UUID
 from harbor.utils.traces_utils import export_traces
 
 from supabase import Client
@@ -490,6 +494,37 @@ def create_model(model_data: Dict[str, Any]) -> Dict[str, Any]:
             raise ValueError("Failed to create model")
 
         return clean_model_metadata(response.data[0])
+    except ValueError as e:
+        # Check if the error is specifically the JSON 'inf' compliant error
+        if "Out of range float values" in str(e):
+            logger.warning("Detected non-JSON compliant floats (inf/nan). Applying patch...")
+
+            import math
+            def sanitize(obj):
+                if isinstance(obj, dict):
+                    return {k: sanitize(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [sanitize(v) for v in obj]
+                elif isinstance(obj, float):
+                    if math.isinf(obj):
+                        logger.info("Replacing 'inf' float with string 'inf'")
+                        return "inf"
+                    if math.isnan(obj):
+                        logger.info("Replacing 'nan' float with string 'nan'")
+                        return "nan"
+                return obj
+
+            # Sanitize and retry
+            model_data = sanitize(model_data)
+            client = get_supabase_client(use_admin=True)
+            response = client.table('models').insert(model_data).execute()
+            if not response.data:
+                raise ValueError("Failed to create model")
+
+            return clean_model_metadata(response.data[0])
+        else:
+            # Re-raise if it's a different ValueError
+            raise e
     except Exception as e:
         logger.error(f"Error creating model: {e}")
         raise
@@ -519,6 +554,7 @@ def register_hf_model(
     name: Optional[str] = None,
     created_by: Optional[str] = None,
     base_model_id: Optional[str] = None,
+    duplicate_of: Optional[str] = None,
     dataset_id: Optional[str] = None,
     dataset_names: Optional[str] = None,
     training_end: Optional[datetime] = None,
@@ -580,6 +616,15 @@ def register_hf_model(
             logger.info(f"Model {model_name} already exists")
             return {"success": True, "model": existing['id'], "exists": True}
 
+        # Validate duplicate_of if provided
+        if duplicate_of:
+            client = get_supabase_client()
+            target = client.table('models').select('id, duplicate_of').eq('id', duplicate_of).execute()
+            if not target.data:
+                return {"success": False, "error": f"duplicate_of target model {duplicate_of} not found"}
+            if target.data[0].get('duplicate_of'):
+                return {"success": False, "error": f"duplicate_of target {duplicate_of} is itself a duplicate. Only point to canonical entries."}
+
         # Handle multi-dataset validation
         final_dataset_id = None
         final_dataset_names = None
@@ -638,7 +683,7 @@ def register_hf_model(
 
         # Extract description from model card if not provided
         if not description:
-            description = getattr(hf_info, 'cardData', {}).get('description') or getattr(hf_info, 'description', '')
+            description = (getattr(hf_info, 'cardData', None) or {}).get('description') or getattr(hf_info, 'description', '')
 
         # Prepare auto-filled training parameters
         auto_params = {
@@ -684,6 +729,7 @@ def register_hf_model(
 
             # Optional user fields
             "base_model_id": base_model_id,
+            "duplicate_of": duplicate_of,
             "dataset_id": final_dataset_id,
             "dataset_names": final_dataset_names,
             "training_end": training_end.isoformat() if training_end else now.isoformat(),
@@ -721,6 +767,7 @@ def register_local_model(
     agent_id: str,
     training_start: datetime,
     base_model_id: Optional[str] = None,
+    duplicate_of: Optional[str] = None,
     dataset_id: Optional[str] = None,
     dataset_names: Optional[str] = None,
     training_end: Optional[datetime] = None,
@@ -783,6 +830,15 @@ def register_local_model(
         if existing and not forced_update:
             logger.info(f"Model {name} already exists")
             return {"success": True, "model": existing, "exists": True}
+
+        # Validate duplicate_of if provided
+        if duplicate_of:
+            client = get_supabase_client()
+            target = client.table('models').select('id, duplicate_of').eq('id', duplicate_of).execute()
+            if not target.data:
+                return {"success": False, "error": f"duplicate_of target model {duplicate_of} not found"}
+            if target.data[0].get('duplicate_of'):
+                return {"success": False, "error": f"duplicate_of target {duplicate_of} is itself a duplicate. Only point to canonical entries."}
 
         # Handle multi-dataset validation
         final_dataset_id = None
@@ -900,6 +956,7 @@ def register_local_model(
 
             # Optional user fields
             "base_model_id": base_model_id,
+            "duplicate_of": duplicate_of,
             "dataset_id": final_dataset_id,
             "dataset_names": final_dataset_names,
             "training_end": training_end.isoformat() if training_end else None,
@@ -1358,6 +1415,7 @@ def register_benchmark(
     name: str,
     benchmark_version_hash: Optional[str] = None,
     is_external: bool = False,
+    duplicate_of: Optional[str] = None,
     external_link: Optional[str] = None,
     description: Optional[str] = None,
     forced_update: bool = True
@@ -1392,6 +1450,15 @@ def register_benchmark(
             logger.info(f"Benchmark {name} already exists")
             return {"success": True, "benchmark": existing, "exists": True}
 
+        # Validate duplicate_of if provided
+        if duplicate_of:
+            client = get_supabase_client()
+            target = client.table('benchmarks').select('id, duplicate_of').eq('id', duplicate_of).execute()
+            if not target.data:
+                return {"success": False, "error": f"duplicate_of target benchmark {duplicate_of} not found"}
+            if target.data[0].get('duplicate_of'):
+                return {"success": False, "error": f"duplicate_of target {duplicate_of} is itself a duplicate. Only point to canonical entries."}
+
         # Build benchmark data - only auto-fill system fields
         now = datetime.now(timezone.utc)
         benchmark_data = {
@@ -1402,6 +1469,7 @@ def register_benchmark(
             "name": name,
             "benchmark_version_hash": benchmark_version_hash,
             "is_external": is_external,
+            "duplicate_of": duplicate_of,
             "external_link": external_link,
             "description": description
         }
@@ -1584,6 +1652,12 @@ def delete_model_by_id(model_id: str) -> Dict[str, Any]:
             dependent_names = [model['name'] for model in models_using_base.data]
             return {"success": False, "error": f"Cannot delete model '{model_name}': used as base model by: {', '.join(dependent_names)}"}
 
+        # Check for models marking this as canonical (duplicate_of)
+        models_duplicates = client.table('models').select('id, name').eq('duplicate_of', model_id).execute()
+        if models_duplicates.data:
+            duplicate_names = [m['name'] for m in models_duplicates.data]
+            return {"success": False, "error": f"Cannot delete model '{model_name}': is canonical for duplicates: {', '.join(duplicate_names)}"}
+
         # Delete the model
         response = client.table('models').delete().eq('id', model_id).execute()
 
@@ -1644,8 +1718,14 @@ def delete_benchmark_by_id(benchmark_id: str) -> Dict[str, Any]:
 
         benchmark_name = existing.data[0]['name']
 
-        # Benchmarks currently have no foreign key constraints, so we can delete directly
-        # Note: If benchmark results tables are added later, check those constraints here
+        # Check for benchmarks marking this as canonical (duplicate_of)
+        benchmark_duplicates = client.table('benchmarks').select('id, name').eq('duplicate_of', benchmark_id).execute()
+        if benchmark_duplicates.data:
+            duplicate_names = [b['name'] for b in benchmark_duplicates.data]
+            return {"success": False, "error": f"Cannot delete benchmark '{benchmark_name}': is canonical for duplicates: {', '.join(duplicate_names)}"}
+
+        # Note: sandbox_jobs and sandbox_benchmark_tasks also reference benchmarks
+        # Those FK constraints are handled by the database
 
         # Delete the benchmark
         response = client.table('benchmarks').delete().eq('id', benchmark_id).execute()
@@ -4435,4 +4515,326 @@ def register_base_model(
 
     except Exception as e:
         logger.error(f"Failed to register base model {base_model_name}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# ==================== PENDING JOB STATUS UTILITIES ====================
+
+JOB_STATUS_PENDING = "Pending"
+JOB_STATUS_STARTED = "Started"
+JOB_STATUS_FINISHED = "Finished"
+
+
+def get_job_by_model_benchmark(model_id: str, benchmark_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get the most recent job for a given model and benchmark.
+
+    Args:
+        model_id: UUID of the model
+        benchmark_id: UUID of the benchmark
+
+    Returns:
+        Job dict if found, None otherwise
+    """
+    try:
+        client = get_supabase_client()
+        response = (
+            client.table('sandbox_jobs')
+            .select('*')
+            .eq('model_id', model_id)
+            .eq('benchmark_id', benchmark_id)
+            .order('created_at', desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        if not response.data:
+            return None
+
+        return clean_sandbox_job_metadata(response.data[0])
+    except Exception as e:
+        logger.error(f"Error getting job for model={model_id}, benchmark={benchmark_id}: {e}")
+        return None
+
+
+def get_latest_job_for_model_benchmark(model_hf: str, dataset_hf: str) -> Optional[Dict[str, Any]]:
+    """
+    Get the most recent job for a given model and dataset by HF names.
+
+    Args:
+        model_hf: HuggingFace model name (e.g., "org/model-name")
+        dataset_hf: HuggingFace dataset repo (e.g., "DCAgent/dev_set_v2")
+
+    Returns:
+        Job dict if found, None otherwise
+    """
+    try:
+        # First resolve model_id and benchmark_id from HF names
+        model = get_model_by_name(model_hf)
+        if not model:
+            logger.warning(f"Model not found: {model_hf}")
+            return None
+
+        # Extract repo name from dataset_hf (e.g., "DCAgent/dev_set_v2" -> "dev_set_v2")
+        dataset_name = dataset_hf.split("/")[-1] if "/" in dataset_hf else dataset_hf
+        benchmark = get_benchmark_by_name(dataset_name)
+        if not benchmark:
+            logger.warning(f"Benchmark not found: {dataset_name}")
+            return None
+
+        return get_job_by_model_benchmark(model['id'], benchmark['id'])
+    except Exception as e:
+        logger.error(f"Error getting latest job for model={model_hf}, dataset={dataset_hf}: {e}")
+        return None
+
+
+def create_job_entry_pending(
+    job_name: str,
+    model_hf: str,
+    benchmark_hf: str,
+    agent_name: str,
+    slurm_job_id: str,
+    username: Optional[str] = None,
+    config: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Create a job entry with status="Pending" at SLURM submit time.
+
+    This is called by the listener immediately after sbatch returns successfully.
+    It creates a minimal job entry to prevent duplicate submissions while the job
+    waits in the SLURM queue.
+
+    Args:
+        job_name: Unique job name (RUN_TAG)
+        model_hf: HuggingFace model name
+        benchmark_hf: HuggingFace dataset/benchmark repo
+        agent_name: Name of the agent (e.g., "terminus-2")
+        slurm_job_id: SLURM job ID from sbatch output
+        username: Username for the job
+        config: Optional config dict
+
+    Returns:
+        {"success": bool, "job": dict, "error": str}
+    """
+    try:
+        logger.info(f"Creating pending job entry: {job_name}")
+
+        # Resolve model
+        model = get_model_by_name(model_hf)
+        if not model:
+            return {"success": False, "error": f"Model not found: {model_hf}"}
+        model_id = model['id']
+
+        # Resolve benchmark (extract repo name from HF format)
+        benchmark_name = benchmark_hf.split("/")[-1] if "/" in benchmark_hf else benchmark_hf
+        benchmark = get_benchmark_by_name(benchmark_name)
+        if not benchmark:
+            return {"success": False, "error": f"Benchmark not found: {benchmark_name}"}
+        benchmark_id = benchmark['id']
+
+        # Check for existing job (any status) - prevent duplicates
+        existing = get_job_by_model_benchmark(model_id, benchmark_id)
+        if existing:
+            status = existing.get('job_status')
+            if status == JOB_STATUS_FINISHED:
+                return {"success": False, "error": f"Job already finished", "job": existing}
+            if status in (JOB_STATUS_PENDING, JOB_STATUS_STARTED):
+                return {"success": True, "job": existing, "exists": True}
+
+        # Resolve or create agent
+        agent_res = register_agent(name=agent_name)
+        if not agent_res.get('success'):
+            return {"success": False, "error": f"Failed to register agent: {agent_res.get('error')}"}
+        agent_id = agent_res['agent']['id']
+
+        # Build minimal job entry for Pending status
+        now = datetime.now(timezone.utc)
+        job_data = {
+            "job_name": job_name,
+            "username": username or "listener",
+            "agent_id": agent_id,
+            "model_id": model_id,
+            "benchmark_id": benchmark_id,
+            "job_status": JOB_STATUS_PENDING,
+            "submitted_at": now.isoformat(),
+            "slurm_job_id": slurm_job_id,
+            "created_at": now.isoformat(),
+            # These are set to None/minimal for Pending, updated when job starts
+            "config": config or {},
+            "n_trials": 0,
+            "n_rep_eval": 0,
+        }
+
+        # Create the job
+        result = create_sandbox_job(job_data)
+        logger.info(f"Created pending job entry: {job_name} (id={result.get('id')})")
+        return {"success": True, "job": result}
+
+    except Exception as e:
+        logger.error(f"Failed to create pending job entry {job_name}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def update_job_status_to_started(
+    job_name: str,
+    n_trials: int,
+    n_rep_eval: int,
+    config: Dict[str, Any],
+    harbor_package_version: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Update a Pending job to Started status when sbatch actually runs.
+
+    This is called by the sbatch script when it starts executing.
+    It updates the job entry with full details now that we know them.
+
+    Args:
+        job_name: Job name (RUN_TAG) to find the job
+        n_trials: Number of concurrent trials (n_concurrent)
+        n_rep_eval: Number of attempts per task (n_attempts)
+        config: Full config dict
+        harbor_package_version: Harbor package version
+
+    Returns:
+        {"success": bool, "job": dict, "error": str}
+    """
+    try:
+        logger.info(f"Updating job to Started: {job_name}")
+
+        # Look up job by name
+        existing = get_sandbox_job_by_name(job_name)
+        if not existing:
+            return {"success": False, "error": f"Job not found: {job_name}"}
+
+        job_id = existing['id']
+        current_status = existing.get('job_status')
+
+        # Validate state transition
+        if current_status == JOB_STATUS_FINISHED:
+            return {"success": False, "error": f"Job already finished, cannot restart"}
+        if current_status == JOB_STATUS_STARTED:
+            # Already started, just return success (idempotent)
+            logger.info(f"Job {job_name} already in Started status")
+            return {"success": True, "job": existing, "already_started": True}
+
+        # Update to Started
+        now = datetime.now(timezone.utc)
+        update_data = {
+            "job_status": JOB_STATUS_STARTED,
+            "started_at": now.isoformat(),
+            "n_trials": n_trials,
+            "n_rep_eval": n_rep_eval,
+            "config": config,
+            "package_version": harbor_package_version,
+        }
+
+        result = update_sandbox_job(job_id, update_data)
+        logger.info(f"Updated job to Started: {job_name}")
+        return {"success": True, "job": result}
+
+    except Exception as e:
+        logger.error(f"Failed to update job to Started {job_name}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def create_job_entry_started(
+    model_hf_name: str,
+    benchmark_hf_name: str,
+    job_name: str,
+    username: str,
+    slurm_job_id: str,
+    harbor_package_version: Optional[str],
+    agent_name: str,
+    config: Dict[str, Any],
+    n_trials: int,
+    n_rep_eval: int
+) -> Dict[str, Any]:
+    """
+    Create a job entry with status="Started" directly.
+
+    This is the original behavior - creates a fully populated job entry
+    when the sbatch script starts running. Use this for backward compatibility
+    or when the listener doesn't create a Pending entry first.
+
+    Args:
+        model_hf_name: HuggingFace model name
+        benchmark_hf_name: HuggingFace dataset/benchmark repo
+        job_name: Unique job name (RUN_TAG)
+        username: Username for the job
+        slurm_job_id: SLURM job ID
+        harbor_package_version: Harbor package version
+        agent_name: Name of the agent
+        config: Config dict
+        n_trials: Number of concurrent trials
+        n_rep_eval: Number of attempts per task
+
+    Returns:
+        {"success": bool, "job": dict, "error": str}
+    """
+    try:
+        logger.info(f"Creating started job entry: {job_name}")
+
+        # First, check if a Pending entry exists and upgrade it
+        existing = get_sandbox_job_by_name(job_name)
+        if existing:
+            status = existing.get('job_status')
+            if status == JOB_STATUS_PENDING:
+                # Upgrade Pending -> Started
+                return update_job_status_to_started(
+                    job_name=job_name,
+                    n_trials=n_trials,
+                    n_rep_eval=n_rep_eval,
+                    config=config,
+                    harbor_package_version=harbor_package_version
+                )
+            elif status == JOB_STATUS_STARTED:
+                logger.info(f"Job {job_name} already Started")
+                return {"success": True, "job": existing, "exists": True}
+            elif status == JOB_STATUS_FINISHED:
+                return {"success": False, "error": "Job already finished"}
+
+        # Resolve model
+        model = get_model_by_name(model_hf_name)
+        if not model:
+            return {"success": False, "error": f"Model not found: {model_hf_name}"}
+        model_id = model['id']
+
+        # Resolve benchmark
+        benchmark_name = benchmark_hf_name.split("/")[-1] if "/" in benchmark_hf_name else benchmark_hf_name
+        benchmark = get_benchmark_by_name(benchmark_name)
+        if not benchmark:
+            return {"success": False, "error": f"Benchmark not found: {benchmark_name}"}
+        benchmark_id = benchmark['id']
+
+        # Resolve or create agent
+        agent_res = register_agent(name=agent_name)
+        if not agent_res.get('success'):
+            return {"success": False, "error": f"Failed to register agent: {agent_res.get('error')}"}
+        agent_id = agent_res['agent']['id']
+
+        # Build full job entry
+        now = datetime.now(timezone.utc)
+        job_data = {
+            "job_name": job_name,
+            "username": username,
+            "agent_id": agent_id,
+            "model_id": model_id,
+            "benchmark_id": benchmark_id,
+            "job_status": JOB_STATUS_STARTED,
+            "started_at": now.isoformat(),
+            "submitted_at": now.isoformat(),
+            "slurm_job_id": slurm_job_id,
+            "created_at": now.isoformat(),
+            "config": config,
+            "n_trials": n_trials,
+            "n_rep_eval": n_rep_eval,
+            "package_version": harbor_package_version,
+        }
+
+        result = create_sandbox_job(job_data)
+        logger.info(f"Created started job entry: {job_name} (id={result.get('id')})")
+        return {"success": True, "job": result}
+
+    except Exception as e:
+        logger.error(f"Failed to create started job entry {job_name}: {e}")
         return {"success": False, "error": str(e)}

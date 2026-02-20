@@ -64,6 +64,14 @@ from .utils import (
     upload_job_and_trial_records,
     upload_traces_to_hf,
     register_benchmark_and_tasks_from_job,
+    # Utility functions
+    calculate_standard_error,
+    # Pending Job Status functions
+    create_job_entry_pending,
+    update_job_status_to_started,
+    get_job_by_model_benchmark,
+    get_latest_job_for_model_benchmark,
+    create_job_entry_started,
 )
 from .models import (
     DatasetModel,
@@ -149,4 +157,11 @@ __all__ = [
     "upload_job_and_trial_records",
     "upload_traces_to_hf",
     "register_benchmark_and_tasks_from_job",
+    "calculate_standard_error",
+    # Pending Job Status exports
+    "create_job_entry_pending",
+    "update_job_status_to_started",
+    "get_job_by_model_benchmark",
+    "get_latest_job_for_model_benchmark",
+    "create_job_entry_started",
 ]

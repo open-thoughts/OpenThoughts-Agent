@@ -98,6 +98,7 @@ class ModelModel(BaseModel):
     id: Optional[UUID] = Field(default_factory=uuid4)
     name: str
     base_model_id: Optional[UUID] = None
+    duplicate_of: Optional[UUID] = None  # Reference to canonical model this is a duplicate of
     created_by: str
     creation_location: str
     creation_time: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -131,6 +132,10 @@ class ModelModel(BaseModel):
 
     @field_serializer('base_model_id')
     def serialize_base_model_id(self, value: Optional[UUID]) -> Optional[str]:
+        return str(value) if value else None
+
+    @field_serializer('duplicate_of')
+    def serialize_duplicate_of(self, value: Optional[UUID]) -> Optional[str]:
         return str(value) if value else None
 
     @field_serializer('dataset_id')
@@ -171,6 +176,7 @@ def clean_model_metadata(model_data: Dict[str, Any]) -> Dict[str, Any]:
         'id': str(model_data.get('id')) if model_data.get('id') else None,
         'name': model_data.get('name'),
         'base_model_id': str(model_data.get('base_model_id')) if model_data.get('base_model_id') else None,
+        'duplicate_of': str(model_data.get('duplicate_of')) if model_data.get('duplicate_of') else None,
         'created_by': model_data.get('created_by'),
         'creation_location': model_data.get('creation_location'),
         'creation_time': model_data.get('creation_time'),
@@ -241,6 +247,7 @@ class BenchmarkModel(BaseModel):
     name: str
     benchmark_version_hash: Optional[str] = Field(None, max_length=64)
     is_external: bool = False
+    duplicate_of: Optional[UUID] = None  # Reference to canonical benchmark this is a duplicate of
     external_link: Optional[str] = None
     description: Optional[str] = None
     updated_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -254,6 +261,10 @@ class BenchmarkModel(BaseModel):
 
     @field_serializer('id')
     def serialize_id(self, value: Optional[UUID]) -> Optional[str]:
+        return str(value) if value else None
+
+    @field_serializer('duplicate_of')
+    def serialize_duplicate_of(self, value: Optional[UUID]) -> Optional[str]:
         return str(value) if value else None
 
     @field_serializer('updated_at')
@@ -271,6 +282,7 @@ def clean_benchmark_metadata(benchmark_data: Dict[str, Any]) -> Dict[str, Any]:
         'name': benchmark_data.get('name'),
         'benchmark_version_hash': benchmark_data.get('benchmark_version_hash'),
         'is_external': benchmark_data.get('is_external'),
+        'duplicate_of': str(benchmark_data.get('duplicate_of')) if benchmark_data.get('duplicate_of') else None,
         'external_link': benchmark_data.get('external_link'),
         'description': benchmark_data.get('description'),
         'updated_at': benchmark_data.get('updated_at')
@@ -363,18 +375,20 @@ class SandboxJobModel(BaseModel):
     username: str
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
+    submitted_at: Optional[datetime] = None  # When submitted to SLURM queue
+    slurm_job_id: Optional[str] = None  # SLURM job ID for tracking
     git_commit_id: Optional[str] = None
     package_version: Optional[str] = None
-    n_trials: int
-    config: Dict[str, Any]
+    n_trials: Optional[int] = None  # Made optional for Pending jobs
+    config: Optional[Dict[str, Any]] = None  # Made optional for Pending jobs
     metrics: Optional[Dict[str, Any]] = None
     stats: Optional[Dict[str, Any]] = None
     agent_id: UUID
     model_id: UUID
     benchmark_id: UUID
-    n_rep_eval: int
+    n_rep_eval: Optional[int] = None  # Made optional for Pending jobs
     hf_traces_link: Optional[str] = None
-    job_status: Optional[str] = None
+    job_status: Optional[str] = None  # "Pending", "Started", "Finished"
 
     @field_validator('git_commit_id', 'package_version')
     @classmethod
@@ -410,6 +424,10 @@ class SandboxJobModel(BaseModel):
     def serialize_ended_at(self, value: Optional[datetime]) -> Optional[str]:
         return value.isoformat() if value else None
 
+    @field_serializer('submitted_at')
+    def serialize_submitted_at(self, value: Optional[datetime]) -> Optional[str]:
+        return value.isoformat() if value else None
+
 
 def clean_sandbox_job_metadata(job_data: Dict[str, Any]) -> Dict[str, Any]:
     """Clean sandbox job metadata for API responses."""
@@ -423,6 +441,8 @@ def clean_sandbox_job_metadata(job_data: Dict[str, Any]) -> Dict[str, Any]:
         'username': job_data.get('username'),
         'started_at': job_data.get('started_at'),
         'ended_at': job_data.get('ended_at'),
+        'submitted_at': job_data.get('submitted_at'),
+        'slurm_job_id': job_data.get('slurm_job_id'),
         'git_commit_id': job_data.get('git_commit_id'),
         'package_version': job_data.get('package_version'),
         'n_trials': job_data.get('n_trials'),

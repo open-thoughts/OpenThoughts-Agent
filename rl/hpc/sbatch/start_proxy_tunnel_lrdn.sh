@@ -57,4 +57,4 @@ socks5 ${PROXYCHAINS_SOCKS5_HOST} ${PROXYCHAINS_SOCKS5_PORT}
 EOF
 
 # This will be the ONLY output captured by CMD_PREFIX
-echo "proxychains4 -f $CFG_PATH"
+echo "proxychains4 -q -f $CFG_PATH"

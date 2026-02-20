@@ -30,6 +30,7 @@ from hpc.sft_launch_utils import (
     ensure_deepspeed_config,
     maybe_apply_cluster_specific_env_overrides,
     maybe_compute_gradient_accumulation,
+    maybe_preprocess_thinking,
     apply_data_argument_overrides,
     submit_sft_job,
 )
@@ -47,9 +48,6 @@ from hpc.eval_launch_utils import (
     prepare_eval_configuration,
     remap_eval_cli_args,
 )
-from scripts.harbor.tasks_parquet_converter import from_parquet
-from database.unified_db.utils import load_supabase_keys
-
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
@@ -245,11 +243,17 @@ def _materialize_dataset_and_model(
         tasks_output_dir = os.path.join(tasks_base_dir, dataset_name)
 
         print(f"Converting parquet to tasks folder at {tasks_output_dir}")
+        # Lazy import to avoid torch dependency at module load time
+        from scripts.harbor.tasks_parquet_converter import from_parquet
         from_parquet(parquet_file_path, tasks_output_dir, on_exist="skip")
         dataset_path = tasks_output_dir
         print(f"Converted parquet to tasks folder: {dataset_path}")
 
-    model_path = snapshot_download(repo_id=base_config["model_name_or_path"], repo_type="model")
+
+    if os.path.isdir(base_config["model_name_or_path"]):
+        model_path = os.path.abspath(base_config["model_name_or_path"])
+    else:
+        model_path = snapshot_download(repo_id=base_config["model_name_or_path"], repo_type="model")
     print(f"Downloaded model to {model_path}")
 
     return _DatasetArtifacts(dataset_paths, dataset_path, model_path)
@@ -340,6 +344,9 @@ def construct_config_yaml(exp_args):
 
     artifacts = _materialize_dataset_and_model(base_config, exp_args, dataset_entries, datasets_dir)
 
+    # Preprocess thinking format for ReasoningTemplate-based templates (e.g. qwen3)
+    artifacts = maybe_preprocess_thinking(base_config, exp_args, artifacts)
+
     hub_model_id = base_config.get("hub_model_id")
     if hub_model_id is not None:
         hub_model_id = hub_model_id.replace(".", "_")
@@ -408,6 +415,8 @@ def display_args(exp_args, name):
     print()
 
 def main():
+    # Lazy import to avoid torch dependency at module load time
+    from database.unified_db.utils import load_supabase_keys
     load_supabase_keys()
     # this is where defaults are stored for experiments_dir and deepspeed
     cli_args = parse_args()

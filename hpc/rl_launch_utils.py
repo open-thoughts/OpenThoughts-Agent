@@ -57,8 +57,24 @@ def resolve_rl_train_data(
         return []
 
     # Determine scratch directory for extracted tasks
+    # IMPORTANT: Must use a shared filesystem visible to all compute nodes.
+    # /tmp is local to each node and will NOT work for multi-node jobs.
     if scratch_dir is None:
-        scratch_dir = os.environ.get("SCRATCH", "/tmp")
+        # Try multiple fallbacks in order of preference:
+        # 1. $SCRATCH - standard HPC scratch directory
+        # 2. $DCFT - project directory (set in dotenv files)
+        # 3. $DCFT_PRIVATE - private project directory variant
+        # 4. $HOME - user's home directory (usually shared on HPC)
+        # 5. /tmp - LAST RESORT (local to each node, will fail on multi-node!)
+        for env_var in ["SCRATCH", "DCFT", "DCFT_PRIVATE", "HOME"]:
+            if os.environ.get(env_var):
+                scratch_dir = os.environ[env_var]
+                break
+        else:
+            scratch_dir = "/tmp"
+            print(f"[rl_launch_utils] WARNING: Using /tmp for task extraction. "
+                  f"This is local to each node and may fail on multi-node jobs. "
+                  f"Set $SCRATCH, $DCFT, or $DCFT_PRIVATE to a shared filesystem path.")
     tasks_base = Path(scratch_dir) / "tasks"
 
     resolved_paths = []
@@ -277,11 +293,11 @@ def build_rl_env_vars(
     if experiments_dir and run_name:
         env_vars["SKYRL_EXPORT_PATH"] = derive_skyrl_export_path(experiments_dir, run_name)
 
-    # WANDB mode (inherit from HPC if available)
+    # Inherit all HPC-specific environment variables (WANDB_MODE, GLOO_USE_IPV6, etc.)
     if hpc is not None and hasattr(hpc, "env_vars"):
         hpc_env = hpc.env_vars or {}
-        if "WANDB_MODE" in hpc_env:
-            env_vars["WANDB_MODE"] = hpc_env["WANDB_MODE"]
+        for key, value in hpc_env.items():
+            env_vars[key] = value
 
     return env_vars
 
@@ -352,6 +368,23 @@ conda activate {conda_env}
 set -u'''
     else:
         return '''# Using venv for RL (created by ./hpc/setup_rl_env.sh)
+# IMPORTANT: Deactivate conda environment to prevent import conflicts,
+# but KEEP conda paths in PATH because the venv's python symlink may point
+# to the conda Python that was used when the venv was created.
+set +u  # conda deactivate may reference unset variables
+if [[ -n "${CONDA_PREFIX:-}" ]]; then
+  echo "Deactivating conda environment: $CONDA_PREFIX"
+  # Deactivate all stacked conda environments
+  while [[ -n "${CONDA_PREFIX:-}" ]]; do
+    conda deactivate 2>/dev/null || break
+  done
+  # Unset the environment name variable so imports don't get confused
+  unset CONDA_DEFAULT_ENV
+  # NOTE: We keep CONDA_PREFIX and conda paths in PATH because the venv's
+  # python binary is often a symlink to the conda Python.
+fi
+set -u
+
 RL_ENV_DIR="${RL_ENV_DIR:-$WORKDIR/envs/rl}"
 if [[ -d "$RL_ENV_DIR" ]]; then
   echo "Activating RL environment: $RL_ENV_DIR"
@@ -362,7 +395,11 @@ elif [[ -n "${DCFT_RL_ENV:-}" ]] && [[ -d "$DCFT_RL_ENV" ]]; then
 else
   echo "Warning: RL environment not found at $RL_ENV_DIR"
   echo "Run ./hpc/setup_rl_env.sh to create it, or set DCFT_RL_ENV"
-fi'''
+fi
+
+# Verify we're using the correct Python
+echo "Python executable: $(which python)"
+echo "Python path check: $(python -c 'import sys; print(sys.executable)')"'''
 
 
 # =============================================================================
@@ -417,6 +454,7 @@ class RLJobConfig:
     agent_name: str = "terminus-2"
     harbor_env: str = "daytona"
 
+    proxychains_binary: Optional[str] = None
 
 def build_skyrl_command_string(config: RLJobConfig) -> str:
     """Build the full SkyRL command string for the sbatch template.
@@ -508,6 +546,22 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> str:
         resolved_val_data = resolve_rl_train_data(val_data_raw)
         exp_args["val_data"] = resolved_val_data
         print(f"Resolved val_data: {resolved_val_data}")
+
+    # Pre-download model for RL jobs
+    # SkyRL's FSDP and DeepSpeed strategies don't have built-in pre-download logic
+    # (only Megatron does), so we always pre-download HF models to avoid issues with:
+    # - Multiple workers trying to download simultaneously
+    # - Network timeouts on compute nodes
+    # - Auth issues in distributed settings
+    from hpc.checkpoint_utils import pre_download_model, is_huggingface_repo
+    model_path = exp_args.get("model_path") or parsed.model.get("model_name_or_path", "")
+    if model_path and is_huggingface_repo(model_path):
+        print(f"Pre-downloading model for SkyRL: {model_path}")
+        result = pre_download_model(model_path)
+        exp_args["model_path"] = result.local_path
+        print(f"Model available at: {result.local_path}")
+    elif model_path:
+        exp_args["model_path"] = model_path
 
     # Build Hydra args from YAML + CLI overrides
     hydra_args = build_skyrl_hydra_args(parsed, exp_args, hpc)
@@ -606,14 +660,17 @@ fi"""
         "cuda_setup": cuda_setup,
         "nccl_exports": hpc.get_nccl_exports(),
         "rl_env_exports": rl_env_exports,
+        "ray_env_exports": hpc.get_ray_env_exports(experiments_subdir),
         "rl_env_activation": rl_env_activation,
         "ssh_tunnel_setup": hpc.get_ssh_tunnel_setup(),
+        "proxy_setup": hpc.get_proxy_setup(),
         "ray_port": str(job_config.ray_port),
         "master_port": str(job_config.master_port),
         "gpus_per_node": str(gpus_per_node),
         "config_path": str(config_path),
         "skyrl_command": skyrl_command,
         "email_address": os.environ.get("EMAIL_ADDRESS", ""),
+        "harbor_env": job_config.harbor_env,
     }
 
     sbatch_text = substitute_template(template_text, substitutions)
@@ -690,9 +747,14 @@ def launch_rl_job(exp_args: dict, hpc) -> Optional[str]:
     # Construct the sbatch script
     sbatch_path = construct_rl_sbatch_script(exp_args, hpc)
 
+    # Get dependency if specified
+    dependency = exp_args.get("dependency")
+
     # Dry run handling
     if exp_args.get("dry_run"):
         print(f"\nDRY RUN: RL sbatch script written to {sbatch_path}")
+        if dependency:
+            print(f"  Would submit with dependency: {dependency}")
 
         # Show command preview
         rl_config_path = exp_args.get("rl_config")
@@ -706,8 +768,8 @@ def launch_rl_job(exp_args: dict, hpc) -> Optional[str]:
 
         return None
 
-    # Submit the job
-    job_id = launch_sbatch(sbatch_path)
+    # Submit the job with optional dependency
+    job_id = launch_sbatch(sbatch_path, dependency=dependency)
     print(f"\nRL job submitted: {job_id}")
 
     return job_id
@@ -793,6 +855,28 @@ class RLJobRunner:
         )
         os.environ["WANDB_DIR"] = wandb_dir
 
+        # HuggingFace Hub settings for checkpoint uploads
+        # Pass through HF_TOKEN if set (needed for hub uploads and private model access)
+        hf_token = os.environ.get("HF_TOKEN")
+        hf_hub_cache = os.environ.get("HF_HUB_CACHE") or os.environ.get("HF_HOME")
+        if hf_token:
+            # HF_TOKEN is already in environment, just log it's available
+            print(f"  HF_TOKEN=****{hf_token[-4:] if len(hf_token) > 4 else '****'}", flush=True)
+        if hf_hub_cache:
+            os.environ["HF_HUB_CACHE"] = hf_hub_cache
+            print(f"  HF_HUB_CACHE={hf_hub_cache}", flush=True)
+
+        # Supabase credentials for database registration callback
+        # KEYS should point to a file with SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+        keys_path = os.environ.get("KEYS")
+        if keys_path:
+            print(f"  KEYS={keys_path} (Supabase credentials for DB registration)", flush=True)
+        else:
+            # Also check if Supabase vars are set directly
+            supabase_url = os.environ.get("SUPABASE_URL")
+            if supabase_url:
+                print(f"  SUPABASE_URL={supabase_url[:30]}... (direct Supabase config)", flush=True)
+
         print(f"Environment configured:", flush=True)
         print(f"  TENSOR_PARALLEL_SIZE={os.environ['TENSOR_PARALLEL_SIZE']}", flush=True)
         print(f"  NUM_INFERENCE_ENGINES={os.environ['NUM_INFERENCE_ENGINES']}", flush=True)
@@ -813,6 +897,7 @@ class RLJobRunner:
         )
 
         hpc = self._get_hpc()
+        setattr(self.config, "proxychains_binary", getattr(hpc, "proxychains_binary", None))
         num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES", self.config.num_nodes))
 
         # Use config values (from CLI overrides) instead of cluster defaults
@@ -833,6 +918,9 @@ class RLJobRunner:
             ray_env_vars=hpc.get_ray_env_vars(),
             memory_per_node=ray_memory,
             object_store_memory=DEFAULT_OBJECT_STORE_MEMORY_BYTES,
+            disable_cpu_bind=getattr(hpc, "disable_cpu_bind", False),
+            gpu_bind=getattr(hpc, "gpu_bind", "none"),
+            proxychains_binary=getattr(hpc, "proxychains_binary", None),
         )
 
         print(f"Starting Ray cluster with {num_nodes} nodes, {gpus_per_node} GPUs/node", flush=True)
@@ -842,6 +930,14 @@ class RLJobRunner:
             os.environ["RAY_ADDRESS"] = ray_cluster.address
             print(f"Ray cluster ready at {ray_cluster.address}", flush=True)
             print(f"Total GPUs available: {ray_cluster.total_gpus}", flush=True)
+
+            # Enable distributed containers for multi-node local backend jobs
+            # This allows Harbor to spread container workload across all Ray nodes
+            local_backends = {"podman_hpc", "docker", "apptainer"}
+            if ray_cluster.total_nodes > 1 and self.config.harbor_env in local_backends:
+                os.environ["HARBOR_DISTRIBUTED_CONTAINERS"] = "1"
+                print(f"[RLJobRunner] Enabled distributed {self.config.harbor_env} "
+                      f"across {ray_cluster.total_nodes} nodes", flush=True)
 
             # Check if Pinggy tunnel is needed for installed agents in cloud backends
             from hpc.pinggy_utils import (
@@ -914,7 +1010,15 @@ class RLJobRunner:
             else:
                 cwd = None
 
-        result = subprocess.run(cmd, cwd=cwd)
+        if self.config.proxychains_binary:
+            print(f"Using proxychains binary: {self.config.proxychains_binary}", flush=True)
+            cmd = [f'{self.config.proxychains_binary}', '-f', "$PROXYCHAINS_CONF_FILE"] + cmd
+
+        srun_cmd = cmd
+
+        print(f"\nExecuting command with srun: {' '.join(srun_cmd)}", flush=True)
+
+        result = subprocess.run(srun_cmd, cwd=cwd)
         return result.returncode
 
 

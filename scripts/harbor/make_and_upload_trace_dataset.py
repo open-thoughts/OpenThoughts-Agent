@@ -254,6 +254,10 @@ def _install_inline_subagent_merger() -> None:
                 if reasoning_content:
                     content_parts.append(f"<think>{reasoning_content}</think>")
                 if message:
+                    # Fix orphaned </think> tags: when the generation prompt includes <think>
+                    # but vLLM only returns generated tokens, the opening tag is missing.
+                    if '</think>' in message and '<think>' not in message:
+                        message = '<think>' + message
                     content_parts.append(message)
                 tool_calls = step.get("tool_calls")
                 if isinstance(tool_calls, list):

@@ -187,38 +187,33 @@ class PinggyTunnel:
             self._log_file = None
 
     def _wait_for_healthy(self) -> None:
-        """Wait for the Pinggy tunnel to be ready by health checking the public URL."""
-        health_url = f"{self.public_base_url}/v1/models"
-        print(f"  Waiting for tunnel to be ready (checking {health_url})...")
+        """Wait for the Pinggy tunnel process to start and stabilize.
 
-        start_time = time.time()
-        last_error = None
+        We don't verify by hitting the external URL because HPC compute nodes
+        often lack external DNS resolution. Instead, we verify the tunnel process
+        is running and give it time to establish the SSH connection.
+        """
+        print(f"  Waiting for tunnel process to stabilize...")
 
-        while time.time() - start_time < self.config.health_check_timeout:
-            # Check if process died
+        # Give the tunnel a few seconds to establish the SSH connection
+        stabilize_time = 5
+        for i in range(stabilize_time):
+            time.sleep(1)
+            # Check if process died during startup
             if self._process and self._process.poll() is not None:
                 raise RuntimeError(
                     f"Pinggy tunnel process exited unexpectedly (code {self._process.returncode}). "
                     f"Check logs at {self.log_path}"
                 )
 
-            try:
-                req = urllib.request.Request(health_url, method="GET")
-                req.add_header("User-Agent", "Harbor-Pinggy-HealthCheck/1.0")
-                with urllib.request.urlopen(req, timeout=10) as response:
-                    if response.status == 200:
-                        elapsed = time.time() - start_time
-                        print(f"  Tunnel healthy after {elapsed:.1f}s")
-                        return
-            except (urllib.error.URLError, urllib.error.HTTPError, OSError) as e:
-                last_error = e
+        # Final check that process is still alive
+        if self._process and self._process.poll() is not None:
+            raise RuntimeError(
+                f"Pinggy tunnel process exited unexpectedly (code {self._process.returncode}). "
+                f"Check logs at {self.log_path}"
+            )
 
-            time.sleep(self.config.health_check_interval)
-
-        raise RuntimeError(
-            f"Pinggy tunnel health check failed after {self.config.health_check_timeout}s. "
-            f"Last error: {last_error}"
-        )
+        print(f"  Tunnel process running (PID: {self._process.pid}), assuming healthy")
 
     def __enter__(self) -> "PinggyTunnel":
         """Context manager entry - start the tunnel."""
@@ -249,7 +244,7 @@ def needs_pinggy_tunnel(agent_name: Optional[str], env_type: Optional[str]) -> b
         return False
 
     # Local container backends have direct network access to vLLM
-    local_backends = ("docker", "apptainer", "singularity", "local")
+    local_backends = ("docker", "podman_hpc", "apptainer", "singularity", "local")
     if env_type and env_type.lower() in local_backends:
         return False
 

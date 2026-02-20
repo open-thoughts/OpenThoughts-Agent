@@ -1,0 +1,196 @@
+# SkyRL Configuration: Qwen3 32B on 64x MI250X (Frontier - 16 nodes)
+# Optimized for 32k context agentic RL with ASYNCHRONOUS training
+#
+# HARDWARE: OLCF Frontier - AMD MI250X GPUs
+#   - 64 MI250X packages = 128 GCDs (Graphics Compute Dies)
+#   - Each GCD has 64GB HBM2e (vs 80GB in original H100/A100 config)
+#   - 16 nodes x 4 MI250X/node x 2 GCDs/MI250X = 128 GCDs total
+#
+# SCALING (vs 32x80GB original):
+#   - 4x GPU count (128 vs 32)
+#   - 4x batch sizes
+#   - 4x inference engines
+#   - Same TP=2 (32B needs 2 GPUs per engine on 64GB)
+#   - 2x GRPO group size for better advantage estimation at scale
+#
+# GPU ALLOCATION (colocate_all=false):
+#   - Policy model: 64 GCDs (16 nodes x 4 GPUs) - FSDP2 sharded
+#   - Reference model: 64 GCDs (same as policy) - CPU offloaded
+#   - Inference engines: 64 GCDs (32 engines x TP=2)
+#
+# REWARD MODE: Binary (0/1) - original verifier reward without shaping
+# TRAINING MODE: Fully async - policy/ref/inference on dedicated GPU sets
+#
+# Usage:
+#   python -m hpc.launch \
+#       --job_type rl \
+#       --rl_config qwen3_32b_frontier_64mi250x_thinking_async_hilr.yaml \
+#       --job_name qwen3_32b_frontier_16node \
+#       --train_data '["mlfoundations-dev/your-dataset"]' \
+#       --model_path Qwen/Qwen3-32B \
+#       --num_nodes 16
+
+# SkyRL entrypoint module
+entrypoint: examples.terminal_bench.entrypoints.main_tbench
+
+# Hydra config groups (+ prefix in CLI)
+config_groups:
+  terminal_bench_config: terminal_bench
+
+# Terminal bench / agentic environment settings
+terminal_bench:
+  trials_dir: null
+
+  harbor:
+    name: terminus-2
+    max_episodes: 999999
+    enable_summarize: false
+    store_all_messages: true
+    # Disable episode-* folder creation to reduce disk I/O (SkyRL uses TrialResult directly)
+    enable_episode_logging: false
+    override_timeout_sec: 900
+    override_cpus: 1
+    override_memory_mb: 2048
+    override_storage_mb: 2048
+    verifier_override_timeout_sec: 120
+    max_retries: 3
+    min_wait_sec: 60.0
+    max_wait_sec: 600.0
+    wait_multiplier: 2.0
+
+    exclude_exceptions:
+      - AgentTimeoutError
+      - VerifierTimeoutError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - VerifierOutputParseError
+      - ContextLengthExceededError
+
+    # 4x concurrent trials for 4x GPUs
+    n_concurrent_trials: 128
+
+    log_level: WARNING
+    enable_reward_shaping: false
+
+    # Interleaved Thinking Settings
+    interleaved_thinking: true
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+
+  model_info:
+    max_input_tokens: 32768
+    max_output_tokens: 8192
+
+# Trainer configuration
+trainer:
+  strategy: fsdp2
+  algorithm:
+    advantage_estimator: grpo
+    use_kl_loss: true
+    kl_loss_coef: 0.001
+    grpo_norm_by_std: false
+    eps_clip_low: 0.2
+    eps_clip_high: 0.2
+    loss_reduction: token_mean
+
+  epochs: 10
+  update_epochs_per_batch: 1
+
+  # 4x batch sizes for 4x GPUs
+  train_batch_size: 256
+  policy_mini_batch_size: 256
+  eval_batch_size: 128
+
+  micro_forward_batch_size_per_gpu: 1
+  micro_train_batch_size_per_gpu: 1
+
+  max_prompt_length: 999999
+
+  eval_interval: 999999
+  eval_before_train: false
+  ckpt_interval: 10
+  resume_mode: none
+
+  project_name: OpenThoughts-Agent
+  log_level: INFO
+  tracker_commit_each_step: true
+
+  run_name: null
+  ckpt_path: null
+  export_path: null
+
+  policy:
+    optimizer_config:
+      lr: 1.0e-6
+      weight_decay: 0.01
+      adam_betas: [0.9, 0.999]
+      max_grad_norm: 1.0
+
+  ref:
+    fsdp_config:
+      cpu_offload: false
+      reshard_after_forward: true
+
+  # GPU allocation for 16 nodes (128 GCDs)
+  # Half for policy/ref, half for inference
+  placement:
+    colocate_all: false
+    policy_num_nodes: 16
+    ref_num_nodes: 16
+    policy_num_gpus_per_node: 4
+    ref_num_gpus_per_node: 4
+
+  fully_async:
+    # 4x workers for 4x batch size
+    num_parallel_generation_workers: 256
+
+# Generator (vLLM inference) configuration
+generator:
+  backend: vllm
+  timeout_multiplier: 2.0
+  model_dtype: bfloat16
+  enforce_eager: false
+
+  # TP=2 for 32B model on 64GB GCDs
+  inference_engine_tensor_parallel_size: 2
+  # 32 engines x TP=2 = 64 GCDs for inference (4x original)
+  num_inference_engines: 32
+
+  # 2x GRPO samples for better advantage estimation at scale
+  n_samples_per_prompt: 8
+  eval_n_samples_per_prompt: 8
+
+  # Slightly lower memory utilization for 64GB (vs 80GB)
+  gpu_memory_utilization: 0.82
+
+  max_num_seqs: 32
+  max_num_batched_tokens: 32768
+
+  enable_prefix_caching: true
+  enable_chunked_prefill: true
+
+  run_engines_locally: true
+  weight_sync_backend: nccl
+  async_engine: true
+  batched: false
+  enable_http_endpoint: true
+  enable_ray_prometheus_stats: false
+
+  append_eos_token_after_stop_str_in_multi_turn: true
+  max_turns: 999999
+
+  sampling_params:
+    max_generate_length: 8192
+    temperature: 1.0
+    top_p: 0.95
+    top_k: -1
+
+  engine_init_kwargs:
+    # Explicit context limit - ensures vLLM enforces 32k total context
+    max_model_len: 32768
+    custom_chat_template_chat_completion_path: chat_templates/qwen3_thinking_acc.jinja2
+
+data:
+  train_data: []
+  val_data: ["open-thoughts/OpenThoughts-TB-dev"]

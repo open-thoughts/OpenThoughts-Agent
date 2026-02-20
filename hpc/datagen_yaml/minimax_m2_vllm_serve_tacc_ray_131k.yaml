@@ -7,9 +7,6 @@ engine:
 backend:
   type: ray
   wait_for_endpoint: true
-  tensor_parallel_size: 1
-  pipeline_parallel_size: 2
-  data_parallel_size: 4
   healthcheck_max_attempts: 120
   healthcheck_retry_delay: 15
 vllm_server:
@@ -41,5 +38,3 @@ vllm_server:
   - --enable-prefix-caching
   - --all2all-backend
   - pplx
-
-

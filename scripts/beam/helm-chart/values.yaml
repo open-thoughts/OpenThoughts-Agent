@@ -1,0 +1,422 @@
+# -- See the common values.yaml for all the options you can set.
+# https://github.com/bjw-s/helm-charts/blob/common-2.5.0/charts/library/common/values.yaml
+global:
+  labels: {}
+  annotations: {}
+  nameOverride: beta9
+
+# -- Beta9's configuration.
+# https://github.com/beam-cloud/beta9/blob/main/pkg/common/config.default.yaml
+# NOTE: Storage credentials are injected at deploy time via CONFIG_JSON env var.
+# The values below are defaults/placeholders - actual S3 config comes from LAION_* env vars.
+config:
+  # Database connections (postgres + redis are both under 'database')
+  database:
+    postgres:
+      host: postgresql  # Matches fullnameOverride in postgresql section
+      port: 5432
+      name: main
+      username: root
+      password: password
+    redis:
+      mode: single
+      addrs:
+        - redis-master:6379  # Matches fullnameOverride in redis section
+  # Storage configuration - S3 credentials are injected at deploy time via CONFIG_JSON env var
+  # The mounted config only has non-sensitive defaults; S3 creds come from CONFIG_JSON (highest priority)
+  # JuiceFS: metadata in juicefs-redis, data in external S3
+  # WorkspaceStorage: container images in external S3
+  storage:
+    mode: juicefs
+    fsName: beta9-fs
+    fsPath: /data
+    objectPath: /data/objects
+    juicefs:
+      redisURI: redis://juicefs-redis-master:6379/0  # Metadata in cluster Redis
+      # S3 credentials provided via CONFIG_JSON env var (not in mounted config file)
+      blockSize: 4096
+      cacheSize: 1024
+      prefetch: 1
+      bufferSize: 300
+    workspaceStorage:
+      defaultStorageMode: s3
+      defaultBucketPrefix: beta9-workspace
+      defaultRegion: us-east-1
+      # S3 credentials provided via CONFIG_JSON env var (not in mounted config file)
+  worker:
+    imageRegistry: public.ecr.aws/n4e0e1y0
+    # Disable PVC mounting - images are stored in S3 (registryStore: s3)
+    imagePVCName: ""
+  imageService:
+    # Use S3 for image storage instead of local PVC (scalable, multi-node)
+    registryStore: s3
+    registries:
+      s3:
+        bucketName: beta9-images
+        region: us-east-1
+        forcePathStyle: true  # Required for MinIO compatibility
+        # S3 credentials and endpoint provided via CONFIG_JSON env var
+    runner:
+      baseImageRegistry: public.ecr.aws/n4e0e1y0
+
+images:
+  gateway:
+    # Using forked beta9 with minio storage type support
+    # Original: public.ecr.aws/n4e0e1y0/beta9-gateway
+    repository: gcr.io/soe-datacomp/beta9-gateway
+    tag: minio-fix
+    pullPolicy: Always  # Always pull to get latest fixes
+
+controllers:
+  gateway:
+    annotations: {}
+    labels: {}
+    replicas: 1
+    strategy: Recreate # Can be Recreate or RollingUpdate
+    rollingUpdate:
+      unavailable:
+      surge:
+    containers:
+      main:
+        # CONFIG_JSON is injected at deploy time by deploy_beta9() with actual S3 credentials
+        # Placeholder here - will be overridden by --set-json in helm command
+        env: {}
+    initContainers:
+      debug-config:
+        image:
+          repository: busybox
+          tag: 1.37.0
+        command:
+        - sh
+        - -c
+        - |
+          echo "========================================"
+          echo "DEBUG: Checking /etc/beta9.d/ contents"
+          echo "========================================"
+          echo ""
+          echo ">>> ls -la /etc/beta9.d/"
+          ls -la /etc/beta9.d/ 2>&1 || echo "ERROR: Directory does not exist!"
+          echo ""
+          echo ">>> Contents of config files:"
+          for f in /etc/beta9.d/*.yaml /etc/beta9.d/*.yml; do
+            if [ -f "$f" ]; then
+              echo "--- $f ---"
+              cat "$f"
+              echo ""
+            fi
+          done
+          echo ""
+          echo ">>> Checking for awsS3Bucket in config:"
+          grep -r "awsS3Bucket" /etc/beta9.d/ 2>&1 || echo "NOT FOUND"
+          echo ""
+          echo "========================================"
+          echo "DEBUG: Config check complete"
+          echo "========================================"
+      copy-config:
+        image:
+          repository: busybox
+          tag: 1.37.0
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          echo "========================================"
+          echo "COPY-CONFIG: Copying config to real file"
+          echo "========================================"
+
+          SOURCE="/etc/beta9.d/config.yaml"
+          DEST="/config-copy/beta9-config.yaml"
+
+          echo ">>> Source file info:"
+          ls -la "$SOURCE" 2>&1 || { echo "FATAL: Source file $SOURCE does not exist!"; exit 1; }
+
+          echo ""
+          echo ">>> Copying $SOURCE -> $DEST"
+          cp "$SOURCE" "$DEST" || { echo "FATAL: Failed to copy config file!"; exit 1; }
+
+          echo ""
+          echo ">>> Verifying destination:"
+          ls -la "$DEST" || { echo "FATAL: Destination file not created!"; exit 1; }
+
+          echo ""
+          echo ">>> Destination content (first 50 lines):"
+          head -50 "$DEST"
+
+          echo ""
+          echo ">>> Checking awsS3Bucket in destination:"
+          grep "awsS3Bucket" "$DEST" || { echo "FATAL: awsS3Bucket not found in copied config!"; exit 1; }
+
+          echo ""
+          echo "========================================"
+          echo "COPY-CONFIG: Success!"
+          echo "========================================"
+      wait-on-backends:
+        image:
+          repository: busybox
+          tag: 1.37.0
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z postgresql 5432; do echo "Waiting on PostgreSQL..."; sleep 2; done;
+          until nc -z redis-master 6379; do echo "Waiting on Redis..."; sleep 2; done;
+          until nc -z juicefs-redis-master 6379; do echo "Waiting on Redis (JuiceFS)..."; sleep 2; done;
+          echo "All internal systems ready! (External S3 will be tested by gateway)"
+
+persistence:
+  # Images are now stored in S3 (registryStore: s3), no local PVC needed
+  # emptyDir volume for copying config from symlinked secret to real file
+  # This is needed because the gateway may have issues reading symlinked k8s secrets
+  config-copy:
+    enabled: true
+    type: emptyDir
+    globalMounts:
+    - path: /config-copy
+
+service:
+  gateway:
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9090"
+    labels: {}
+    ports:
+      grpc:
+        port: 1993
+        targetPort: 1993
+        protocol: TCP
+      http:
+        primary: true
+        port: 1994
+        targetPort: 1994
+        protocol: TCP
+      metrics:
+        port: 9090
+        targetPort: 9090
+        protocol: TCP
+    type: ClusterIP
+
+ingress:
+  gateway:
+    enabled: false
+    annotations: {}
+    labels: {}
+
+serviceAccount:
+  name: beta9
+  annotations: {}
+  labels: {}
+
+# -- In-memory cache for container images.
+# https://github.com/beam-cloud/blobcache/deploy/charts/blobcache/values.yaml
+blobcache:
+  enabled: false
+
+# -- Needed by Gateway
+redis:
+  enabled: true
+  nameOverride: redis
+  fullnameOverride: redis
+  architecture: standalone
+  auth:
+    enabled: false
+  # Override image to use 'latest' tag (specific version tags get deleted by Bitnami)
+  image:
+    registry: docker.io
+    repository: bitnami/redis
+    tag: latest
+  master:
+    configuration: |
+      activedefrag yes
+      notify-keyspace-events AKE
+    persistence:
+      size: 1Gi
+
+# -- Needed by Gateway
+postgresql:
+  enabled: true
+  nameOverride: postgresql
+  fullnameOverride: postgresql
+  global:
+    postgresql:
+      auth:
+        username: root
+        password: password
+        database: main
+  # Override image to use 'latest' tag (specific version tags get deleted by Bitnami)
+  image:
+    registry: docker.io
+    repository: bitnami/postgresql
+    tag: latest
+  primary:
+    extendedConfiguration: |
+      max_connections=400
+      shared_buffers='400MB'
+  volumePermissions:
+    enabled: true
+    # Override volumePermissions image too
+    image:
+      registry: docker.io
+      repository: bitnami/os-shell
+      tag: latest
+  persistence:
+    enabled: true
+    size: 1Gi
+
+# -- Needed by Gateway's file system
+juicefs-redis:
+  enabled: true
+  nameOverride: juicefs-redis
+  fullnameOverride: juicefs-redis
+  architecture: standalone
+  auth:
+    enabled: false
+  # Override image to use 'latest' tag (specific version tags get deleted by Bitnami)
+  image:
+    registry: docker.io
+    repository: bitnami/redis
+    tag: latest
+  master:
+    persistence:
+      size: 1Gi
+
+# -- LocalStack disabled - using external MinIO (LAION S3) for shared storage instead
+localstack:
+  enabled: false
+
+# -- Enables deployment of victoria-metrics, grafana, and fluent-bit
+metrics:
+  enabled: false
+
+grafana:
+  nameOverride: grafana
+  fullnameOverride: grafana
+  datasources:
+   datasources.yaml:
+     apiVersion: 1
+     datasources:
+     - name: Victoria Metrics
+       type: prometheus
+       url: http://victoria-metrics-single:8428
+       access: proxy
+       isDefault: true
+
+victoria-metrics-agent:
+  nameOverride: victoria-metrics-agent
+  fullnameOverride: victoria-metrics-agent
+  remoteWriteUrls:
+  - http://victoria-metrics-single:8428/api/v1/write
+  extraScrapeConfigs:
+  - job_name: beta9-pods
+    metrics_path: /metrics
+    scheme: http
+    honor_labels: true
+    scrape_timeout: 10s
+    scrape_interval: 15s
+    kubernetes_sd_configs:
+    - role: pod
+      namespaces:
+        names:
+        - beta9
+    relabel_configs:
+    - source_labels: [__meta_kubernetes_pod_label_prometheus_io_scrape]
+      action: keep
+      regex: true
+    - source_labels: [__meta_kubernetes_pod_container_port_number]
+      action: keep
+      regex: 9090
+
+victoria-metrics-single:
+  server:
+    fullnameOverride: victoria-metrics-single
+
+victoria-logs-single:
+  server:
+    fullnameOverride: victoria-logs-single
+
+fluent-bit:
+  nameOverride: fluent-bit
+  fullnameOverride: fluent-bit
+  image:
+    repository: docker.io/fluent/fluent-bit
+  envFrom:
+  - secretRef:
+      name: fluent-bit
+  extraPorts:
+  # -- The events server
+  - name: tcp
+    port: 9880
+    containerPort: 9880
+    protocol: TCP
+  config:
+    service: |
+      [SERVICE]
+          Flush        1
+          Log_Level    info
+          HTTP_Server  On
+          HTTP_Listen  0.0.0.0
+          HTTP_Port    2020
+    customParsers: |
+      [PARSER]
+          Name        json-parser
+          Format      json
+          Time_Key    time
+          Time_Format %Y-%m-%dT%H:%M:%SZ
+          Time_Keep   On
+    inputs: |
+      [INPUT]
+          Name             tail
+          Tag              worker-logs
+          Path             /var/log/worker/*.log
+          Parser           json-parser
+          Mem_Buf_Limit    100MB
+          Skip_Long_Lines  Off
+          Refresh_Interval 5
+      [INPUT]
+          Name   http
+          Tag    events
+          Listen 0.0.0.0
+          Port   9880
+    outputs: |
+      [OUTPUT]
+          Name  stdout
+          Match *
+      [OUTPUT]
+          Name             http
+          Match            *
+          host             ${VICTORIA_LOGS_HOST}
+          port             ${VICTORIA_LOGS_PORT}
+          uri              /insert/jsonline?_stream_fields=stream&_msg_field=log&_time_field=date
+          format           json_lines
+          json_date_format iso8601
+      [OUTPUT]
+          Name            s3
+          Match           worker-logs
+          bucket          ${AWS_S3_BUCKET_NAME}
+          endpoint        ${AWS_ENDPOINT_URL}
+          use_put_object  On
+          total_file_size 1M
+          upload_timeout  1m
+  volumeMounts:
+  - name: config
+    mountPath: /fluent-bit/etc/conf
+  daemonSetVolumes:
+  - name: varlog
+    hostPath:
+      path: /var/log
+  - name: varlibdockercontainers
+    hostPath:
+      path: /var/lib/docker/containers
+  daemonSetVolumeMounts:
+  - name: varlog
+    mountPath: /var/log
+  - name: varlibdockercontainers
+    mountPath: /var/lib/docker/containers
+    readOnly: true
+
+# -- Custom manifests to deploy alongside Beta9
+# These are raw Kubernetes resources that get merged with common labels
+# Note: Images PVC removed - now using S3 storage (registryStore: s3)
+manifests:
+  resources: []  # No additional resources needed
+  templates: []  # List of templated resources (processed through tpl)

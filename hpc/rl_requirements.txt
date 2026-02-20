@@ -8,13 +8,21 @@
 # Do not mix these dependencies with datagen extras.
 # =============================================================================
 
+# Version pins - MUST be installed BEFORE skyrl-train to constrain resolution
+# vLLM 0.13.x is the last version compatible with our API usage patterns
+vllm>=0.11.0,<=0.13.0
+transformers>=4.51.0,<=4.57.3
+
 # SkyRL-train from penfever fork (with vllm extra)
 # Note: Install from skyrl-train subdirectory (root is metadata-only)
 skyrl-train[vllm] @ git+https://github.com/penfever/SkyRL.git@penfever/working#subdirectory=skyrl-train
 
 # Harbor - MUST match the branch used in main pyproject.toml for compatibility
 # This is the laude-institute fork with custom patches
-harbor @ git+https://github.com/laude-institute/harbor.git@penfever/temp-override
+harbor[daytona] @ git+https://github.com/laude-institute/harbor.git@penfever/temp-override
+
+# SOCKS proxy support for aiohttp (may be used by Daytona SDK)
+aiohttp-socks
 
 # Chat templates
 Jinja2
@@ -28,10 +36,10 @@ hydra-core>=1.3.2
 wandb
 
 # Note: The following are installed by skyrl[vllm] but listed for reference:
-# - torch==2.8.0+cu124
-# - vllm==0.11.0
+# - torch==2.8.0+cu128
+# - vllm>=0.11.0,<=0.13.0
 # - ray==2.51.1
-# - transformers>=4.51.0
+# - transformers>=4.51.0,<=4.57.3
 # - flash-attn>=2.8.3
 # - accelerate
-# - datasets==4.0.0
+# - datasets>=4.0.0

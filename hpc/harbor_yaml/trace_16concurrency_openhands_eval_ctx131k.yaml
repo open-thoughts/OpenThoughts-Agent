@@ -23,11 +23,12 @@ orchestrator:
     queue_p95_drop_threshold:
     algorithm_kwargs: {}
   retry:
-    max_retries: 100
+    max_retries: 10
     include_exceptions:
     exclude_exceptions:
     - AgentTimeoutError
     - VerifierTimeoutError
+    - SandboxBuildFailedError
     wait_multiplier: 2.0
     min_wait_sec: 1.0
     max_wait_sec: 90.0
@@ -68,7 +69,7 @@ agents:
       output_cost_per_token: 0
 
     trajectory_config:
-      raw_content: true
+      raw_content: false
       linear_history: true
 datasets:
 - path: /replace/with/tasks/path

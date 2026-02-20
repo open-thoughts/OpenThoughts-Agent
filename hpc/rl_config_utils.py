@@ -232,6 +232,13 @@ def parse_rl_config(
     )
 
 
+# Explicit mapping from custom environment import_paths to their base environment types.
+# Used to determine tunnel requirements for custom environments.
+IMPORT_PATH_TO_ENV_TYPE = {
+    "harbor.environments.pooled.daytona_dind:PooledDaytonaDinDEnvironment": "daytona",
+}
+
+
 def extract_terminal_bench_agent_env(parsed: ParsedRLConfig) -> tuple:
     """Extract agent name and environment type from terminal_bench config.
 
@@ -245,6 +252,9 @@ def extract_terminal_bench_agent_env(parsed: ParsedRLConfig) -> tuple:
         Tuple of (agent_name, harbor_env) where:
         - agent_name: Harbor agent name (e.g., "terminus-2", "openhands")
         - harbor_env: Harbor environment type (e.g., "daytona", "docker", "modal")
+
+    Raises:
+        ValueError: If import_path is specified but not in IMPORT_PATH_TO_ENV_TYPE.
     """
     tb = parsed.terminal_bench or {}
     harbor = tb.get("harbor", {})
@@ -252,23 +262,39 @@ def extract_terminal_bench_agent_env(parsed: ParsedRLConfig) -> tuple:
     # Agent name from harbor.name (default: terminus-2)
     agent_name = harbor.get("name", "terminus-2")
 
-    # Environment type - can be explicit in terminal_bench config or default to daytona
-    # Most cloud backends (Daytona, Modal) need Pinggy for installed agents
-    harbor_env = tb.get("harbor_env", "daytona")
+    # Check for custom environment via import_path
+    import_path = harbor.get("import_path")
+    if import_path:
+        if import_path not in IMPORT_PATH_TO_ENV_TYPE:
+            raise ValueError(
+                f"Unknown environment import_path: {import_path}\n"
+                f"Add it to IMPORT_PATH_TO_ENV_TYPE in rl_config_utils.py.\n"
+                f"Known import paths: {list(IMPORT_PATH_TO_ENV_TYPE.keys())}"
+            )
+        harbor_env = IMPORT_PATH_TO_ENV_TYPE[import_path]
+    else:
+        # Standard environment type (default: daytona)
+        harbor_env = harbor.get("environment_type", "daytona")
 
     return agent_name, harbor_env
 
 
-def _flatten_dict(d: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
+def _flatten_dict(d: Dict[str, Any], prefix: str = "", leaf_key_suffixes: tuple = ("_kwargs",)) -> Dict[str, Any]:
     """Flatten a nested dictionary to dotted keys.
 
     Example:
         {"trainer": {"policy": {"lr": 1e-6}}}
         -> {"trainer.policy.lr": 1e-6}
 
+    Dicts whose key ends with a suffix in ``leaf_key_suffixes`` (e.g.
+    ``optimizer_kwargs``) are kept as whole dict values rather than
+    recursed into, so that Hydra receives them as a single override.
+
     Args:
         d: Dictionary to flatten.
         prefix: Key prefix for recursion.
+        leaf_key_suffixes: Key suffixes that signal a dict should be
+            treated as a leaf value (not recursed into).
 
     Returns:
         Flattened dictionary with dotted keys.
@@ -276,11 +302,50 @@ def _flatten_dict(d: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
     items = {}
     for k, v in d.items():
         key = f"{prefix}.{k}" if prefix else k
-        if isinstance(v, dict):
-            items.update(_flatten_dict(v, key))
+        if isinstance(v, dict) and not any(k.endswith(s) for s in leaf_key_suffixes):
+            items.update(_flatten_dict(v, key, leaf_key_suffixes))
         elif v is not None:
             items[key] = v
     return items
+
+
+# Characters that require quoting in Hydra CLI values
+# These have special meaning in Hydra's override grammar or shell expansion
+HYDRA_SPECIAL_CHARS = frozenset("<>{}[]$`\\\"'=,()@#:*?!|;&\n\r\t ")
+
+
+def _needs_quoting(s: str) -> bool:
+    """Check if a string needs quoting for Hydra CLI."""
+    return any(c in s for c in HYDRA_SPECIAL_CHARS)
+
+
+def _quote_for_hydra(s: str) -> str:
+    """Quote a string value for safe Hydra CLI passing.
+
+    Hydra's override parser uses a specific grammar. For strings with special
+    characters, we need to:
+    1. Escape newlines as \\n (literal backslash-n, not actual newline)
+    2. Escape backslashes as \\\\
+    3. Wrap in single quotes for shell safety
+    4. Escape internal single quotes as '\\''
+
+    Args:
+        s: String value to quote.
+
+    Returns:
+        Quoted string safe for Hydra CLI.
+    """
+    # First escape backslashes, then newlines (order matters)
+    escaped = s.replace("\\", "\\\\")
+    escaped = escaped.replace("\n", "\\n")
+    escaped = escaped.replace("\r", "\\r")
+    escaped = escaped.replace("\t", "\\t")
+
+    # For Hydra, wrap in single quotes and escape internal single quotes
+    # Shell escaping: 'foo'bar' -> 'foo'\''bar'
+    escaped = escaped.replace("'", "'\\''")
+
+    return f"'{escaped}'"
 
 
 def _format_hydra_arg(key: str, value: Any, prefix: str = "") -> str:
@@ -289,7 +354,8 @@ def _format_hydra_arg(key: str, value: Any, prefix: str = "") -> str:
     Handles special formatting for different types:
     - bool: lowercase true/false
     - list: YAML list notation (no outer quotes so Hydra parses as list, not string)
-    - str/int/float: direct value
+    - str: quoted if contains special chars, direct otherwise
+    - int/float: direct value
 
     Args:
         key: Dotted key name (e.g., "trainer.epochs").
@@ -304,6 +370,14 @@ def _format_hydra_arg(key: str, value: Any, prefix: str = "") -> str:
     """
     if isinstance(value, bool):
         return f"{prefix}{key}={str(value).lower()}"
+    elif isinstance(value, dict):
+        # Format as Hydra dict literal: {k1: v1, k2: v2}
+        # Used for passthrough kwargs (e.g. optimizer_kwargs: {momentum: 0.9})
+        dict_items = ", ".join(
+            f"{k}: {str(v).lower() if isinstance(v, bool) else v}"
+            for k, v in value.items()
+        )
+        return f"{prefix}{key}={{{dict_items}}}"
     elif isinstance(value, (list, tuple)):
         # Format as YAML list WITHOUT outer quotes so Hydra parses it as a list
         # (with outer quotes like "['a']", Hydra treats it as a string literal)
@@ -313,6 +387,12 @@ def _format_hydra_arg(key: str, value: Any, prefix: str = "") -> str:
             for v in value
         )
         return f"{prefix}{key}=[{items}]"
+    elif isinstance(value, str):
+        # Quote strings that contain Hydra/shell special characters
+        if _needs_quoting(value):
+            return f"{prefix}{key}={_quote_for_hydra(value)}"
+        else:
+            return f"{prefix}{key}={value}"
     else:
         return f"{prefix}{key}={value}"
 
@@ -358,8 +438,10 @@ def build_skyrl_hydra_args(
         trainer["run_name"] = job_name
     if not trainer.get("export_path") and experiments_dir and job_name:
         trainer["export_path"] = f"{experiments_dir}/{job_name}/exports"
+        print(f"Auto-set trainer.export_path: {trainer['export_path']}")
     if not trainer.get("ckpt_path") and experiments_dir and job_name:
-        trainer["ckpt_path"] = f"{experiments_dir}/{job_name}/exports"
+        trainer["ckpt_path"] = f"{experiments_dir}/{job_name}/checkpoints"
+        print(f"Auto-set trainer.ckpt_path: {trainer['ckpt_path']}")
 
     # Derive placement from num_nodes
     num_nodes = int(exp_args.get("num_nodes", 1))
@@ -417,14 +499,34 @@ def build_skyrl_hydra_args(
         served_model_name = model_path.split("/")[-1] if "/" in model_path else model_path
         generator.setdefault("engine_init_kwargs", {})["served_model_name"] = served_model_name
 
+    # HuggingFace Hub upload settings (for automatic checkpoint uploads)
+    # Default to laion/<job_name> if not explicitly provided
+    hf_hub_repo_id = exp_args.get("hf_hub_repo_id")
+    if not hf_hub_repo_id and job_name:
+        hf_hub_repo_id = f"laion/{job_name}"
+        print(f"HF Hub upload auto-defaulted to: {hf_hub_repo_id}")
+    if hf_hub_repo_id:
+        trainer["hf_hub_repo_id"] = hf_hub_repo_id
+        if exp_args.get("hf_hub_repo_id"):
+            # Only print "enabled" if user explicitly provided the repo ID
+            print(f"HF Hub upload enabled: {hf_hub_repo_id}")
+    hf_hub_private = exp_args.get("hf_hub_private", False)
+    if hf_hub_private:
+        trainer["hf_hub_private"] = True
+
     # Build args for each section
     # Keys under engine_init_kwargs need ++ prefix (add or override) since some keys
-    # may already exist in SkyRL's base config while others are new
+    # Patterns for keys that may not exist in SkyRL's base config
+    # - engine_init_kwargs: vLLM engine settings vary by config
+    # - hf_hub_*: HuggingFace upload settings not in base config
+    # - enable_db_registration: database registration setting
+    optional_patterns = {".engine_init_kwargs.", ".hf_hub_", ".enable_db_registration", ".optimizer_kwargs"}
+
     for section, values in [("trainer", trainer), ("generator", generator), ("data", data)]:
         for key, val in _flatten_dict(values, section).items():
-            # engine_init_kwargs keys need ++ prefix to add-or-override
-            # (+ would fail if key already exists in base config like enforce_eager)
-            prefix = "++" if ".engine_init_kwargs." in key else ""
+            # Use ++ prefix for keys that may not exist in base config
+            # (+ would fail if key already exists, empty prefix fails if key doesn't exist)
+            prefix = "++" if any(pattern in key for pattern in optional_patterns) else ""
             args.append(_format_hydra_arg(key, val, prefix=prefix))
 
     # Terminal bench with + prefix (these are new keys added by the config group)
@@ -477,9 +579,11 @@ __all__ = [
     "ParsedRLConfig",
     "SKYRL_CONFIG_DIR",
     "SKYRL_INTERNAL_ENGINE_KWARGS",
+    "IMPORT_PATH_TO_ENV_TYPE",
     "validate_engine_init_kwargs",
     "resolve_rl_config_path",
     "parse_rl_config",
+    "extract_terminal_bench_agent_env",
     "build_skyrl_hydra_args",
     "get_skyrl_command_preview",
 ]

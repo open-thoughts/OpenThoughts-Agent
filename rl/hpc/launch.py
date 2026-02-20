@@ -172,7 +172,7 @@ def inplace_update_skyrl_args(skyrl_args, exp_args):
     be passed in after we processed the `exp_args`. For instance, we can only know the `train_data`
     and `val_data` paths after we pre-download the datasets.
     """
-    # TODO(Charlie): are there more to add?
+    # Required mappings from exp_args to skyrl_args
     exp_args_to_skyrl_keys = {
         "train_data": "data.train_data",
         "val_data": "data.val_data",
@@ -190,6 +190,23 @@ def inplace_update_skyrl_args(skyrl_args, exp_args):
                 f"Instead, pass it in with the experiment argument --{exp_key}"
             )
         skyrl_args[skyrl_key] = exp_args[exp_key]
+
+    # Auto-populate export_path and ckpt_path if not explicitly set
+    # These are derived from experiments_dir and job_name
+    job_name = exp_args.get("job_name", "default")
+    experiments_dir = exp_args.get("experiments_dir", os.path.expanduser("~/experiments"))
+
+    # export_path: where HF-format models are saved (for inference/upload)
+    if "trainer.export_path" not in skyrl_args:
+        export_path = os.path.join(experiments_dir, job_name, "exports")
+        skyrl_args["trainer.export_path"] = export_path
+        print(f"Auto-set trainer.export_path: {export_path}")
+
+    # ckpt_path: where resumable training checkpoints are saved
+    if "trainer.ckpt_path" not in skyrl_args:
+        ckpt_path = os.path.join(experiments_dir, job_name, "checkpoints")
+        skyrl_args["trainer.ckpt_path"] = ckpt_path
+        print(f"Auto-set trainer.ckpt_path: {ckpt_path}")
 
     return skyrl_args
 
@@ -375,9 +392,10 @@ def main():
         hf_token = exp_args.get("hf_token") or os.environ.get("HF_TOKEN")
 
         # Get model path for upload (export_path contains the final model)
+        # This is auto-populated by inplace_update_skyrl_args if not explicitly set
         model_upload_path = skyrl_args.get("trainer.export_path")
 
-        if model_upload_path and os.path.exists(os.path.dirname(model_upload_path)):
+        if model_upload_path:
             check_interval = exp_args.get("watchdog_check_interval", 300)  # Default 5 minutes
 
             # Determine target function and args based on job count
@@ -415,8 +433,6 @@ def main():
             except KeyboardInterrupt:
                 print("\nStopping login watchdog monitoring. The job will continue running.")
                 print("The watchdog thread will continue in the background.")
-        else:
-            print(f"Warning: Model path {model_upload_path} does not exist. Skipping watchdog setup.")
     elif exp_args.get("enable_hf_upload", False) and not is_hf_available:
         print("Warning: HF upload enabled but huggingface_hub not available. Skipping watchdog setup.")
 

@@ -3,22 +3,43 @@
 #
 # This script auto-detects and configures the Docker runtime environment.
 # It supports:
+# - podman-hpc (NERSC Perlmutter HPC wrapper) - checked first
+# - Native Podman with Docker CLI emulation
 # - Native Docker daemon
-# - Podman with Docker CLI emulation
 # - Pre-configured DOCKER_HOST (e.g., SSH tunnel to remote Docker)
 #
 # Usage:
 #   source setup_docker_runtime.sh
 #   # or
 #   eval "$(setup_docker_runtime.sh --export)"
+#   # or
+#   ./setup_docker_runtime.sh --verify && echo "Ready"
 #
 # The script will:
 # 1. Check if DOCKER_HOST is already set (preserves user configuration)
-# 2. Detect Podman and configure its socket
-# 3. Fall back to native Docker socket
-# 4. Exit with error if no runtime found
+# 2. Detect podman-hpc (NERSC Perlmutter) and configure its socket
+# 3. Detect Podman and configure its socket
+# 4. Fall back to native Docker socket
+# 5. Exit with error if no runtime found
+#
+# Exit codes:
+# 0 - Success
+# 1 - General error
+# 2 - Runtime not found
+# 3 - Socket startup failed
+# 4 - Connectivity test failed
 
 set -euo pipefail
+
+# Exit codes for fail-fast behavior
+EXIT_SUCCESS=0
+EXIT_GENERAL_ERROR=1
+EXIT_RUNTIME_NOT_FOUND=2
+EXIT_SOCKET_STARTUP_FAILED=3
+EXIT_CONNECTIVITY_FAILED=4
+
+# Container runtime type (set after detection)
+CONTAINER_RUNTIME=""
 
 # Colors for output (disabled if not a terminal)
 if [[ -t 1 ]]; then
@@ -42,7 +63,65 @@ log_warn() {
 }
 
 log_error() {
-    echo -e "${RED}[docker-runtime]${NC} $1" >&2
+    echo -e "${RED}[docker-runtime] ERROR:${NC} $1" >&2
+}
+
+log_debug() {
+    echo -e "${YELLOW}[docker-runtime] DEBUG:${NC} $1" >&2
+}
+
+log_hint() {
+    echo -e "${GREEN}[docker-runtime] HINT:${NC} $1" >&2
+}
+
+detect_podman_hpc() {
+    # Check if podman-hpc is available (NERSC Perlmutter)
+    if command -v podman-hpc &> /dev/null; then
+        log_info "Detected podman-hpc (NERSC HPC environment)"
+        CONTAINER_RUNTIME="podman_hpc"
+
+        local user_id
+        user_id=$(id -u)
+        local podman_sock="/run/user/${user_id}/podman/podman.sock"
+
+        if [[ -S "$podman_sock" ]]; then
+            export DOCKER_HOST="unix://$podman_sock"
+            export CONTAINER_RUNTIME="podman_hpc"
+            log_info "DOCKER_HOST=$DOCKER_HOST (podman-hpc)"
+            return 0
+        fi
+
+        # Try to start podman socket via podman-hpc
+        log_info "Starting podman socket for podman-hpc..."
+
+        # Try systemctl first
+        if systemctl --user start podman.socket 2>/dev/null; then
+            sleep 2
+            if [[ -S "$podman_sock" ]]; then
+                export DOCKER_HOST="unix://$podman_sock"
+                export CONTAINER_RUNTIME="podman_hpc"
+                log_info "Started podman-hpc socket via systemctl, DOCKER_HOST=$DOCKER_HOST"
+                return 0
+            fi
+        fi
+
+        # Fallback: start podman system service directly
+        if podman-hpc system service --time=0 &>/dev/null & then
+            sleep 2
+            if [[ -S "$podman_sock" ]]; then
+                export DOCKER_HOST="unix://$podman_sock"
+                export CONTAINER_RUNTIME="podman_hpc"
+                log_info "Started podman-hpc socket, DOCKER_HOST=$DOCKER_HOST"
+                return 0
+            fi
+        fi
+
+        log_error "podman-hpc found but could not start socket service"
+        log_debug "Socket path: $podman_sock, exists: $(test -S "$podman_sock" && echo true || echo false)"
+        log_hint "Run 'systemctl --user start podman.socket' or check podman-hpc installation"
+        return $EXIT_SOCKET_STARTUP_FAILED
+    fi
+    return 1  # podman-hpc not available, continue to next detection
 }
 
 detect_runtime() {
@@ -51,6 +130,12 @@ detect_runtime() {
         log_info "Using existing DOCKER_HOST: $DOCKER_HOST"
         return 0
     fi
+
+    # Check for podman-hpc first (NERSC Perlmutter)
+    if detect_podman_hpc; then
+        return 0
+    fi
+    # detect_podman_hpc returns 1 if not available, continue to next detection
 
     # Check for Podman
     if command -v podman &> /dev/null; then
@@ -122,9 +207,9 @@ detect_runtime() {
     fi
 
     log_error "No Docker/Podman runtime found"
-    log_error "Please ensure Docker or Podman is installed and running,"
-    log_error "or set DOCKER_HOST to point to a remote Docker daemon."
-    return 1
+    log_debug "Checked: podman-hpc, podman, docker commands and socket paths"
+    log_hint "Install Docker/Podman, start the daemon, or set DOCKER_HOST"
+    return $EXIT_RUNTIME_NOT_FOUND
 }
 
 verify_connectivity() {
@@ -158,29 +243,43 @@ if [[ "${1:-}" == "--export" ]]; then
     # Just output export statements, no logging
     if [[ -n "${DOCKER_HOST:-}" ]]; then
         echo "export DOCKER_HOST=\"$DOCKER_HOST\""
+        echo "export CONTAINER_RUNTIME=\"${CONTAINER_RUNTIME:-unknown}\""
         exit 0
     fi
 
     user_id=$(id -u)
     podman_sock="/run/user/${user_id}/podman/podman.sock"
 
+    # Check for podman-hpc first (NERSC Perlmutter)
+    if command -v podman-hpc &> /dev/null; then
+        if [[ -S "$podman_sock" ]]; then
+            echo "export DOCKER_HOST=\"unix://$podman_sock\""
+            echo "export CONTAINER_RUNTIME=\"podman_hpc\""
+            exit 0
+        fi
+    fi
+
+    # Check for standard Podman
     if [[ -S "$podman_sock" ]]; then
         echo "export DOCKER_HOST=\"unix://$podman_sock\""
+        echo "export CONTAINER_RUNTIME=\"podman\""
         exit 0
     fi
 
     if [[ -S "/var/run/docker.sock" ]]; then
         echo "export DOCKER_HOST=\"unix:///var/run/docker.sock\""
+        echo "export CONTAINER_RUNTIME=\"docker\""
         exit 0
     fi
 
     docker_desktop_sock="${HOME}/.docker/run/docker.sock"
     if [[ -S "$docker_desktop_sock" ]]; then
         echo "export DOCKER_HOST=\"unix://$docker_desktop_sock\""
+        echo "export CONTAINER_RUNTIME=\"docker\""
         exit 0
     fi
 
-    exit 1
+    exit $EXIT_RUNTIME_NOT_FOUND
 fi
 
 # Handle --info flag
@@ -192,9 +291,20 @@ fi
 
 # Handle --verify flag
 if [[ "${1:-}" == "--verify" ]]; then
-    detect_runtime || exit 1
-    verify_connectivity || exit 1
-    exit 0
+    if ! detect_runtime; then
+        log_error "No Docker/Podman runtime found"
+        log_debug "Checked: podman-hpc, podman, docker, DOCKER_HOST"
+        log_hint "Install Docker/Podman, start the daemon, or set DOCKER_HOST"
+        exit $EXIT_RUNTIME_NOT_FOUND
+    fi
+    if ! verify_connectivity 10; then
+        log_error "Docker daemon not responding"
+        log_debug "DOCKER_HOST=${DOCKER_HOST:-not set}, CONTAINER_RUNTIME=${CONTAINER_RUNTIME:-unknown}"
+        log_hint "Check daemon status: 'docker info' or 'podman-hpc info'"
+        exit $EXIT_CONNECTIVITY_FAILED
+    fi
+    log_info "Runtime verified: ${CONTAINER_RUNTIME:-unknown}"
+    exit $EXIT_SUCCESS
 fi
 
 # Default: run detection

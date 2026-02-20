@@ -26,11 +26,17 @@ if [ -z "${BASH_COMPLETION_DEBUG+x}" ]; then
   export BASH_COMPLETION_DEBUG=""
 fi
 
-# --- Module loading (cluster-specific, substituted by launcher) ---
-# Disable unbound variable check for module loading (modules may reference unset vars)
+# --- Module and Conda Setup ---
+# Disable unbound variable check for module loading and conda activation.
+# Module reloads can trigger conda deactivation scripts that reference unset variables.
 set +u
+
+# --- Module loading (cluster-specific, substituted by launcher) ---
 {module_commands}
-set -u
+
+# Some module command templates toggle set -u; ensure we stay in +u mode
+# through conda activation and env sourcing to avoid unbound variable errors.
+set +u
 
 # --- Environment setup ---
 if [ -n "${DCFT_PRIVATE:-}" ]; then
@@ -47,12 +53,11 @@ if [ -z "${DCFT:-}" ]; then
 fi
 
 # --- Conda activation (cluster-specific, substituted by launcher) ---
-# Disable unbound variable check for conda (conda scripts may reference unset vars)
-set +u
 {conda_activate}
-set -u
 
 # --- Source environment files ---
+# Keep set +u active - dotenv files and DCFT_ACTIVATE_ENV may trigger module reloads
+# which can trigger conda deactivation scripts with unset variables
 if [ -n "${DCFT:-}" ] && [ -f "$DCFT/hpc/dotenv/{cluster_env_file}" ]; then
   source "$DCFT/hpc/dotenv/{cluster_env_file}"
 fi
@@ -63,9 +68,14 @@ if [ -n "${DCFT_ACTIVATE_ENV:-}" ]; then
   eval "$DCFT_ACTIVATE_ENV"
 fi
 
+# Re-enable strict unbound variable checking after all env setup is complete
+set -u
+
 # --- Standard environment variables ---
 export HF_HOME="/tmp/hf_home"
 export PYTHONFAULTHANDLER=1
+export TORCH_SHOW_CPP_STACKTRACES=1
+export CUDA_LAUNCH_BLOCKING=0
 export NCCL_TIMEOUT=1800
 export NCCL_IB_TIMEOUT=23
 export PYTORCH_ALLOC_CONF="garbage_collection_threshold:0.6,max_split_size_mb:128"
@@ -77,6 +87,9 @@ export PYTHONPATH="$WORKDIR:${PYTHONPATH:-}"
 # but vLLM uses Ray-reported indices as torch ordinals, causing "invalid device ordinal".
 export RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
 export RAY_NOSET_CUDA_VISIBLE_DEVICES=1
+
+# --- Ray defaults ---
+{ray_env_exports}
 
 # --- Run the task generation job via Python runner ---
 echo "=== Universal Task Generation Runner ==="

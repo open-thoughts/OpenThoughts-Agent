@@ -1,0 +1,60 @@
+# GLM-5-FP8 - FP8 quantized model with MTP speculative decoding
+# https://huggingface.co/zai-org/GLM-5-FP8
+#
+# 32K context variant (more KV cache headroom for higher concurrency)
+#
+# Hardware: 8x H200 141GB (~1.1TB total)
+#   - FP8 weights → very memory efficient, ample room for KV cache
+#
+engine:
+  type: vllm_local
+  model: zai-org/GLM-5-FP8
+  max_output_tokens: 16384
+  healthcheck_interval: 300
+  request_params:
+    temperature: 1.0
+    top_p: 0.95
+  vllm_local: {}
+backend:
+  type: ray
+  wait_for_endpoint: true
+  ray_cgraph_max_inflight_executions: 16
+  healthcheck_max_attempts: 160
+  healthcheck_retry_delay: 15
+vllm_server:
+  model_path: zai-org/GLM-5-FP8
+  num_replicas: 1
+  tensor_parallel_size: 8
+  pipeline_parallel_size: 1
+  data_parallel_size: 1
+  time_limit: '48:00:00'
+  max_model_len: 32768
+  max_num_seqs: 50
+  gpu_memory_utilization: 0.9
+  swap_space: 32
+  enable_expert_parallel: true
+  enable_auto_tool_choice: true
+  tool_call_parser: glm47
+  reasoning_parser: glm45
+  trust_remote_code: true
+  extra_args:
+  # MTP speculative decoding
+  - --speculative-config.method
+  - mtp
+  - --speculative-config.num_speculative_tokens
+  - '1'
+  # KV cache
+  - --kv-cache-dtype
+  - fp8
+  - --block-size
+  - '16'
+  # Prefill/caching optimizations
+  - --enable-chunked-prefill
+  - --max-num-partial-prefills
+  - '1'
+  - --enable-prefix-caching
+  - --max-num-batched-tokens
+  - '16384'
+  # MoE optimizations
+  - --all2all-backend
+  - pplx

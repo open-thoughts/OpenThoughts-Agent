@@ -20,7 +20,7 @@ vllm_server:
   swap_space: 12
   enable_expert_parallel: false
   enable_auto_tool_choice: true
-  tool_call_parser: qwen3_xml
+  tool_call_parser: hermes
   reasoning_parser: qwen3
   extra_args:
   - --dtype

@@ -40,7 +40,7 @@ def launch_consolidate_job(
     hpc,
     *,
     update_exp_args_fn: Callable[[dict, dict], dict],
-    launch_sbatch_fn: Callable[[str], str],
+    launch_sbatch_fn: Callable[..., str],  # Accepts (path, dependency=None)
 ) -> Optional[str]:
     """Launch a consolidation job and return the submitted job id."""
 
@@ -180,11 +180,16 @@ def launch_consolidate_job(
         f.write(script_content)
     print(f"Wrote consolidation sbatch to {sbatch_path}")
 
+    # Get dependency if specified
+    dependency = exp_args.get("dependency")
+
     if exp_args.get("dry_run"):
         print("DRY RUN: Would submit consolidation job")
+        if dependency:
+            print(f"  Would submit with dependency: {dependency}")
         return None
 
-    job_id = launch_sbatch_fn(sbatch_path)
+    job_id = launch_sbatch_fn(sbatch_path, dependency=dependency)
     print(f"✓ Consolidation job submitted: {job_id}")
     return job_id
 

@@ -118,6 +118,9 @@ def _build_vllm_cli_args(server_config: dict) -> tuple[list[str], dict[str, str]
         if isinstance(value, bool):
             # Non-flag booleans: pass as true/false string
             cli_args.extend([f"--{arg_name}", str(value).lower()])
+        elif isinstance(value, dict):
+            # Dict values need to be JSON-encoded (e.g., default_chat_template_kwargs)
+            cli_args.extend([f"--{arg_name}", json.dumps(value)])
         else:
             cli_args.extend([f"--{arg_name}", str(value)])
 
@@ -320,7 +323,7 @@ class VLLMServer:
         else:
             self._wait_with_http()
 
-    def _wait_for_endpoint_json(self, timeout: int = 180) -> None:
+    def _wait_for_endpoint_json(self, timeout: int = 600) -> None:
         """Wait for endpoint JSON file to be created."""
         if not self.config.endpoint_json_path:
             return

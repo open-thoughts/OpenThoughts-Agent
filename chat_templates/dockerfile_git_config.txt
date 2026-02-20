@@ -1,0 +1,8 @@
+# Git configuration for cleaner output in agent environments
+# This file is intended to be APPENDED to task Dockerfiles
+# Uses conditional to handle cases where git isn't installed
+
+RUN if command -v git >/dev/null 2>&1; then \
+        git config --global core.pager "" && \
+        git config --global diff.binary false; \
+    fi

@@ -453,7 +453,7 @@ We currently organize via the [terminal-bench Discord](https://discord.gg/6xWPKh
   author = {Team, OpenThoughts-Agent},
   month = Dec,
   title = {{OpenThoughts-Agent}},
-  howpublished = {https://open-thoughts.ai/agent},
+  howpublished = {https://www.open-thoughts.ai/blog/agent},
   year = {2025}
 }
 ```

@@ -1,0 +1,55 @@
+# This is null so that only the defaults at pkg/common/config.default.yaml are used.
+config: null
+
+images:
+  gateway:
+    repository: registry.localhost:5000/beta9-gateway
+    tag: latest
+    pullPolicy: Always
+
+service:
+  gateway:
+    type: LoadBalancer
+
+metrics:
+  enabled: true
+
+manifests:
+  resources:
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      name: fluent-bit
+    type: Opaque
+    stringData:
+      AWS_S3_BUCKET_NAME: logs
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      VICTORIA_LOGS_HOST: victoria-logs-single
+      VICTORIA_LOGS_PORT: "9428"
+  - apiVersion: helm.cattle.io/v1
+    kind: HelmChart
+    metadata:
+      name: localstack
+    spec:
+      repo: https://localstack.github.io/helm-charts
+      chart: localstack
+      createNamespace: false
+      version: 0.6.5
+      valuesContent: |-
+        extraEnvVars:
+        - name: SERVICES
+          value: s3
+        enableStartupScripts: true
+        startupScriptContent: |
+          #!/bin/bash
+          awslocal s3 mb s3://juicefs
+          awslocal s3 mb s3://logs
+          awslocal s3 mb s3://beta9-images
+        persistence:
+          enabled: true
+          storageClass: local-path
+          accessModes:
+          - ReadWriteOnce
+          size: 50Gi

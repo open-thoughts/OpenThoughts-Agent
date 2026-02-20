@@ -1,0 +1,47 @@
+# Proxychains configuration for JSC HPC clusters (Jupiter, Jureca, Juwels)
+# Purpose: Route ONLY external internet traffic (Daytona API) through proxy
+#          Leave all internal traffic (Ray, NCCL, etc.) untouched
+#
+# This file is a template - SOCKS_HOST and SOCKS_PORT are replaced at runtime
+
+# Use dynamic chain - if proxy fails, try next (or direct if localnet)
+dynamic_chain
+
+# Quiet mode - don't print each proxied connection
+quiet_mode
+
+# Proxy DNS queries through the SOCKS proxy
+# This is REQUIRED for resolving external hostnames like api.daytona.io
+proxy_dns
+
+# Timeout settings
+tcp_read_time_out 15000
+tcp_connect_time_out 8000
+
+# ============================================================================
+# LOCALNET EXCLUSIONS - These IP ranges bypass the proxy entirely
+# This is what makes Ray, NCCL, and internal cluster traffic work!
+# ============================================================================
+
+# Localhost
+localnet 127.0.0.0/255.0.0.0
+
+# RFC1918 Private Networks (all internal cluster traffic)
+localnet 10.0.0.0/255.0.0.0        # Class A private - JSC internal network
+localnet 172.16.0.0/255.240.0.0    # Class B private (172.16-31.x.x)
+localnet 192.168.0.0/255.255.0.0   # Class C private
+
+# Link-local addresses
+localnet 169.254.0.0/255.255.0.0
+
+# Multicast (used by some cluster software)
+localnet 224.0.0.0/240.0.0.0
+
+# ============================================================================
+# PROXY LIST - External traffic goes through this SOCKS5 proxy
+# ============================================================================
+# On Jupiter: SSH tunnel to login node (created by setup script)
+# On Jureca/Juwels: Shared proxy at 10.14.0.53:1080
+
+[ProxyList]
+socks5 SOCKS_HOST SOCKS_PORT

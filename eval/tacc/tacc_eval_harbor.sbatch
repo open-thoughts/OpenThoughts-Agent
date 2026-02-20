@@ -54,15 +54,13 @@ export LD_LIBRARY_PATH=/home1/apps/gcc/15.1.0/lib64:/scratch/08134/negin/OpenTho
 source /scratch/08002/gsmyrnis/miniconda3/etc/profile.d/conda.sh
 conda activate /scratch/08134/negin/OpenThoughts-Agent-shared/SkyRL/envs/tacc_rl_v5
 
-# Verify sandbox installation
-sb --help >/dev/null
-
 # Start VLLM server
 mkdir -p experiments/logs
 vllm serve "$MODEL" \
   --host 0.0.0.0 --port 8000 \
   --served-model-name "$MODEL" \
-  --device cuda --gpu-memory-utilization 0.95 \
+  --enforce-eager \
+  --gpu-memory-utilization 0.9 \
   > "experiments/logs/vllm_${SLURM_JOB_ID}.log" 2>&1 &
 VLLM_PID=$!
 
@@ -74,7 +72,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Wait for VLLM server to start with healthcheck
-MAX_RETRIES=20
+MAX_RETRIES=5
 RETRY_INTERVAL=100
 for i in $(seq 1 $MAX_RETRIES); do
     if curl -s http://localhost:8000/v1/models > /dev/null; then
@@ -192,6 +190,9 @@ harbor jobs start \
   --agent-kwarg "key=fake_key" \
   --n-attempts 3 \
   --job-name "$RUN_TAG" \
+  --agent-kwarg "max_tokens=16384" \
+  --agent-kwarg "model_info={\"max_output_tokens\":16384,\"max_input_tokens\":32768}" \
+  --export-traces \
   --config "dcagent_eval_config.yaml"
 SB_EXIT=$?
 set -e

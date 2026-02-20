@@ -56,7 +56,8 @@ class TracegenRunner(LocalHarborRunner):
         parser.add_argument("--datagen-config", dest="datagen_config", help=argparse.SUPPRESS)
 
         # Harbor environment backend (unified --harbor_env, with legacy aliases)
-        add_harbor_env_arg(parser, default="daytona", legacy_names=["--trace-env", "--trace_env"])
+        # Default=None to allow inference from harbor config's environment.type field
+        add_harbor_env_arg(parser, default=None, legacy_names=["--trace-env", "--trace_env"])
 
         parser.add_argument(
             "--experiments_dir",

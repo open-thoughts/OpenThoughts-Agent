@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Beam cruft
+scripts/beam/helm-chart/charts/localstack-0.6.5.tgz
+
 # C extensions
 *.so
 

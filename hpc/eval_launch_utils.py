@@ -158,11 +158,18 @@ def prepare_eval_configuration(exp_args: dict) -> dict:
 
     # Collect extra agent kwargs from datagen config and CLI
     # NOTE: Do NOT include Harbor YAML base kwargs here - merge_agent_kwargs() handles that
-    from hpc.harbor_utils import collect_extra_agent_kwargs
+    from hpc.harbor_utils import collect_extra_agent_kwargs, derive_vllm_supports_tool_calling
     exp_args["_eval_agent_kwargs"] = collect_extra_agent_kwargs(
         datagen_extras=exp_args.get("_datagen_extra_agent_kwargs"),
         cli_kwargs=exp_args.get("trace_agent_kwargs"),
     )
+    if agent_name == "swe-agent":
+        vllm_cfg = exp_args.get("_datagen_vllm_server_config")
+        supports_tool_calling = derive_vllm_supports_tool_calling(vllm_cfg)
+        if supports_tool_calling is not None:
+            exp_args["_eval_agent_kwargs"].setdefault(
+                "supports_tool_calling", supports_tool_calling
+            )
 
     if exp_args.get("trace_env"):
         eval_env = exp_args["trace_env"]
@@ -410,6 +417,8 @@ class EvalJobRunner:
             ray_env_vars=hpc.get_ray_env_vars(),
             memory_per_node=ray_memory,
             object_store_memory=DEFAULT_OBJECT_STORE_MEMORY_BYTES,
+            disable_cpu_bind=getattr(hpc, "disable_cpu_bind", False),
+            gpu_bind=getattr(hpc, "gpu_bind", "none"),
         )
 
         raw_model_path = self.config.vllm_model_path or self.config.model
@@ -433,6 +442,14 @@ class EvalJobRunner:
         vllm_log = log_dir / f"{self.config.job_name}_vllm.log"
 
         with RayCluster.from_slurm(ray_cfg) as ray_cluster:
+            # Enable distributed containers for multi-node local backend jobs
+            # This allows Harbor to spread container workload across all Ray nodes
+            local_backends = {"podman_hpc", "docker", "apptainer"}
+            if ray_cluster.total_nodes > 1 and self.config.eval_env in local_backends:
+                os.environ["HARBOR_DISTRIBUTED_CONTAINERS"] = "1"
+                print(f"[EvalJobRunner] Enabled distributed {self.config.eval_env} "
+                      f"across {ray_cluster.total_nodes} nodes", flush=True)
+
             vllm_server = VLLMServer(
                 config=vllm_cfg,
                 ray_cluster=ray_cluster,
@@ -667,6 +684,8 @@ def launch_eval_job_v2(exp_args: dict, hpc) -> None:
         "cluster_env_file": cluster_env_file,
         "config_path": str(config_path),
         "email_address": os.environ.get("EMAIL_ADDRESS", ""),
+        "harbor_env": exp_args.get("_eval_env", "daytona"),
+        "ray_env_exports": hpc.get_ray_env_exports(experiments_subdir),
     }
 
     sbatch_text = substitute_template(template_text, substitutions)
@@ -676,15 +695,20 @@ def launch_eval_job_v2(exp_args: dict, hpc) -> None:
     sbatch_output.write_text(sbatch_text)
     os.chmod(sbatch_output, 0o750)
 
+    # Get dependency if specified
+    dependency = exp_args.get("dependency")
+
     if exp_args.get("dry_run"):
         print(f"DRY RUN: Eval sbatch script written to {sbatch_output}")
+        if dependency:
+            print(f"  Would submit with dependency: {dependency}")
         print(f"Config JSON: {config_path}")
         print("--------")
         print(sbatch_text)
         print("--------")
         return
 
-    job_id = launch_sbatch(str(sbatch_output))
+    job_id = launch_sbatch(str(sbatch_output), dependency=dependency)
     print(f"\nEval job submitted via {sbatch_output}")
     print(f"Config: {config_path}")
     print(f"SLURM Job ID: {job_id}")

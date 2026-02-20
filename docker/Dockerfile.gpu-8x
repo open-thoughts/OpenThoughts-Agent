@@ -37,6 +37,7 @@ COPY LICENSE.txt ./
 COPY docker ./docker
 
 ENV UV_HTTP_TIMEOUT=300
+ENV UV_RETRIES=5
 RUN . /opt/openthoughts/.venv/bin/activate && uv pip install -e ".[datagen,cloud,harbor-all]"
 RUN echo "ulimit -n 65535" >> /etc/profile.d/openthoughts-ulimit.sh
 

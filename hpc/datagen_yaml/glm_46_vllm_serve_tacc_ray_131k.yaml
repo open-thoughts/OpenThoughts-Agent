@@ -7,8 +7,6 @@ engine:
 backend:
   type: ray
   wait_for_endpoint: true
-  tensor_parallel_size: 1
-  pipeline_parallel_size: 16
   healthcheck_max_attempts: 120
   healthcheck_retry_delay: 15
 vllm_server:
@@ -24,11 +22,10 @@ vllm_server:
   enable_expert_parallel: true
   enable_auto_tool_choice: true
   tool_call_parser: glm45
-  reasoning_parser: glm45
+  reasoning_parser: deepseek_v3
   trust_remote_code: true
   extra_args:
   - --dtype
   - bfloat16
   - --kv-cache-dtype
   - fp8
-

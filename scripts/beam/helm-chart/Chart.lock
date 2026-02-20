@@ -1,0 +1,36 @@
+dependencies:
+- name: common
+  repository: https://bjw-s-labs.github.io/helm-charts
+  version: 2.5.0
+- name: beam-blobcache-chart
+  repository: oci://public.ecr.aws/n4e0e1y0
+  version: 0.1.2
+- name: redis
+  repository: https://charts.bitnami.com/bitnami
+  version: 18.9.1
+- name: redis
+  repository: https://charts.bitnami.com/bitnami
+  version: 18.9.1
+- name: postgresql
+  repository: https://charts.bitnami.com/bitnami
+  version: 13.4.3
+- name: grafana
+  repository: https://grafana.github.io/helm-charts
+  version: 7.3.0
+- name: victoria-metrics-single
+  repository: https://victoriametrics.github.io/helm-charts
+  version: 0.9.15
+- name: victoria-metrics-agent
+  repository: https://victoriametrics.github.io/helm-charts
+  version: 0.9.17
+- name: victoria-logs-single
+  repository: https://victoriametrics.github.io/helm-charts
+  version: 0.3.4
+- name: fluent-bit
+  repository: https://fluent.github.io/helm-charts
+  version: 0.43.0
+- name: localstack
+  repository: https://localstack.github.io/helm-charts
+  version: 0.6.5
+digest: sha256:ca53886bffeeaeb1a828f80828d48e2691c54bd46da60c62e65e0183b59f9609
+generated: "2026-02-03T09:12:49.326119-05:00"

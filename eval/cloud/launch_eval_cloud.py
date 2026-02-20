@@ -26,7 +26,7 @@ if "--list-providers" in sys.argv:
 import argparse
 
 from hpc.launch_utils import PROJECT_ROOT
-from hpc.cloud_launch_utils import CloudLauncher, repo_relative, parse_gpu_count
+from hpc.cloud_launch_utils import CloudLauncher, repo_relative, parse_gpu_count, infer_harbor_env_from_config
 from hpc.cloud_sync_utils import sync_outputs
 from hpc.arg_groups import (
     add_harbor_args,
@@ -35,6 +35,8 @@ from hpc.arg_groups import (
     add_hf_upload_args,
     add_database_upload_args,
 )
+from hpc.harbor_utils import load_harbor_config
+from hpc.datagen_config_utils import parse_datagen_config
 
 
 class EvalCloudLauncher(CloudLauncher):
@@ -51,16 +53,18 @@ class EvalCloudLauncher(CloudLauncher):
         add_harbor_args(parser, config_required=True)
 
         # Model and compute (--model, --n_concurrent, --n_attempts, --gpus, --dry_run)
+        # model_required=False: can be inferred from --datagen_config (engine.model)
         add_model_compute_args(
             parser,
-            model_required=True,  # Eval requires model
+            model_required=False,  # Can be inferred from datagen_config
             default_n_concurrent=self.default_n_concurrent,  # 16 for eval
             default_n_attempts=3,  # Eval: multiple runs for standard error
             n_attempts_help="Times to run each task for standard error calculation (default: 3).",
         )
 
         # Harbor environment backend (unified --harbor_env, with legacy aliases)
-        add_harbor_env_arg(parser, default="daytona", legacy_names=["--eval-env", "--eval_env"])
+        # Default=None to allow inference from harbor config's environment.type field
+        add_harbor_env_arg(parser, default=None, legacy_names=["--eval-env", "--eval_env"])
 
         # Eval-specific arguments (underscore primary, kebab alias)
         parser.add_argument("--datagen_config",
@@ -72,6 +76,11 @@ class EvalCloudLauncher(CloudLauncher):
         parser.add_argument("--dataset_path",
                             help="Path to tasks directory (exclusive with --dataset).")
         parser.add_argument("--dataset-path", dest="dataset_path", help=argparse.SUPPRESS)
+
+        # Ray memory configuration (for cloud VMs with limited RAM)
+        parser.add_argument("--ray_object_store_gb", "--ray-object-store-gb",
+                            type=float, default=None,
+                            help="Ray object store (plasma) size in GB. Default 40GB may OOM on small VMs.")
 
         # Upload options (shared from arg_groups)
         add_hf_upload_args(parser)
@@ -99,6 +108,39 @@ class EvalCloudLauncher(CloudLauncher):
             args.datagen_config = repo_relative(args.datagen_config, self.repo_root)
         if args.dataset_path and not args.dataset_path.startswith("/"):
             args.dataset_path = repo_relative(args.dataset_path, self.repo_root)
+
+        # Infer --harbor_env from harbor config if not provided
+        infer_harbor_env_from_config(args, args.harbor_config, log_prefix="[eval-cloud]")
+
+        # Infer --agent from harbor config if not provided
+        if not args.agent:
+            harbor_cfg = load_harbor_config(args.harbor_config)
+            agents = harbor_cfg.get("agents", [])
+            if agents and isinstance(agents, list) and len(agents) > 0:
+                inferred_agent = agents[0].get("name")
+                if inferred_agent:
+                    args.agent = inferred_agent
+                    print(f"[eval-cloud] Inferred --agent={inferred_agent} from harbor config")
+
+        # Infer --model from datagen config if not provided
+        if not args.model and args.datagen_config:
+            try:
+                parsed = parse_datagen_config(args.datagen_config)
+                if parsed.model:
+                    args.model = parsed.model
+                    print(f"[eval-cloud] Inferred --model={parsed.model} from datagen config")
+            except Exception as e:
+                print(f"[eval-cloud] Warning: Could not parse datagen config for model: {e}")
+
+        # Validate required fields after inference
+        if not args.model:
+            raise ValueError(
+                "Must provide --model or --datagen_config (to infer model from engine.model)"
+            )
+        if not args.agent:
+            raise ValueError(
+                "Must provide --agent or ensure harbor config has agents[0].name"
+            )
 
     def build_task_command(self, args, remote_output_dir: str) -> List[str]:
         """Build the run_eval.py command."""
@@ -131,6 +173,10 @@ class EvalCloudLauncher(CloudLauncher):
             cmd.extend(["--job_name", args.job_name])
         if args.dry_run:
             cmd.append("--dry_run")
+
+        # Ray memory configuration
+        if args.ray_object_store_gb is not None:
+            cmd.extend(["--ray_object_store_gb", str(args.ray_object_store_gb)])
 
         for kwarg in args.agent_kwarg:
             cmd.extend(["--agent_kwarg", kwarg])

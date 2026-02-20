@@ -32,6 +32,7 @@ orchestrator:
     - RewardFileNotFoundError
     - RewardFileEmptyError
     - VerifierOutputParseError
+    - SandboxBuildFailedError
     wait_multiplier: 2.0
     min_wait_sec: 1.0
     max_wait_sec: 90.0
@@ -48,6 +49,9 @@ environment:
     # Apptainer-specific options
     use_gpu: false         # Set to true for GPU workloads (--nv flag)
     network_none: false    # Set to true for fully isolated containers
+    image_cache_dir: trace_images
+    image_manifest_path: trace_images/images_manifest.jsonl
+    build_concurrency: 4
 
 verifier:
   override_timeout_sec:

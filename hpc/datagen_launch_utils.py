@@ -29,6 +29,7 @@ from hpc.launch_utils import (
 from hpc.harbor_utils import (
     get_harbor_env_from_config,
     HARBOR_CONFIG_DIR,
+    load_harbor_config,
     resolve_harbor_config_path,
 )
 from hpc.hf_utils import resolve_dataset_path, derive_default_hf_repo_id, sanitize_hf_repo_id
@@ -231,6 +232,7 @@ def launch_datagen_job_v2(exp_args: dict, hpc) -> None:
             "cluster_env_file": cluster_env_file,
             "config_path": str(task_config_path),
             "email_address": os.environ.get("EMAIL_ADDRESS", ""),
+            "ray_env_exports": hpc.get_ray_env_exports(experiments_subdir),
         }
 
         sbatch_text = substitute_template(template_text, substitutions)
@@ -239,11 +241,16 @@ def launch_datagen_job_v2(exp_args: dict, hpc) -> None:
         task_sbatch_output.write_text(sbatch_text)
         os.chmod(task_sbatch_output, 0o750)
 
+        # Get CLI dependency for first job in pipeline
+        cli_dependency = exp_args.get("dependency")
+
         if exp_args.get("dry_run"):
             print(f"DRY RUN: Taskgen sbatch script written to {task_sbatch_output}")
+            if cli_dependency:
+                print(f"  Would submit with dependency: {cli_dependency}")
             task_job_id = "dry_run_task_job_id"
         else:
-            task_job_id = launch_sbatch(str(task_sbatch_output))
+            task_job_id = launch_sbatch(str(task_sbatch_output), dependency=cli_dependency)
             print(f"✓ Task generation job submitted: {task_job_id}")
 
     # === Trace Generation ===
@@ -259,6 +266,7 @@ def launch_datagen_job_v2(exp_args: dict, hpc) -> None:
         if not harbor_config:
             raise ValueError("--trace-harbor-config is required for trace generation")
         harbor_config_resolved = str(resolve_harbor_config_path(harbor_config))
+        harbor_config_data = load_harbor_config(harbor_config_resolved)
 
         tasks_input_path = exp_args.get("tasks_input_path")
         if tasks_input_path:
@@ -284,11 +292,20 @@ def launch_datagen_job_v2(exp_args: dict, hpc) -> None:
                 vllm_model_path = trace_model or ""
 
         # Collect extra agent kwargs using consolidated helper
-        from hpc.harbor_utils import collect_extra_agent_kwargs
+        from hpc.harbor_utils import collect_extra_agent_kwargs, derive_vllm_supports_tool_calling
         agent_kwargs = collect_extra_agent_kwargs(
             datagen_extras=exp_args.get("_datagen_extra_agent_kwargs"),
             cli_kwargs=exp_args.get("trace_agent_kwargs"),
         )
+        trace_agent_name = exp_args.get("trace_agent_name")
+        if not trace_agent_name:
+            agents = harbor_config_data.get("agents") or []
+            if agents and isinstance(agents[0], dict):
+                trace_agent_name = agents[0].get("name") or ""
+        if (trace_agent_name or "") == "swe-agent":
+            supports_tool_calling = derive_vllm_supports_tool_calling(vllm_cfg)
+            if supports_tool_calling is not None:
+                agent_kwargs.setdefault("supports_tool_calling", supports_tool_calling)
 
         # Convert vllm_cfg dataclass to dict for pass-through (if not already done)
         trace_vllm_server_config = asdict(vllm_cfg) if vllm_cfg else {}
@@ -314,7 +331,7 @@ def launch_datagen_job_v2(exp_args: dict, hpc) -> None:
             api_port=int(exp_args.get("datagen_api_port") or 8000),
             model=harbor_model_name,
             served_model_id=served_model_id,
-            agent=exp_args.get("trace_agent_name") or "",
+            agent=trace_agent_name or "",
             trace_env=exp_args.get("trace_env") or get_harbor_env_from_config(harbor_config_resolved),
             n_concurrent=int(exp_args.get("trace_n_concurrent") or 64),
             n_attempts=int(exp_args.get("trace_n_attempts") or 1),
@@ -346,6 +363,9 @@ def launch_datagen_job_v2(exp_args: dict, hpc) -> None:
         # Build SBATCH directives using shared utility
         sbatch_directives = build_sbatch_directives(hpc, exp_args)
 
+        # Determine harbor_env for conditional docker setup
+        harbor_env = exp_args.get("trace_env") or get_harbor_env_from_config(harbor_config_resolved)
+
         substitutions = {
             "time_limit": exp_args.get("time_limit") or "24:00:00",
             "num_nodes": str(exp_args.get("num_nodes") or 1),
@@ -358,6 +378,8 @@ def launch_datagen_job_v2(exp_args: dict, hpc) -> None:
             "cluster_env_file": cluster_env_file,
             "config_path": str(trace_config_path),
             "email_address": os.environ.get("EMAIL_ADDRESS", ""),
+            "harbor_env": harbor_env,
+            "ray_env_exports": hpc.get_ray_env_exports(experiments_subdir),
         }
 
         sbatch_text = substitute_template(template_text, substitutions)
@@ -366,16 +388,20 @@ def launch_datagen_job_v2(exp_args: dict, hpc) -> None:
         trace_sbatch_output.write_text(sbatch_text)
         os.chmod(trace_sbatch_output, 0o750)
 
-        # Set dependency on task job if both are enabled
-        dependency = f"afterok:{task_job_id}" if task_enabled and task_job_id and task_job_id != "dry_run_task_job_id" else None
+        # Set dependency on task job if both are enabled, otherwise use CLI dependency
+        if task_enabled and task_job_id and task_job_id != "dry_run_task_job_id":
+            # Task job already waited for CLI dependency, so trace only needs to wait for task
+            dependency = f"afterok:{task_job_id}"
+        else:
+            # No task job, use CLI dependency if provided
+            dependency = exp_args.get("dependency")
 
         if exp_args.get("dry_run"):
             print(f"DRY RUN: Tracegen sbatch script written to {trace_sbatch_output}")
-        else:
             if dependency:
-                job_id = launch_sbatch(str(trace_sbatch_output), dependency=dependency)
-            else:
-                job_id = launch_sbatch(str(trace_sbatch_output))
+                print(f"  Would submit with dependency: {dependency}")
+        else:
+            job_id = launch_sbatch(str(trace_sbatch_output), dependency=dependency)
             print(f"✓ Trace generation job submitted: {job_id}")
 
 
@@ -514,6 +540,8 @@ class TaskgenJobRunner:
             ray_env_vars=hpc.get_ray_env_vars(),
             memory_per_node=ray_memory,
             object_store_memory=DEFAULT_OBJECT_STORE_MEMORY_BYTES,
+            disable_cpu_bind=getattr(hpc, "disable_cpu_bind", False),
+            gpu_bind=getattr(hpc, "gpu_bind", "none"),
         )
 
         model_path = self.config.vllm_model_path or ""
@@ -767,6 +795,8 @@ class TracegenJobRunner:
             ray_env_vars=hpc.get_ray_env_vars(),
             memory_per_node=ray_memory,
             object_store_memory=DEFAULT_OBJECT_STORE_MEMORY_BYTES,
+            disable_cpu_bind=getattr(hpc, "disable_cpu_bind", False),
+            gpu_bind=getattr(hpc, "gpu_bind", "none"),
         )
 
         raw_model_path = self.config.vllm_model_path or self.config.model
@@ -796,6 +826,14 @@ class TracegenJobRunner:
         vllm_log = log_dir / f"{self.config.job_name}_vllm.log"
 
         with RayCluster.from_slurm(ray_cfg) as ray_cluster:
+            # Enable distributed containers for multi-node local backend jobs
+            # This allows Harbor to spread container workload across all Ray nodes
+            local_backends = {"podman_hpc", "docker", "apptainer"}
+            if ray_cluster.total_nodes > 1 and self.config.trace_env in local_backends:
+                os.environ["HARBOR_DISTRIBUTED_CONTAINERS"] = "1"
+                print(f"[TracegenJobRunner] Enabled distributed {self.config.trace_env} "
+                      f"across {ray_cluster.total_nodes} nodes", flush=True)
+
             vllm_server = VLLMServer(
                 config=vllm_cfg,
                 ray_cluster=ray_cluster,

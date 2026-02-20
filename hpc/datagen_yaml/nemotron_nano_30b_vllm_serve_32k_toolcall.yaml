@@ -1,7 +1,10 @@
 # vLLM serve config for NVIDIA Nemotron Nano 30B with tool calling support
 #
-# Nemotron uses the Hermes tool calling format (function calling via special tokens)
-# This config enables native vLLM tool parsing for OpenHands compatibility
+# IMPORTANT: Nemotron-3-Nano uses Qwen3 Coder tool calling format, NOT Hermes!
+# See: https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+#
+# The model also supports a custom reasoning parser (nano_v3) but this requires
+# a custom vLLM plugin. Without it, reasoning traces may not parse correctly.
 #
 # Usage:
 #   python -m hpc.launch \
@@ -12,7 +15,7 @@
 
 engine:
   type: vllm_local
-  model: nvidia/Nemotron-3-Nano-30B-A3B-BF16
+  model: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
   max_output_tokens: 8192
   healthcheck_interval: 300
   vllm_local: {}
@@ -22,7 +25,7 @@ backend:
   wait_for_endpoint: true
 
 vllm_server:
-  model_path: nvidia/Nemotron-3-Nano-30B-A3B-BF16
+  model_path: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
   num_replicas: 1
   tensor_parallel_size: 1
   pipeline_parallel_size: 1
@@ -33,9 +36,12 @@ vllm_server:
   gpu_memory_utilization: 0.9
   swap_space: 12
 
-  # Tool calling configuration - Nemotron uses Hermes format
+  # Tool calling configuration - Nemotron uses Qwen3 Coder format
+  # See: https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
   enable_auto_tool_choice: true
-  tool_call_parser: hermes
+  tool_call_parser: qwen3_coder
+  # Note: NVIDIA also recommends --reasoning-parser nano_v3 with a custom plugin
+  # but this is not yet integrated. Without it, reasoning output may be suboptimal.
 
   extra_args:
   - --dtype

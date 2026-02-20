@@ -1,0 +1,3 @@
+# Beam cluster setup dependencies
+requests>=2.31.0
+beta9>=0.1.0

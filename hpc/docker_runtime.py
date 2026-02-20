@@ -28,6 +28,7 @@ class DockerRuntimeType(Enum):
 
     DOCKER = "docker"  # Native Docker daemon
     PODMAN = "podman"  # Podman with Docker CLI emulation
+    PODMAN_HPC = "podman_hpc"  # NERSC podman-hpc wrapper (HPC-optimized Podman)
     REMOTE = "remote"  # Remote Docker via SSH tunnel or TCP
     UNAVAILABLE = "unavailable"
 
@@ -60,6 +61,20 @@ def get_podman_socket_path() -> Optional[str]:
         return None
 
 
+def is_podman_hpc_available() -> bool:
+    """Check if podman-hpc command is available (NERSC Perlmutter).
+
+    podman-hpc is a wrapper around Podman that provides HPC-specific optimizations:
+    - Squashed images for efficient shared storage
+    - Multi-threaded container execution
+    - Integration with SLURM
+
+    Returns:
+        True if podman-hpc is found in PATH, False otherwise.
+    """
+    return shutil.which("podman-hpc") is not None
+
+
 def _is_podman_docker() -> bool:
     """Check if 'docker' command is actually podman."""
     try:
@@ -88,9 +103,10 @@ def detect_docker_runtime() -> DockerRuntimeConfig:
 
     Detection order:
     1. Check if DOCKER_HOST is already set (user override / tunnel)
-    2. Check for Podman with Docker emulation
-    3. Check for native Docker socket
-    4. Return unavailable if none found
+    2. Check for podman-hpc (NERSC Perlmutter HPC wrapper)
+    3. Check for Podman with Docker emulation
+    4. Check for native Docker socket
+    5. Return unavailable if none found
 
     Returns:
         DockerRuntimeConfig with detected runtime settings.
@@ -106,8 +122,17 @@ def detect_docker_runtime() -> DockerRuntimeConfig:
             )
         elif existing_host.startswith("unix://"):
             socket_path = existing_host.replace("unix://", "")
-            # Determine if it's podman or docker based on socket path
+            # Determine if it's podman-hpc, podman, or docker based on socket path
+            # and available commands
             if "podman" in socket_path:
+                # Check if this is podman-hpc (HPC environment)
+                if is_podman_hpc_available():
+                    return DockerRuntimeConfig(
+                        runtime_type=DockerRuntimeType.PODMAN_HPC,
+                        docker_host=existing_host,
+                        socket_path=socket_path,
+                        extra_env={"CONTAINER_RUNTIME": "podman_hpc"},
+                    )
                 return DockerRuntimeConfig(
                     runtime_type=DockerRuntimeType.PODMAN,
                     docker_host=existing_host,
@@ -120,7 +145,21 @@ def detect_docker_runtime() -> DockerRuntimeConfig:
                     socket_path=socket_path,
                 )
 
-    # 2. Check for Podman (either native or masquerading as docker)
+    # 2. Check for podman-hpc (NERSC Perlmutter HPC environment)
+    if is_podman_hpc_available():
+        podman_socket = get_podman_socket_path()
+        if podman_socket:
+            return DockerRuntimeConfig(
+                runtime_type=DockerRuntimeType.PODMAN_HPC,
+                docker_host=f"unix://{podman_socket}",
+                socket_path=podman_socket,
+                extra_env={
+                    "CONTAINER_RUNTIME": "podman_hpc",
+                    "_PODMAN_SOCKET_NEEDS_START": "1" if not _socket_exists(podman_socket) else "",
+                },
+            )
+
+    # 3. Check for Podman (either native or masquerading as docker)
     podman_socket = get_podman_socket_path()
 
     # Check if docker command is actually podman
@@ -371,18 +410,57 @@ def ensure_docker_runtime(
     return runtime
 
 
-def setup_docker_runtime_if_needed(env_type: str) -> None:
+def verify_docker_connectivity_with_details(
+    runtime: DockerRuntimeConfig, timeout: int = 10
+) -> tuple[bool, str]:
+    """Verify Docker connectivity with detailed error information.
+
+    Args:
+        runtime: DockerRuntimeConfig to verify
+        timeout: Max seconds to wait for response
+
+    Returns:
+        Tuple of (success: bool, message: str)
+    """
+    # Set environment for the check
+    env = os.environ.copy()
+    if runtime.docker_host:
+        env["DOCKER_HOST"] = runtime.docker_host
+
+    try:
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
+        )
+        if result.returncode == 0:
+            return True, "Docker daemon is accessible"
+        else:
+            return False, f"Docker info failed: {result.stderr.strip()}"
+    except FileNotFoundError:
+        return False, "docker command not found"
+    except subprocess.TimeoutExpired:
+        return False, f"Docker daemon not responding (timeout after {timeout}s)"
+    except Exception as e:
+        return False, f"Unexpected error: {e}"
+
+
+def setup_docker_runtime_if_needed(env_type: str, fail_fast: bool = True) -> None:
     """Configure Docker/Podman runtime if using docker backend.
 
     Detects available Docker/Podman runtime, sets DOCKER_HOST environment
     variable, and verifies connectivity. This is a user-friendly wrapper
-    that prints status messages and exits on failure.
+    that prints status messages with clear error information.
 
     Args:
         env_type: Harbor environment type (daytona, docker, modal, apptainer)
+        fail_fast: If True, raise RuntimeError on failure instead of sys.exit
 
     Raises:
-        SystemExit: If docker backend requested but no runtime found
+        RuntimeError: If fail_fast=True and runtime is unavailable or not responding
+        SystemExit: If fail_fast=False and runtime is unavailable
     """
     import sys
 
@@ -393,23 +471,65 @@ def setup_docker_runtime_if_needed(env_type: str) -> None:
     runtime = detect_docker_runtime()
 
     if runtime.runtime_type == DockerRuntimeType.UNAVAILABLE:
-        print("[docker] ERROR: Docker backend requested but no Docker/Podman runtime found.")
-        print("[docker] Please ensure Docker or Podman is installed and running,")
-        print("[docker] or set DOCKER_HOST to point to a remote Docker daemon.")
-        sys.exit(1)
+        error_msg = (
+            "Docker backend requested but no Docker/Podman runtime found.\n"
+            "[docker] DEBUG: Checked: podman-hpc, podman, docker commands\n"
+            "[docker] DEBUG: Checked socket paths: /var/run/docker.sock, ~/.docker/run/docker.sock\n"
+            "[docker] HINT: Install Docker/Podman, or set DOCKER_HOST environment variable."
+        )
+        print(f"[docker] ERROR: {error_msg}")
+        if fail_fast:
+            raise RuntimeError(error_msg)
+        sys.exit(2)  # EXIT_RUNTIME_NOT_FOUND
+
+    # Try to start podman socket if needed
+    if runtime.extra_env.get("_PODMAN_SOCKET_NEEDS_START"):
+        print("[docker] Podman socket not running, attempting to start...")
+        if try_start_podman_socket(timeout=5):
+            # Re-detect to get updated socket status
+            runtime = detect_docker_runtime()
+            print("[docker] Podman socket started successfully")
+        else:
+            socket_path = runtime.socket_path or get_podman_socket_path()
+            error_msg = (
+                f"Failed to start podman socket at {socket_path}\n"
+                f"[docker] DEBUG: Attempted 'systemctl --user start podman.socket'\n"
+                f"[docker] DEBUG: Attempted 'podman system service --time=0'\n"
+                f"[docker] HINT: Run 'systemctl --user start podman.socket' manually"
+            )
+            print(f"[docker] ERROR: {error_msg}")
+            if fail_fast:
+                raise RuntimeError(error_msg)
+            sys.exit(3)  # EXIT_SOCKET_STARTUP_FAILED
 
     # Set up environment variables
     env = setup_docker_environment(runtime)
     os.environ.update(env)
 
-    print(f"[docker] Runtime type: {runtime.runtime_type.value}")
+    # Print runtime info
+    runtime_name = runtime.runtime_type.value
+    if runtime.runtime_type == DockerRuntimeType.PODMAN_HPC:
+        runtime_name = "podman_hpc (NERSC HPC environment)"
+    print(f"[docker] Runtime type: {runtime_name}")
     print(f"[docker] DOCKER_HOST: {runtime.docker_host}")
 
-    # Verify connectivity
-    if not check_docker_connectivity(timeout=10):
-        print("[docker] WARNING: Docker daemon not responding. Continuing anyway...")
+    # Verify connectivity with detailed error messages
+    success, message = verify_docker_connectivity_with_details(runtime, timeout=10)
+    if not success:
+        socket_path = runtime.socket_path or "unknown"
+        socket_exists_str = str(_socket_exists(socket_path)) if socket_path != "unknown" else "unknown"
+        error_msg = (
+            f"{message}\n"
+            f"[docker] DEBUG: DOCKER_HOST={runtime.docker_host}, socket_path={socket_path}, exists={socket_exists_str}\n"
+            f"[docker] HINT: Check 'docker info' or 'podman-hpc info' manually, verify socket permissions"
+        )
+        print(f"[docker] ERROR: {error_msg}")
+        if fail_fast:
+            raise RuntimeError(error_msg)
+        # Non-fatal warning if fail_fast is False
+        print("[docker] WARNING: Continuing despite connectivity failure...")
     else:
-        print("[docker] Docker daemon is accessible.")
+        print(f"[docker] {message}")
 
 
 # ---------------------------------------------------------------------------

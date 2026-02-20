@@ -1,0 +1,80 @@
+# SkyRL GRPO Default Configuration
+# Minimal GRPO config for general RL training
+#
+# Usage:
+#   python -m hpc.launch \
+#       --job_type rl \
+#       --rl_config grpo_default.yaml \
+#       --job_name my_run \
+#       --train_data '["dataset"]' \
+#       --model_path Qwen/Qwen2.5-7B-Instruct
+
+# SkyRL entrypoint module
+entrypoint: skyrl_train.entrypoints.main_base
+
+# Trainer configuration
+trainer:
+  strategy: fsdp2
+  algorithm:
+    advantage_estimator: grpo
+    use_kl_loss: true
+  epochs: 3
+  # IMPORTANT: train_batch_size must be >= total GPUs (data parallel size)
+  # Override with --skyrl_override trainer.train_batch_size=N if needed
+  train_batch_size: 16
+  eval_batch_size: 64
+  eval_interval: 50
+  eval_before_train: false
+  update_epochs_per_batch: 1
+  ckpt_interval: 10
+  max_prompt_length: 999999
+  resume_mode: latest
+  project_name: dc-agent
+  log_level: INFO  # SkyRL logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  # Paths derived from experiments_dir/job_name if null
+  run_name: null
+  ckpt_path: null
+  export_path: null
+
+  policy:
+    optimizer_config:
+      lr: 1.0e-6
+      weight_decay: 0.01
+      adam_betas: [0.9, 0.999]
+      max_grad_norm: 1.0
+
+  ref:
+    fsdp_config:
+      cpu_offload: false
+
+  # Model placement - derived from CLI args (--num_nodes, --gpus_per_node)
+  placement:
+    colocate_all: true
+    policy_num_nodes: null
+    ref_num_nodes: null
+    policy_num_gpus_per_node: null
+    ref_num_gpus_per_node: null
+
+# Generator (vLLM inference)
+generator:
+  backend: vllm
+  enforce_eager: false
+  timeout_multiplier: 2.0
+  num_inference_engines: null
+  inference_engine_tensor_parallel_size: 1
+  n_samples_per_prompt: 4
+  gpu_memory_utilization: 0.8
+  run_engines_locally: true
+  weight_sync_backend: nccl
+  async_engine: true
+  batched: true
+
+  # Engine initialization kwargs
+  engine_init_kwargs:
+    # Explicit context limit - ensures vLLM enforces 32k total context
+    max_model_len: 32768
+
+# Data paths (set via CLI --train_data, --val_data)
+data:
+  train_data: []
+  val_data: []

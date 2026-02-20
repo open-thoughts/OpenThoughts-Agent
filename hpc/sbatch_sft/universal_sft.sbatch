@@ -19,6 +19,7 @@
 # ==============================================================================
 
 set -euo pipefail
+ml purge
 ulimit -c 0  # Disable core dumps to avoid filling disk space
 
 # Handle bash completion scripts that use BASH_COMPLETION_DEBUG
@@ -26,15 +27,30 @@ if [ -z "${BASH_COMPLETION_DEBUG+x}" ]; then
   export BASH_COMPLETION_DEBUG=""
 fi
 
+# --- Clean up /tmp to prevent state pollution from previous jobs ---
+# Some HPC systems retain /tmp contents across job allocations on the same node.
+# This can cause issues with tmux sessions, container state, and other temporary files.
+# Wrapped in set +u/set -u in case some clusters error out on these commands.
+set +u
+rm -rf /tmp/tmux-* 2>/dev/null || true
+rm -rf /tmp/ray 2>/dev/null || true
+rm -rf /tmp/hf_home 2>/dev/null || true
+rm -rf /tmp/containers 2>/dev/null || true
+rm -rf /tmp/podman-* 2>/dev/null || true
+set -u
+
 # Guard conda deactivate scripts from set -u complaints
 export CONDA_BACKUP_CXX="${CONDA_BACKUP_CXX:-}"
 export CONDA_BACKUP_CC="${CONDA_BACKUP_CC:-}"
 export CONDA_BACKUP_FC="${CONDA_BACKUP_FC:-}"
 
-# --- Module loading (cluster-specific, substituted by launcher) ---
+# --- Module and Conda Setup ---
+# Disable unbound variable check for module loading and conda activation.
+# Module reloads can trigger conda deactivation scripts that reference unset variables.
 set +u
+
+# --- Module loading (cluster-specific, substituted by launcher) ---
 {module_commands}
-set -u
 
 # --- Environment setup ---
 if [ -n "${DCFT_PRIVATE:-}" ]; then
@@ -51,9 +67,7 @@ if [ -z "${DCFT:-}" ]; then
 fi
 
 # --- Conda activation (cluster-specific, substituted by launcher) ---
-set +u
 {conda_activate}
-set -u
 
 # --- Source environment files ---
 if [ -n "${DCFT:-}" ] && [ -f "$DCFT/hpc/dotenv/{cluster_env_file}" ]; then
@@ -65,10 +79,11 @@ if [ -n "${DC_AGENT_SECRET_ENV:-}" ] && [ -f "$DC_AGENT_SECRET_ENV" ]; then
   set +a
 fi
 if [ -n "${DCFT_ACTIVATE_ENV:-}" ]; then
-  set +u
   eval "$DCFT_ACTIVATE_ENV"
-  set -u
 fi
+
+# Re-enable strict unbound variable checking after all env setup is complete
+set -u
 
 # --- CUDA path detection (Perlmutter and similar) ---
 {cuda_setup}
@@ -76,8 +91,15 @@ fi
 # --- NCCL/Networking settings (cluster-specific) ---
 {nccl_exports}
 
+# --- Cluster-specific environment variables ---
+{env_exports}
+
+# --- Ray defaults ---
+{ray_env_exports}
+
 # --- Standard environment variables ---
 export PYTHONFAULTHANDLER=1
+export TORCH_SHOW_CPP_STACKTRACES=1
 export CUDA_LAUNCH_BLOCKING=0
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export OMP_NUM_THREADS=1
@@ -86,6 +108,12 @@ export DISABLE_VERSION_CHECK=1  # Skip LlamaFactory transformers version check
 
 # --- Distributed training setup ---
 export MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
+# if histname contains jrc or jwb, set master addres to ${MASTER_ADDR}i to use infiniband
+if [[  "$MASTER_ADDR" == *"jrc"* || "$MASTER_ADDR" == *"jwb"* ]]; then
+    export MASTER_ADDR="${MASTER_ADDR}i"
+fi
+
+echo "MASTER_ADDR set to $MASTER_ADDR"
 export MASTER_PORT={master_port}
 export NUM_NODES=$SLURM_JOB_NUM_NODES
 export NUM_GPUS_PER_NODE={gpus_per_node}
@@ -123,4 +151,5 @@ echo "Working directory: $WORKDIR"
 echo "Nodes: $NUM_NODES, GPUs/node: $NUM_GPUS_PER_NODE"
 echo "======================================"
 
-{srun_command}
+echo LD_LIBRARY_PATH=$LD_LIBRARY_PATH
+{srun_command}  

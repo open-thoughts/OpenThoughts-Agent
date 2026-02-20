@@ -147,6 +147,93 @@ def scale_memory_for_partial_gpus(
     return format_memory_mb(scaled_mb)
 
 
+# =============================================================================
+# Time Limit Utilities
+# =============================================================================
+
+
+def parse_time_to_seconds(time_str: str) -> int:
+    """Parse a SLURM time string to total seconds.
+
+    Supports formats:
+    - "HH:MM:SS" (e.g., "02:00:00")
+    - "D-HH:MM:SS" (e.g., "1-12:00:00")
+    - "MM:SS" (e.g., "30:00")
+
+    Args:
+        time_str: SLURM time limit string.
+
+    Returns:
+        Total seconds.
+
+    Raises:
+        ValueError: If the time string cannot be parsed.
+    """
+    if not time_str:
+        return 0
+
+    time_str = time_str.strip()
+
+    # Handle D-HH:MM:SS format
+    if "-" in time_str:
+        days_part, time_part = time_str.split("-", 1)
+        days = int(days_part)
+    else:
+        days = 0
+        time_part = time_str
+
+    parts = time_part.split(":")
+    if len(parts) == 3:
+        hours, minutes, seconds = map(int, parts)
+    elif len(parts) == 2:
+        hours = 0
+        minutes, seconds = map(int, parts)
+    else:
+        raise ValueError(f"Cannot parse time string: {time_str}")
+
+    return days * 86400 + hours * 3600 + minutes * 60 + seconds
+
+
+def validate_time_limit_for_nodes(
+    time_limit: str,
+    num_nodes: int,
+    hpc: Any,
+) -> str:
+    """Validate and potentially adjust time limit based on node count.
+
+    For clusters with node-count-based scheduling policies (e.g., Frontier),
+    this function checks if the requested time limit exceeds the maximum
+    allowed for the given node count and adjusts it if necessary.
+
+    Args:
+        time_limit: Requested time limit string (e.g., "24:00:00").
+        num_nodes: Number of nodes requested.
+        hpc: HPC configuration object.
+
+    Returns:
+        Validated (and possibly adjusted) time limit string.
+    """
+    if not hasattr(hpc, "time_limit_by_nodes") or not hpc.time_limit_by_nodes:
+        return time_limit
+
+    if num_nodes is None or num_nodes <= 0:
+        return time_limit
+
+    max_time = hpc.get_max_time_limit(num_nodes)
+    requested_seconds = parse_time_to_seconds(time_limit)
+    max_seconds = parse_time_to_seconds(max_time)
+
+    if requested_seconds > max_seconds:
+        print(
+            f"Warning: Requested time_limit ({time_limit}) exceeds max allowed "
+            f"for {num_nodes} nodes on {hpc.name} ({max_time}). "
+            f"Adjusting to {max_time}."
+        )
+        return max_time
+
+    return time_limit
+
+
 def generate_served_model_id() -> str:
     """Return a unique identifier for a hosted vLLM model."""
     return str(int(time.time() * 1_000_000))
@@ -895,6 +982,12 @@ def derive_default_job_name(cli_args: Mapping[str, Any]) -> str:
             job_name_suffix = "_3B"
         elif value_str == "Qwen/Qwen2.5-1.5B-Instruct":
             job_name_suffix = "_1.5B"
+        elif key == "dataset" and "," in value_str:
+            # Multi-dataset: include all dataset names in the job name
+            for ds in value_str.split(","):
+                ds_name = ds.strip().split("/")[-1]
+                if ds_name:
+                    job_name_components.append(ds_name)
         else:
             job_name_components.append(value_str.split("/")[-1])
 
@@ -1104,11 +1197,44 @@ def apply_env_overrides(
         raise ValueError("--job_creator must be 96 characters or fewer.")
     exp_args = update_exp_args(exp_args, {"job_creator": job_creator})
 
+    # Handle Frontier extended partition time limits (max 24 hours)
+    partition = exp_args.get("partition") or getattr(hpc, "partition", "")
+    is_frontier_extended = (
+        getattr(hpc, "name", "").lower() == "frontier" and partition.lower() == "extended"
+    )
+    frontier_extended_max = "23:59:00"
+
     # Set default time_limit from HPC config
     if exp_args.get("time_limit") in (None, ""):
-        default_time = getattr(hpc, "default_time_limit", "24:00:00")
+        if is_frontier_extended:
+            default_time = frontier_extended_max
+            print(f"Frontier extended partition: using max time_limit {default_time}")
+        else:
+            default_time = getattr(hpc, "default_time_limit", "24:00:00")
+            print(f"Using default time_limit: {default_time}")
         exp_args = update_exp_args(exp_args, {"time_limit": default_time})
-        print(f"Using default time_limit: {default_time}")
+    elif is_frontier_extended:
+        # Cap user-provided time to extended partition max
+        user_time = exp_args.get("time_limit", "24:00:00")
+        user_seconds = parse_time_to_seconds(user_time)
+        max_seconds = parse_time_to_seconds(frontier_extended_max)
+        if user_seconds > max_seconds:
+            print(
+                f"Warning: Frontier extended partition max is {frontier_extended_max}. "
+                f"Capping requested time_limit ({user_time}) to {frontier_extended_max}."
+            )
+            exp_args = update_exp_args(exp_args, {"time_limit": frontier_extended_max})
+
+    # Validate time_limit against node-count-based limits (e.g., Frontier bins)
+    num_nodes = _parse_optional_int(exp_args.get("num_nodes"), "--num_nodes")
+    if num_nodes is not None and num_nodes > 0:
+        validated_time = validate_time_limit_for_nodes(
+            exp_args.get("time_limit", "24:00:00"),
+            num_nodes,
+            hpc,
+        )
+        if validated_time != exp_args.get("time_limit"):
+            exp_args = update_exp_args(exp_args, {"time_limit": validated_time})
 
     # Normalize and validate job_type
     job_type = normalize_job_type(exp_args)
@@ -1164,7 +1290,43 @@ def _merge_dependencies(*deps: Optional[str]) -> Optional[str]:
     return ",".join(merged)
 
 
-def launch_sbatch(sbatch_script_path, dependency=None, array: str | None = None) -> str:
+# Transient SLURM errors that should trigger retry
+_SBATCH_RETRYABLE_ERRORS = (
+    "Socket timed out",
+    "Unable to contact slurm controller",
+    "Connection refused",
+    "Connection timed out",
+    "Slurm temporarily unable",
+    "Resource temporarily unavailable",
+)
+
+
+def launch_sbatch(
+    sbatch_script_path,
+    dependency=None,
+    array: str | None = None,
+    max_retries: int = 5,
+    initial_delay: float = 5.0,
+    max_delay: float = 60.0,
+) -> str:
+    """Launch an sbatch job with retry logic for transient SLURM errors.
+
+    Args:
+        sbatch_script_path: Path to the sbatch script
+        dependency: Optional dependency string (e.g., "afterok:12345")
+        array: Optional array specification (e.g., "0-10")
+        max_retries: Maximum number of retry attempts for transient errors
+        initial_delay: Initial delay in seconds before first retry
+        max_delay: Maximum delay in seconds between retries
+
+    Returns:
+        The submitted job ID
+
+    Raises:
+        RuntimeError: If sbatch fails after all retries or with a non-retryable error
+    """
+    import time
+
     extra_args: list[str] = []
     if dependency is not None:
         extra_args.append(f"--dependency={dependency}")
@@ -1173,28 +1335,47 @@ def launch_sbatch(sbatch_script_path, dependency=None, array: str | None = None)
     extra_flags = " ".join(extra_args)
     sbatch_cmd = f"sbatch {extra_flags} {sbatch_script_path}".strip()
 
-    result = subprocess.run(
-        sbatch_cmd,
-        shell=True,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
+    last_error = None
+    delay = initial_delay
+
+    for attempt in range(max_retries + 1):
+        result = subprocess.run(
+            sbatch_cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode == 0:
+            raw_output = (result.stdout or "").strip()
+            job_id = raw_output.split()[::-1][0]
+            if attempt > 0:
+                print(f"  sbatch succeeded on attempt {attempt + 1}")
+            print(
+                f"Job {job_id} submitted"
+                f"{f' with dependency {dependency}' if dependency else ''}"
+                f"{f' and array {array}' if array else ''}."
+            )
+            return job_id
+
+        # Check if error is retryable
         msg = result.stdout.strip()
         err = result.stderr.strip()
         combined = "\n".join(filter(None, [msg, err]))
-        raise RuntimeError(
-            f"sbatch command failed (code {result.returncode}): {sbatch_cmd}\n{combined}"
-        )
+        last_error = f"sbatch command failed (code {result.returncode}): {sbatch_cmd}\n{combined}"
 
-    raw_output = (result.stdout or "").strip()
-    job_id = raw_output.split()[::-1][0]
-    print(
-        f"Job {job_id} submitted"
-        f"{f' with dependency {dependency}' if dependency else ''}"
-        f"{f' and array {array}' if array else ''}."
-    )
-    return job_id
+        is_retryable = any(phrase in combined for phrase in _SBATCH_RETRYABLE_ERRORS)
+
+        if not is_retryable or attempt >= max_retries:
+            break
+
+        # Log and retry
+        print(f"  sbatch failed (attempt {attempt + 1}/{max_retries + 1}): {err or msg}")
+        print(f"  Retrying in {delay:.1f}s...")
+        time.sleep(delay)
+        delay = min(delay * 2, max_delay)
+
+    raise RuntimeError(last_error)
 
 
 def update_exp_args(exp_args, args, *, explicit_keys: Optional[set[str]] = None):

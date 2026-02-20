@@ -1,0 +1,66 @@
+# Kimi-K2.5 - Multimodal agentic model (1T params, 32B activated)
+# https://huggingface.co/moonshotai/Kimi-K2.5
+#
+# Key differences from K2:
+#   - Multimodal: Has MoonViT vision encoder (400M params)
+#   - 256K context length (vs 32K default for K2)
+#   - Requires --mm-encoder-tp-mode data for vision encoder
+#   - Recommended: vLLM nightly for latest features
+#
+# Hardware: 8x H200 80GB (~640GB total, model needs ~600GB for INT4)
+#
+engine:
+  type: vllm_local
+  model: moonshotai/Kimi-K2.5
+  max_output_tokens: 16384
+  healthcheck_interval: 300
+  request_params:
+    temperature: 1.0  # Recommended for thinking mode
+    top_p: 0.95       # Recommended (K2 config had 0.01 which is very conservative)
+  vllm_local: {}
+backend:
+  type: ray
+  wait_for_endpoint: true
+  ray_cgraph_max_inflight_executions: 16
+  healthcheck_max_attempts: 160
+  healthcheck_retry_delay: 15
+vllm_server:
+  model_path: moonshotai/Kimi-K2.5
+  num_replicas: 1
+  tensor_parallel_size: 8
+  pipeline_parallel_size: 1
+  data_parallel_size: 1
+  time_limit: '48:00:00'
+  max_model_len: 32768  # Kept at 32K for efficiency; K2.5 supports up to 256K
+  max_num_seqs: 16
+  gpu_memory_utilization: 0.9
+  swap_space: 32
+  enable_expert_parallel: true
+  enable_auto_tool_choice: true
+  tool_call_parser: kimi_k2
+  reasoning_parser: kimi_k2
+  trust_remote_code: true
+  extra_args:
+  # Vision encoder parallelism (required for K2.5 multimodal)
+  - --mm-encoder-tp-mode
+  - data
+  # Quantization (native INT4 from training)
+  - --quantization
+  - compressed-tensors
+  - --kv-cache-dtype
+  - fp8
+  # Memory/performance optimizations
+  - --block-size
+  - '16'
+  - --enable-chunked-prefill
+  - --max-num-partial-prefills
+  - '1'
+  - --enable-prefix-caching
+  - --max-num-batched-tokens
+  - '8192'
+  # MoE optimizations
+  - --all2all-backend
+  - pplx
+  # CPU offload for memory headroom
+  - --cpu-offload-gb
+  - '20'

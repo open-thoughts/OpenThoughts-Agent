@@ -115,6 +115,7 @@ def maybe_compute_gradient_accumulation(base_config: dict, exp_args: dict) -> di
 
     base_config["gradient_accumulation_steps"] = gradient_accumulation_steps
     base_config["per_device_train_batch_size"] = per_device_train_batch_size
+    # base_config["global_batch_size"] = global_batch_size
     print(f"\nCalculated based on {num_nodes} nodes, {num_gpus} GPUs per node, and global batch size {global_batch_size}:")
     print(f"data_parallel_replicas: {data_parallel_replicas}")
     print(f"per_device_train_batch_size: {per_device_train_batch_size}")
@@ -175,6 +176,121 @@ def configure_sft_reporting(base_config: dict, exp_args: dict, model_path: str) 
         base_config["model_name_or_path"] = model_path
         base_config["datasets_cache_dir"] = os.environ.get("HF_HUB_CACHE", "")
     return base_config
+
+
+# Templates that use LLaMA-Factory's ReasoningTemplate and need thinking preprocessing.
+# Other templates (e.g. qwen3_nothink, qwen2_5, chatml) do NOT use ReasoningTemplate.
+_REASONING_TEMPLATES = {"qwen3"}
+
+
+def maybe_preprocess_thinking(
+    base_config: dict,
+    exp_args: dict,
+    artifacts,
+):
+    """Preprocess datasets for Qwen3 ReasoningTemplate thought_words format.
+
+    When the training template uses ReasoningTemplate (e.g. ``qwen3``), the
+    thought_words ``("<think>\\n", "\\n</think>\\n\\n")`` must be present in
+    assistant messages for proper loss masking.  This step normalises diverse
+    input formats (``<think>content</think>``, orphaned ``</think>``, no tags,
+    etc.) into the canonical format **before** LlamaFactory sees the data.
+
+    For non-ReasoningTemplate templates, a warning is emitted if the dataset
+    appears to contain ``<think>`` tags, since those tags will be treated as
+    plain text and the model may learn an unintended output format.
+
+    If the template does not require preprocessing, ``artifacts`` is returned
+    unchanged.
+    """
+    from hpc.arguments import JobType
+
+    template = base_config.get("template", "")
+
+    job_type = exp_args.get("job_type")
+    if job_type and job_type not in (JobType.SFT.value, None):
+        return artifacts
+
+    if template not in _REASONING_TEMPLATES:
+        # Warn if the dataset likely contains thinking tags but the template
+        # won't handle them with ReasoningTemplate.
+        _warn_if_thinking_data_with_plain_template(template, artifacts)
+        return artifacts
+
+    from huggingface_hub import snapshot_download
+    from scripts.datagen.prep_for_thinking import preprocess_local_dataset
+
+    role_tag = exp_args.get("role_tag", "role")
+    content_tag = exp_args.get("content_tag", "content")
+
+    new_paths: list[str] = []
+    for ds_path in artifacts.dataset_paths:
+        # If the path is an HF repo name (internet node), download first
+        if not os.path.isdir(ds_path):
+            print(f"[prep_for_thinking] Downloading {ds_path} for preprocessing...")
+            ds_path = snapshot_download(repo_id=ds_path, repo_type="dataset")
+
+        processed_path = preprocess_local_dataset(
+            ds_path,
+            role_tag=role_tag,
+            content_tag=content_tag,
+        )
+        new_paths.append(processed_path)
+
+    new_dataset_path = new_paths[0] if new_paths else artifacts.dataset_path
+    # Force the config to use the local preprocessed paths (even on internet
+    # nodes where LlamaFactory would otherwise load from HF Hub directly).
+    base_config["dataset"] = ",".join(new_paths)
+    base_config["dataset_dir"] = "ONLINE"
+
+    # Return a new artifacts object with updated paths.  We reconstruct the
+    # same dataclass the caller passed in so we don't need to import it here.
+    return type(artifacts)(
+        dataset_paths=new_paths,
+        dataset_path=new_dataset_path,
+        model_path=artifacts.model_path,
+    )
+
+
+def _warn_if_thinking_data_with_plain_template(template: str, artifacts) -> None:
+    """Emit a warning if the dataset appears to contain <think> tags but the
+    template is not a ReasoningTemplate.  This is a common misconfiguration
+    that results in the model learning to produce ``<think>`` as literal text
+    without proper loss masking or tokenization."""
+    try:
+        import pyarrow.parquet as pq
+    except ImportError:
+        return  # best-effort; skip if pyarrow not available
+
+    for ds_path in artifacts.dataset_paths:
+        if not os.path.isdir(ds_path):
+            continue
+        # Quick check: read first parquet file and look for <think> in a sample
+        for root, _dirs, files in os.walk(ds_path):
+            for fname in files:
+                if not fname.endswith(".parquet"):
+                    continue
+                try:
+                    tbl = pq.read_table(os.path.join(root, fname), columns=["conversations"])
+                    sample = tbl.to_pydict().get("conversations", [])[:5]
+                    for conv in sample:
+                        for msg in (conv or []):
+                            content = msg.get("content", "") if isinstance(msg, dict) else ""
+                            if "<think>" in content or "</think>" in content:
+                                print(
+                                    f"\n*** WARNING: Dataset at {ds_path} contains <think> tags "
+                                    f"but template '{template}' is not a ReasoningTemplate. "
+                                    f"Thinking tokens will NOT be automatically converted to "
+                                    f"'{template}' format. This can cause training/inference "
+                                    f"incompatibilities. Consider using template 'qwen3' or "
+                                    f"pre-processing the dataset with:\n"
+                                    f"  python -m scripts.datagen.prep_for_thinking "
+                                    f"--source <dataset> --dry-run\n"
+                                )
+                                return
+                except Exception:
+                    continue
+            return  # only check first directory level
 
 
 def pre_validation_sft(cli_args: dict) -> None:
@@ -416,12 +532,22 @@ class SFTJobRunner:
         gpus_per_node = int(os.environ.get("NUM_GPUS_PER_NODE", self.config.gpus_per_node))
         master_addr = os.environ.get("MASTER_ADDR", "localhost")
         master_port = os.environ.get("MASTER_PORT", str(self.config.master_port))
-        slurm_procid = os.environ.get("SLURM_PROCID", "0")
+        # Use SLURM_NODEID for machine rank (node index within the allocation)
+        # SLURM_PROCID is the global task ID which may not match node index
+        slurm_nodeid = os.environ.get("SLURM_NODEID", os.environ.get("SLURM_PROCID", "0"))
 
         # Build accelerate config if not provided
         accelerate_config = self.config.accelerate_config_path
         if not accelerate_config:
             accelerate_config = self._generate_accelerate_config(num_nodes, gpus_per_node)
+
+        # Debug: print multi-node configuration
+        print(f"Multi-node config: num_nodes={num_nodes}, gpus_per_node={gpus_per_node}, "
+              f"machine_rank={slurm_nodeid}, master_addr={master_addr}:{master_port}")
+        print(f"SLURM env: SLURM_NODEID={os.environ.get('SLURM_NODEID')}, "
+              f"SLURM_PROCID={os.environ.get('SLURM_PROCID')}, "
+              f"SLURM_JOB_NUM_NODES={os.environ.get('SLURM_JOB_NUM_NODES')}")
+        sys.stdout.flush()
 
         cmd = [
             "python", "-u", "-m", "accelerate.commands.launch",
@@ -429,7 +555,9 @@ class SFTJobRunner:
             f"--config_file={accelerate_config}",
             f"--main_process_ip={master_addr}",
             f"--main_process_port={master_port}",
-            f"--machine_rank={slurm_procid}",
+            f"--machine_rank={slurm_nodeid}",
+            f"--num_machines={num_nodes}",
+            f"--num_processes={num_nodes * gpus_per_node}",
             "--tee=3",
             "sft/llamafactory/src/train.py",
             self.config.train_config_path,
@@ -455,7 +583,6 @@ class SFTJobRunner:
             "enable_cpu_affinity": False,
             "machine_rank": 0,
             "main_training_function": "main",
-            "mixed_precision": "bf16",
             "num_machines": num_nodes,
             "num_processes": num_nodes * gpus_per_node,
             "rdzv_backend": "c10d",
@@ -467,12 +594,22 @@ class SFTJobRunner:
         }
 
         if self.config.deepspeed_config:
+            # When using deepspeed_config_file, do NOT set mixed_precision in accelerate config
+            # All these settings must be in the DeepSpeed config file instead:
+            # gradient_accumulation_steps, gradient_clipping, zero_stage, mixed_precision,
+            # offload_optimizer_device, offload_param_device, zero3_save_16bit_model
+            #
+            # CRITICAL for multi-node: Use "standard" launcher (torch.distributed.run) instead of
+            # DeepSpeed's launcher. DeepSpeed's launcher ignores accelerate's multi-node settings
+            # and uses its own world discovery (which defaults to localhost only).
             config["deepspeed_config"] = {
                 "deepspeed_config_file": self.config.deepspeed_config,
                 "zero3_init_flag": True,
+                "deepspeed_multinode_launcher": "standard",
             }
         else:
-            # FSDP config
+            # FSDP config - mixed_precision is set here (not in deepspeed case)
+            config["mixed_precision"] = "bf16"
             config["fsdp_config"] = {
                 "fsdp_auto_wrap_policy": "TRANSFORMER_BASED_WRAP",
                 "fsdp_backward_prefetch": "BACKWARD_PRE",
@@ -562,13 +699,20 @@ def construct_sft_sbatch_script(exp_args: dict, hpc) -> str:
         cuda_setup = """# CUDA path detection (handled by Python runner)
 # Additional CUDA setup can be done in SFTJobRunner._setup_environment()"""
 
+    srun_prefix = f"srun --nodes={num_nodes}"
     # Generate srun command based on launcher
+    # Use --nodes and --ntasks-per-node=1 to ensure one process per node for multi-node training
+    # Each node then launches its own accelerate processes for local GPUs
+    srun_base = "srun --nodes=$SLURM_JOB_NUM_NODES --ntasks-per-node=1"
     if hpc.needs_ssh_tunnel:
         # JSC clusters use proxychains4 for internet access
-        srun_command = f'srun $PROXY_CMD python -m hpc.sft_launch_utils --config "{config_path}"'
-    else:
-        srun_command = f'srun python -m hpc.sft_launch_utils --config "{config_path}"'
+        srun_prefix += " $PROXY_CMD"
+    # if os.environ.get("IMAGE"):
+    #     print(f"Using Apptainer image: {os.environ['IMAGE']}")
+    #     srun_prefix += f' apptainer exec --nv {os.environ["IMAGE"]}'
 
+    cmd = f'python -m hpc.sft_launch_utils --config "{config_path}"'
+    srun_command = f"{srun_prefix} bash -c '{cmd}'"
     substitutions = {
         "time_limit": exp_args.get("time_limit") or "24:00:00",
         "num_nodes": str(num_nodes),
@@ -581,8 +725,11 @@ def construct_sft_sbatch_script(exp_args: dict, hpc) -> str:
         "cluster_env_file": hpc.dotenv_filename,
         "cuda_setup": cuda_setup,
         "nccl_exports": hpc.get_nccl_exports(),
+        "env_exports": hpc.get_env_exports(),
+        "ray_env_exports": hpc.get_ray_env_exports(experiments_subdir),
         "ssh_tunnel_setup": hpc.get_ssh_tunnel_setup(),
         "master_port": str(job_config.master_port),
+        "master_addr_suffix": hpc.master_addr_suffix or "",
         "gpus_per_node": str(gpus_per_node),
         "config_path": str(config_path),
         "srun_command": srun_command,

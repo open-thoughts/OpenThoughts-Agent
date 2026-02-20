@@ -75,6 +75,7 @@ JOB_NAME_IGNORE_KEYS: list[str] = [
     "datagen_output_dir",
     "datagen_wait_for_endpoint",
     "pinggy_persistent_url",
+    "pinggy_token",
     "pinggy_ssh_command",
     "pinggy_debugger_url",
     "use_mca",
@@ -133,6 +134,8 @@ JOB_NAME_IGNORE_KEYS: list[str] = [
     "upload_hf_private",
     "upload_hf_episodes",
     "upload_forced_update",
+    # HuggingFace Hub toggles
+    "hf_hub_private",
     # Timeout toggles
     "trace_agent_timeout_sec",
     "trace_verifier_timeout_sec",

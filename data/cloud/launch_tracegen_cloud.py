@@ -35,6 +35,7 @@ from hpc.arg_groups import (
     add_hf_upload_args,
     add_tasks_input_arg,
 )
+from hpc.cloud_launch_utils import infer_harbor_env_from_config
 
 
 class TracegenCloudLauncher(CloudLauncher):
@@ -60,7 +61,8 @@ class TracegenCloudLauncher(CloudLauncher):
         )
 
         # Harbor environment backend (unified --harbor_env, with legacy aliases)
-        add_harbor_env_arg(parser, default="daytona", legacy_names=["--trace-env", "--trace_env"])
+        # Default=None to allow inference from harbor config's environment.type field
+        add_harbor_env_arg(parser, default=None, legacy_names=["--trace-env", "--trace_env"])
 
         # Tracegen-specific required arguments (underscore primary, kebab alias)
         parser.add_argument("--datagen_config", required=True,
@@ -87,6 +89,9 @@ class TracegenCloudLauncher(CloudLauncher):
         args.datagen_config = repo_relative(args.datagen_config, self.repo_root)
         if not args.tasks_input_path.startswith("/"):
             args.tasks_input_path = repo_relative(args.tasks_input_path, self.repo_root)
+
+        # Infer --harbor_env from harbor config if not provided
+        infer_harbor_env_from_config(args, args.harbor_config, log_prefix="[tracegen-cloud]")
 
     def build_task_command(self, args, remote_output_dir: str) -> List[str]:
         """Build the run_tracegen.py command."""

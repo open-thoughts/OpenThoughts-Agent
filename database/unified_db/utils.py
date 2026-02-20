@@ -40,9 +40,10 @@ except ImportError:
     create_repo = None  # type: ignore[assignment]
 
 # HuggingFace datasets import for trace export
+# Catch OSError too - torch may fail to load due to missing MPI libs on some HPC login nodes
 try:
     from datasets import Dataset
-except ImportError:
+except (ImportError, OSError):
     Dataset = None  # type: ignore[assignment]
 
 # ==================== SUPABASE CLIENT ====================

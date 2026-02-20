@@ -13,7 +13,7 @@ optim: adamw_torch_fused
 stage: sft
 do_train: true
 finetuning_type: full
-deepspeed: sft/llamafactory/examples/deepspeed/ds_z3_config.json
+deepspeed: sft/lf_configs/deepspeed/ds_z3_accelerate.json
 include_mfu: true
 
 ### dataset

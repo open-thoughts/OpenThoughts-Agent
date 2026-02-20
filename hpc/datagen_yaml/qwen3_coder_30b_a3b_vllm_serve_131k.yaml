@@ -7,9 +7,6 @@ engine:
 backend:
   type: ray
   wait_for_endpoint: true
-  tensor_parallel_size: 8
-  pipeline_parallel_size: 1
-  data_parallel_size: 1
 vllm_server:
   model_path: Qwen/Qwen3-Coder-30B-A3B-Instruct
   num_replicas: 1
@@ -24,7 +21,7 @@ vllm_server:
   enable_expert_parallel: false
   trust_remote_code: true
   enable_auto_tool_choice: true
-  tool_call_parser: qwen3_xml
+  tool_call_parser: qwen3_coder
   reasoning_parser: qwen3
   extra_args:
   - --dtype

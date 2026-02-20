@@ -294,6 +294,41 @@ def build_endpoint_meta(endpoint_url: str) -> Dict[str, str]:
     }
 
 
+def derive_vllm_supports_tool_calling(vllm_cfg: Any) -> Optional[bool]:
+    """Determine if vLLM tool calling is enabled based on config.
+
+    Returns:
+        True if tool_call_parser is set, False if explicitly absent, None if unknown.
+    """
+    if vllm_cfg is None:
+        return None
+
+    tool_call_parser = None
+
+    if hasattr(vllm_cfg, "tool_call_parser"):
+        tool_call_parser = getattr(vllm_cfg, "tool_call_parser", None)
+    elif isinstance(vllm_cfg, dict):
+        tool_call_parser = vllm_cfg.get("tool_call_parser")
+
+    if tool_call_parser:
+        return True
+
+    extra_args = None
+    if hasattr(vllm_cfg, "extra_args"):
+        extra_args = getattr(vllm_cfg, "extra_args", None)
+    elif isinstance(vllm_cfg, dict):
+        extra_args = vllm_cfg.get("extra_args")
+
+    if isinstance(extra_args, dict):
+        if extra_args.get("tool_call_parser") or extra_args.get("tool-call-parser"):
+            return True
+    elif isinstance(extra_args, (list, tuple)):
+        for entry in extra_args:
+            if isinstance(entry, str) and "tool_call_parser" in entry:
+                return True
+
+    return False
+
 def load_endpoint_metadata(endpoint_json: Path) -> Dict[str, Any]:
     """Load and parse vLLM endpoint metadata from JSON file.
 

@@ -10,9 +10,6 @@ engine:
 backend:
   type: ray
   wait_for_endpoint: true
-  tensor_parallel_size: 8
-  pipeline_parallel_size: 1
-  data_parallel_size: 1
   ray_cgraph_max_inflight_executions: 16
   healthcheck_max_attempts: 200
   healthcheck_retry_delay: 30

@@ -714,6 +714,20 @@ class RLArgs:
             "Default: dcagent-rl"
         }
     )
+    hf_hub_repo_id: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "HuggingFace Hub repo ID for checkpoint uploads (e.g., 'org/model-name'). "
+            "If set, HF-format checkpoints will be uploaded at hf_save_interval steps."
+        }
+    )
+    hf_hub_private: bool = field(
+        default=False,
+        metadata={
+            "help": "Create the HuggingFace Hub repo as private",
+            "store_true": True,
+        }
+    )
 
 
 def _option_strings(field_name: str) -> list[str]:
@@ -878,6 +892,12 @@ def parse_args():
     _add_dataclass_arguments(train_group, LlamaFactoryArgs, bool_fields=bool_keys)
 
     args = parser.parse_args()
+
+    # --model is an alias for --trace_model (eval/datagen) but also doubles as
+    # shorthand for --model_name_or_path (SFT) when the latter is unset.
+    if getattr(args, "trace_model", None) and not getattr(args, "model_name_or_path", None):
+        args.model_name_or_path = args.trace_model
+
     args_dict = {k: v for k, v in vars(args).items() if v is not None}
     args_dict["_explicit_cli_keys"] = explicit_cli_keys
     literal_none_keys = {"datagen_engine", "trace_engine", "datagen_backend", "trace_backend"}

@@ -7,8 +7,6 @@ engine:
 backend:
   type: ray
   wait_for_endpoint: true
-  tensor_parallel_size: 8
-  pipeline_parallel_size: 1
   healthcheck_max_attempts: 160
   healthcheck_retry_delay: 15
 vllm_server:

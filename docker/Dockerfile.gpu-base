@@ -10,7 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     python3-venv \
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
+
+# Note: We install docker.io for CLI only (not running daemon).
+# This enables Harbor's Docker backend via host socket passthrough.
 
 RUN pip3 install --upgrade pip uv && \
     uv venv --python 3.12 /opt/openthoughts/.venv
@@ -37,6 +41,7 @@ COPY LICENSE.txt ./
 COPY docker ./docker
 
 ENV UV_HTTP_TIMEOUT=300
+ENV UV_RETRIES=5
 RUN . /opt/openthoughts/.venv/bin/activate && uv pip install -e ".[datagen,cloud,harbor-all]"
 RUN echo "ulimit -n 65535" >> /etc/profile.d/openthoughts-ulimit.sh
 

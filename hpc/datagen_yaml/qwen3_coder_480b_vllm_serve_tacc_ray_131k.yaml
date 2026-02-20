@@ -7,8 +7,6 @@ engine:
 backend:
   type: ray
   wait_for_endpoint: true
-  tensor_parallel_size: 1
-  pipeline_parallel_size: 16
   ray_cgraph_max_inflight_executions: 14
   healthcheck_max_attempts: 120
   healthcheck_retry_delay: 15
@@ -25,7 +23,7 @@ vllm_server:
   enable_expert_parallel: true
   trust_remote_code: true
   enable_auto_tool_choice: true
-  tool_call_parser: qwen3_xml
+  tool_call_parser: qwen3_coder
   reasoning_parser: qwen3
   extra_args:
   - --dtype

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """
 Generate tasks from Dockerfiles in The Stack.
-The Dockerfile becomes the verifier ENVIRONMENT, and LLM generates a task + tests
-that make sense for that environment.
+
+The original Dockerfiles from The Stack are used as INSPIRATION to understand
+what development environment is needed. An LLM then generates a fresh, minimal,
+buildable Dockerfile using modern base images, along with a task and tests.
 """
 
+import argparse
 import itertools
 import json
 import os
@@ -32,6 +35,33 @@ MODEL = "gpt-5-nano-2025-08-07"
 # LLM Prompts
 # =============================================================================
 
+DOCKERFILE_REWRITE_PROMPT = """You are a Docker expert. Given this old Dockerfile from a public repository, write a NEW minimal Dockerfile that sets up a similar development environment using modern, currently-available base images and packages.
+
+Original Dockerfile (for inspiration only -- do NOT copy it verbatim):
+{{text}}
+
+STRICT requirements for your new Dockerfile:
+1. Use EXACTLY ONE of these base images (pick the most appropriate):
+   - python:3.12-slim  (for Python projects)
+   - node:20-slim  (for Node.js/JavaScript projects)
+   - golang:1.22  (for Go projects)
+   - ruby:3.3-slim  (for Ruby projects)
+   - rust:1.77  (for Rust projects)
+   - ubuntu:22.04  (for C/C++, Java, multi-language, or general projects)
+   - debian:bookworm-slim  (for lightweight general projects)
+2. For apt-get packages, ONLY use packages that exist in the default Ubuntu/Debian repos. Do NOT use packages that require adding PPAs or external repos. Safe packages include: build-essential, git, curl, wget, ca-certificates, python3, python3-pip, python3-venv, nodejs, npm, default-jdk, maven, gradle, gcc, g++, make, cmake, pkg-config, vim, nano, jq, zip, unzip, ffmpeg, sqlite3, libsqlite3-dev, postgresql-client, redis-tools, nginx, openssh-client.
+   AVOID these packages (they are NOT in default repos): kubectl, terraform, jsonnet, chromaprint, helm, docker, docker-compose, ansible, awscli, gcloud.
+3. For pip packages, use: pip install --no-cache-dir --break-system-packages <packages>
+4. Do NOT clone git repos, download from URLs, or use wget/curl to fetch binaries
+5. Do NOT use COPY or ADD instructions
+6. Do NOT use third-party mirrors, PPAs, or custom package repos
+7. Do NOT use multi-stage builds (no "FROM ... as ...")
+8. Set WORKDIR to /app
+9. Keep it VERY minimal -- only install 3-6 packages beyond the base image
+10. End with CMD ["bash"]
+
+Output ONLY the Dockerfile content (no markdown fences, no explanation):"""
+
 DOCKERFILE_INSTRUCTION_PROMPT = """You are an expert at creating coding tasks.
 
 Given the following Dockerfile that sets up a development environment, create a coding task that an AI agent could complete IN this environment. The task should:
@@ -43,7 +73,7 @@ Given the following Dockerfile that sets up a development environment, create a 
 The agent's solution should be placed in /app/ directory.
 
 Dockerfile (this is the environment the task will run in):
-{{text}}
+{{rewritten_dockerfile}}
 
 Create a task description that makes sense for this environment (just the task, no preamble):"""
 
@@ -62,7 +92,7 @@ Task description:
 {{task_description}}
 
 Dockerfile environment:
-{{text}}
+{{rewritten_dockerfile}}
 
 Output only the shell script code (no markdown fences):"""
 
@@ -149,7 +179,12 @@ def extract_environment_info(content: str) -> Dict:
 
 
 def is_valid_dockerfile(content: str) -> bool:
-    """Check if content is a valid Dockerfile for task generation."""
+    """Check if content is a valid Dockerfile suitable for environment inspiration.
+
+    We filter aggressively since the original Dockerfile is only used as
+    inspiration -- the LLM will rewrite it. We want Dockerfiles that clearly
+    describe a useful development environment.
+    """
     # Must have FROM instruction
     if not re.search(r'^FROM\s+', content, re.MULTILINE | re.IGNORECASE):
         return False
@@ -166,11 +201,61 @@ def is_valid_dockerfile(content: str) -> bool:
         return False
 
     # Reject Dockerfiles with COPY or ADD that reference external files
-    # (these can't build without the referenced files)
     if re.search(r'^COPY\s+(?!--from)', content, re.MULTILINE | re.IGNORECASE):
         return False
     if re.search(r'^ADD\s+', content, re.MULTILINE | re.IGNORECASE):
         return False
+
+    # ---- Additional filters to reject problematic Dockerfiles ----
+
+    # Reject ARM / non-amd64 base images (balenalib, arm32v7, arm64v8, etc.)
+    base_match = re.search(r'^FROM\s+(\S+)', content, re.MULTILINE | re.IGNORECASE)
+    if base_match:
+        base_image = base_match.group(1).lower()
+        arm_patterns = [
+            'balenalib/', 'arm32v7/', 'arm64v8/', 'armhf',
+            'aarch64', 'ppc64le', 's390x', 'mips',
+            'orange-pi', 'beaglebone', 'raspberry',
+        ]
+        if any(p in base_image for p in arm_patterns):
+            return False
+
+        # Reject EOL distros
+        eol_patterns = [
+            'centos:5', 'centos:6', 'centos:7', 'centos:8',
+            'ubuntu:14', 'ubuntu:16', 'ubuntu:18',
+            'ubuntu:cosmic', 'ubuntu:disco', 'ubuntu:eoan',
+            'ubuntu:hirsute', 'ubuntu:impish',
+            'debian:jessie', 'debian:stretch', 'debian:wheezy',
+            'fedora:2', 'fedora:3',  # fedora 20-39 — too old
+            'alpine:3.1', 'alpine:3.2', 'alpine:3.3', 'alpine:3.4',
+            'alpine:3.5', 'alpine:3.6', 'alpine:3.7', 'alpine:3.8',
+            'alpine:3.9',
+        ]
+        if any(base_image.startswith(p) or f'/{p}' in base_image for p in eol_patterns):
+            return False
+
+    # Reject third-party mirrors (Chinese mirrors, custom S3 buckets, etc.)
+    mirror_patterns = [
+        'mirrors.tuna.tsinghua.edu.cn', 'mirrors.aliyun.com',
+        'mirrors.ustc.edu.cn', 'registry.npmmirror.com',
+        'resin-packages.s3.amazonaws.com',
+    ]
+    content_lower = content.lower()
+    if any(m in content_lower for m in mirror_patterns):
+        return False
+
+    # Reject very old language versions in the base image tag
+    old_lang_patterns = [
+        r'golang:1\.[0-9]\b', r'golang:1\.1[0-7]\b',  # Go < 1.18
+        r'node:(?:[0-9]|1[0-5])-',  # Node < 16
+        r'python:2\.', r'python:3\.[0-6][^0-9]',  # Python < 3.7
+        r'ruby:2\.[0-5]',  # Ruby < 2.6
+    ]
+    if base_match:
+        for pat in old_lang_patterns:
+            if re.search(pat, base_match.group(1), re.IGNORECASE):
+                return False
 
     return True
 
@@ -225,6 +310,65 @@ def filter_dockerfiles_from_stack(limit: int, max_scan: int = 500_000, min_compl
 # =============================================================================
 
 
+def sanitize_rewritten_dockerfile(dockerfile: str) -> str:
+    """Post-process LLM-generated Dockerfile to fix common issues."""
+    lines = dockerfile.strip().splitlines()
+    cleaned = []
+    for line in lines:
+        # Strip markdown fences the LLM might include
+        stripped = line.strip()
+        if stripped in ('```dockerfile', '```Dockerfile', '```', '```docker'):
+            continue
+        cleaned.append(line)
+
+    result = '\n'.join(cleaned).strip()
+
+    # Ensure it starts with FROM
+    if not re.search(r'^FROM\s+', result, re.MULTILINE | re.IGNORECASE):
+        return ""
+
+    # Reject multi-stage builds (multiple FROM lines) -- they use COPY --from which we banned
+    from_count = len(re.findall(r'^FROM\s+', result, re.MULTILINE | re.IGNORECASE))
+    if from_count > 1:
+        return ""
+
+    # Reject if it uses COPY or ADD
+    if re.search(r'^COPY\s+', result, re.MULTILINE | re.IGNORECASE):
+        return ""
+    if re.search(r'^ADD\s+', result, re.MULTILINE | re.IGNORECASE):
+        return ""
+
+    # Reject if it clones git repos or downloads from URLs
+    if re.search(r'git\s+clone', result, re.IGNORECASE):
+        return ""
+    if re.search(r'(curl|wget)\s+.*http', result, re.IGNORECASE):
+        return ""
+
+    # Reject known-bad packages that aren't in default repos
+    bad_packages = ['kubectl', 'terraform', 'jsonnet', 'chromaprint', 'helm',
+                    'docker-ce', 'docker-compose', 'ansible']
+    result_lower = result.lower()
+    for pkg in bad_packages:
+        if pkg in result_lower:
+            return ""
+
+    # Fix common pip issue: add --break-system-packages if missing
+    if 'pip install' in result and '--break-system-packages' not in result:
+        result = result.replace('pip install', 'pip install --break-system-packages')
+    if 'pip3 install' in result and '--break-system-packages' not in result:
+        result = result.replace('pip3 install', 'pip3 install --break-system-packages')
+
+    # Ensure WORKDIR /app exists
+    if not re.search(r'WORKDIR\s+/app', result, re.IGNORECASE):
+        result += '\nWORKDIR /app'
+
+    # Ensure CMD ["bash"] at the end
+    if not re.search(r'CMD\s+\[?"bash', result, re.IGNORECASE):
+        result += '\nCMD ["bash"]'
+
+    return result
+
+
 def create_harbor_task_directory(
     output_dir: Path,
     task_id: int,
@@ -238,7 +382,7 @@ def create_harbor_task_directory(
     task_dir = output_dir / f"{dataset_prefix}-{task_id:04d}"
     task_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create environment directory - USE THE ORIGINAL DOCKERFILE as the environment
+    # Create environment directory with the REWRITTEN Dockerfile
     env_dir = task_dir / "environment"
     env_dir.mkdir(exist_ok=True)
     (env_dir / "Dockerfile").write_text(dockerfile_content, encoding="utf-8")
@@ -271,16 +415,17 @@ def create_harbor_task_directory(
 
 def generate_dockerfile_tasks(
     samples: List[Dict],
+    rewritten_dockerfiles: List[str],
     instructions: List[str],
     tests: List[str],
     dataset_prefix: str = "stack-dockerfile",
 ) -> str:
-    """Generate harbor-format task directories."""
+    """Generate harbor-format task directories using rewritten Dockerfiles."""
     temp_dir = Path(tempfile.mkdtemp(prefix=f"{dataset_prefix}_tasks_"))
     print(f"Generating harbor tasks in: {temp_dir}")
 
-    for i, (sample, instruction, test_code) in enumerate(tqdm(
-        zip(samples, instructions, tests),
+    for i, (sample, dockerfile, instruction, test_code) in enumerate(tqdm(
+        zip(samples, rewritten_dockerfiles, instructions, tests),
         total=len(samples),
         desc="Creating task directories"
     )):
@@ -296,7 +441,7 @@ def generate_dockerfile_tasks(
             output_dir=temp_dir,
             task_id=i,
             instruction_content=instruction,
-            dockerfile_content=sample["text"],
+            dockerfile_content=dockerfile,
             test_code=test_code,
             dataset_prefix=dataset_prefix,
             metadata=metadata,
@@ -313,22 +458,58 @@ def generate_dockerfile_tasks(
 
 def main() -> None:
     """Main pipeline for generating Dockerfile-environment tasks."""
+    parser = argparse.ArgumentParser(description="Generate dockerfile tasks from The Stack")
+    parser.add_argument("--limit", type=int, default=LIMIT, help="Number of tasks to generate")
+    args = parser.parse_args()
+    limit = args.limit
 
     # Step 1: Filter Dockerfiles from The Stack
     print("Step 1: Filtering Dockerfiles from The Stack...")
-    dockerfile_samples = filter_dockerfiles_from_stack(LIMIT, min_complexity=3)
+    dockerfile_samples = filter_dockerfiles_from_stack(limit, min_complexity=3)
     print(f"  -> {len(dockerfile_samples)} Dockerfiles found")
 
     if not dockerfile_samples:
         print("\nNo Dockerfile samples found. Exiting.")
         return
 
-    # Step 2: Generate task instructions via LLM
-    print("\nStep 2: Generating task instructions...")
+    # Step 2: Rewrite Dockerfiles into fresh, buildable versions via LLM
+    print("\nStep 2: Rewriting Dockerfiles with modern base images...")
     dataset = Dataset.from_list(dockerfile_samples)
 
-    instruction_result = run_completions(
+    rewrite_result = run_completions(
         dataset,
+        model=MODEL,
+        map_type="chat",
+        map_config={
+            "user_message": DOCKERFILE_REWRITE_PROMPT,
+            "output_column": "rewritten_dockerfile"
+        },
+        max_requests_per_minute=500,
+        max_tokens_per_minute=1_000_000,
+    )
+    rewrite_dataset = rewrite_result.dataset
+
+    # Sanitize the rewritten Dockerfiles
+    rewritten_raw = rewrite_dataset["rewritten_dockerfile"]
+    rewritten_clean = [sanitize_rewritten_dockerfile(d) for d in rewritten_raw]
+
+    # Filter out empty/invalid rewrites
+    valid_indices = [i for i, d in enumerate(rewritten_clean) if d.strip()]
+    if len(valid_indices) < len(rewritten_clean):
+        print(f"  -> Filtered out {len(rewritten_clean) - len(valid_indices)} invalid rewrites")
+
+    # Rebuild dataset with only valid entries
+    valid_samples = [dockerfile_samples[i] for i in valid_indices]
+    valid_dockerfiles = [rewritten_clean[i] for i in valid_indices]
+    valid_records = [dict(rewrite_dataset[i]) for i in valid_indices]
+    rewrite_dataset = Dataset.from_list(valid_records)
+
+    print(f"  -> Rewrote {len(valid_dockerfiles)} Dockerfiles successfully")
+
+    # Step 3: Generate task instructions via LLM
+    print("\nStep 3: Generating task instructions...")
+    instruction_result = run_completions(
+        rewrite_dataset,
         model=MODEL,
         map_type="chat",
         map_config={
@@ -341,8 +522,8 @@ def main() -> None:
     instruction_dataset = instruction_result.dataset
     print(f"  -> Generated {len(instruction_dataset)} task descriptions")
 
-    # Step 3: Generate test.sh via LLM
-    print("\nStep 3: Generating test scripts...")
+    # Step 4: Generate test.sh via LLM
+    print("\nStep 4: Generating test scripts...")
     test_result = run_completions(
         instruction_dataset,
         model=MODEL,
@@ -360,20 +541,20 @@ def main() -> None:
     tests = final_dataset["test_code"]
     print(f"  -> Generated {len(tests)} test files")
 
-    # Step 4: Generate harbor task directories
-    print("\nStep 4: Generating harbor task directories...")
+    # Step 5: Generate harbor task directories
+    print("\nStep 5: Generating harbor task directories...")
     task_dir = generate_dockerfile_tasks(
-        dockerfile_samples, instructions, tests, "stack-dockerfile"
+        valid_samples, valid_dockerfiles, instructions, tests, "stack-dockerfile"
     )
     print(f"  -> Task directory: {task_dir}")
 
-    # Step 5: Upload to HuggingFace
-    print("\nStep 5: Uploading to HuggingFace...")
+    # Step 6: Upload to HuggingFace
+    print("\nStep 6: Uploading to HuggingFace...")
     repo_url = upload_tasks_to_hf(task_dir, "DCAgent/exp_rpt_stack-dockerfile")
     print(f"  -> Repository: {repo_url}")
 
     print(f"\n{'='*60}")
-    print(f"Successfully generated and uploaded {len(dockerfile_samples)} tasks!")
+    print(f"Successfully generated and uploaded {len(valid_samples)} tasks!")
     print(f"Output directory: {task_dir}")
     print(f"Repository: {repo_url}")
     print(f"{'='*60}")

@@ -39,10 +39,10 @@ CODEELO_DOCKERFILE = """FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install multiple language runtimes for competitive programming
+# Install C++ compiler and build tools
 RUN apt-get update && apt-get install -y \\
+    build-essential \\
     g++ \\
-    openjdk-17-jdk \\
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python packages for competitive programming
@@ -161,7 +161,7 @@ def load_codeelo(limit: int = LIMIT) -> List[Dict]:
     if ds is None:
         # Fallback: try loading CodeForces problems from another source
         try:
-            ds = load_dataset("deepmind/code_contests", split="test", streaming=True)
+            ds = load_dataset("deepmind/code_contests", split="train", streaming=True)
             print("Loaded from deepmind/code_contests as fallback")
         except Exception as e:
             print(f"Could not load fallback dataset: {e}")

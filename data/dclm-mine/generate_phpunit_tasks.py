@@ -3,6 +3,7 @@
 Generate PHPUnit tasks from The Stack - filters for PHP test files.
 """
 
+import argparse
 import itertools
 import json
 import os
@@ -105,19 +106,21 @@ def filter_phpunit_from_stack(limit: int, max_scan: int = 5_000_000) -> List[Dic
 
 def create_php_dockerfile() -> str:
     """Create PHP Dockerfile for test environment."""
-    return r"""FROM php:8.2-cli
+    return r"""FROM composer:2 AS composer_stage
+
+FROM php:8.2-cli
 
 WORKDIR /app
+
+# Copy Composer binary from the official composer image (avoids slow download)
+COPY --from=composer_stage /usr/bin/composer /usr/local/bin/composer
 
 # Install required tools including bash for Harbor agent
 RUN apt-get update && apt-get install -y unzip git bash && rm -rf /var/lib/apt/lists/*
 
-# Install Composer
-RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
-
-# Install PHPUnit globally
-RUN composer global require phpunit/phpunit
-ENV PATH="${PATH}:/root/.composer/vendor/bin"
+# Install PHPUnit via direct PHAR download (much faster than composer global require)
+RUN curl -sSL https://phar.phpunit.de/phpunit-10.phar -o /usr/local/bin/phpunit \
+    && chmod +x /usr/local/bin/phpunit
 
 # Create autoload file for test classes using heredoc to avoid escaping issues
 RUN cat > /app/autoload.php << 'AUTOLOAD'
@@ -226,8 +229,15 @@ def generate_php_tasks(samples: List[Dict], task_descriptions: List[str], datase
 
 def main() -> None:
     """Main pipeline."""
+    parser = argparse.ArgumentParser(description="Generate PHPUnit tasks from The Stack")
+    parser.add_argument("--limit", type=int, default=LIMIT, help=f"Number of tasks to generate (default: {LIMIT})")
+    args = parser.parse_args()
+    limit = args.limit
+
+    skip_upload = os.environ.get("SKIP_HF_UPLOAD", "").strip() == "1"
+
     print("Step 1: Filtering PHPUnit files from The Stack...")
-    php_samples = filter_phpunit_from_stack(LIMIT)
+    php_samples = filter_phpunit_from_stack(limit)
     print(f"  -> {len(php_samples)} PHPUnit files found")
 
     if not php_samples:
@@ -248,12 +258,16 @@ def main() -> None:
     print("\nStep 3: Generating harbor task directories...")
     task_dir = generate_php_tasks(php_samples, task_descriptions, "stack-php")
 
-    print("\nStep 4: Uploading to HuggingFace...")
-    repo_url = upload_tasks_to_hf(task_dir, "DCAgent/exp_rpt_stack-php")
-    print(f"  -> Repository: {repo_url}")
+    if skip_upload:
+        print("\nStep 4: Skipping HuggingFace upload (SKIP_HF_UPLOAD=1)")
+    else:
+        print("\nStep 4: Uploading to HuggingFace...")
+        repo_url = upload_tasks_to_hf(task_dir, "DCAgent/exp_rpt_stack-php")
+        print(f"  -> Repository: {repo_url}")
 
     print(f"\n{'='*60}")
     print(f"Successfully generated {len(php_samples)} PHP tasks!")
+    print(f"Task directory: {task_dir}")
     print(f"{'='*60}")
 
 

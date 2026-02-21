@@ -47,6 +47,58 @@ from data.commons import (
 LIMIT = 1000
 MODEL = "gpt-4o-mini"
 
+# =============================================================================
+# Prompts
+# =============================================================================
+
+# Prompt to generate executable test code from a GitHub Actions workflow YAML.
+# Used in skip-clone mode where we only have the workflow file, not actual source.
+WORKFLOW_TO_TEST_CODE_PROMPT = """You are an expert at writing test code. Given a GitHub Actions CI workflow YAML file, generate a **self-contained test file** that validates the project described by the workflow.
+
+Analyze the workflow to understand:
+- What language/framework the project uses
+- What the project does (from job names, step names, scripts)
+- What dependencies are involved
+
+Then write a test file in the **detected language** that:
+1. Tests the core functionality implied by the workflow
+2. Uses the standard test framework for that language (pytest for Python, Jest for JavaScript, go test for Go, JUnit for Java)
+3. Imports from `/app/` where the agent will place their solution
+4. Is fully self-contained (no external fixtures or data files)
+5. Has at least 3 meaningful test cases
+
+IMPORTANT for Python tests:
+- Start with: import sys; sys.path.insert(0, '/app')
+- Use pytest style (def test_xxx)
+
+IMPORTANT for JavaScript tests:
+- Use require() NOT import (no ES6 modules)
+- Use: const {{ ... }} = require('/app/solution') or similar
+- Use describe/it/expect from Jest
+
+Return ONLY the test code, no markdown fences, no explanation.
+
+Workflow YAML:
+{{text}}
+
+Test code:"""
+
+# Prompt to generate task instructions from workflow YAML (not raw test code).
+WORKFLOW_TO_INSTRUCTION_PROMPT = """You are an expert at creating coding tasks from CI/CD workflow configurations.
+
+Given the following GitHub Actions workflow YAML, create a clear, specific task description that an AI agent could complete. Analyze the workflow to understand what the project does, then describe what needs to be built.
+
+The task should:
+1. Describe what functionality needs to be implemented based on what the CI workflow tests/builds
+2. Include specific requirements inferred from the workflow steps (language, framework, dependencies)
+3. Be self-contained and actionable
+4. The solution should be placed in /app/
+
+Workflow YAML:
+{{text}}
+
+Create a task description (just the task, no preamble):"""
+
 # Patterns that indicate test workflows
 TEST_PATTERNS = [
     r"pytest", r"npm test", r"yarn test", r"go test",
@@ -325,6 +377,65 @@ def process_workflows_for_tasks(samples: List[Dict], max_per_repo: int = 3) -> L
     return task_samples
 
 
+def _create_jest_test_sh() -> str:
+    """Create a test.sh for Jest that correctly copies test files into /app/tests/
+    so Jest's testMatch patterns can discover them."""
+    return '''#!/bin/bash
+set -e
+
+mkdir -p /logs/verifier
+
+cleanup() {
+    if [ $? -eq 0 ]; then
+        echo "1" > /logs/verifier/reward.txt
+    else
+        echo "0" > /logs/verifier/reward.txt
+    fi
+}
+trap cleanup EXIT
+
+cd /app
+
+# Create jest.config.js at runtime to ensure correct paths
+cat > /app/jest.config.js << 'EOF'
+module.exports = {
+  testEnvironment: "node",
+  rootDir: "/app",
+  testMatch: ["**/tests/**/*.js", "**/*.test.js"],
+  moduleDirectories: ["node_modules", "/usr/local/lib/node_modules", "/app", "/app/lib"]
+};
+EOF
+
+# Install dependencies if package.json exists and has dependencies
+if [ -f package.json ] && grep -q '"dependencies"' package.json 2>/dev/null; then
+    npm install --silent 2>/dev/null || true
+fi
+
+# Auto-detect and install missing npm modules from test file
+echo "Checking for missing dependencies..."
+REQUIRES=$(grep -oP "require\\(['\"]\\K[^'\"@./][^'\"]*" /tests/test_solution.js 2>/dev/null | sort -u || true)
+for pkg in $REQUIRES; do
+    # Skip Node.js built-in modules
+    case "$pkg" in
+        fs|path|util|crypto|http|https|url|querystring|os|child_process|stream|events|buffer|string_decoder|timers|net|assert|module|vm|tty|readline|cluster|dns|dgram|zlib|tls) continue ;;
+    esac
+    if ! node -e "require('$pkg')" 2>/dev/null; then
+        echo "Installing $pkg..."
+        npm install --silent "$pkg" 2>/dev/null || true
+    fi
+done
+
+# Copy test file into /app/tests/ so Jest testMatch can find it
+mkdir -p /app/tests
+cp /tests/test_solution.js /app/tests/
+
+echo "Running tests..."
+timeout 300 npx jest /app/tests/test_solution.js --config /app/jest.config.js --no-coverage 2>&1 | tee /logs/verifier/test_output.txt
+
+exit ${PIPESTATUS[0]}
+'''
+
+
 def create_harbor_task(
     output_dir: Path,
     task_id: int,
@@ -337,7 +448,7 @@ def create_harbor_task(
 
     lang_config = {
         "python": ("python", create_pytest_test_sh("/tests/test_solution.py"), "test_solution.py"),
-        "javascript": ("node", create_generic_test_sh("npx jest /tests/test_solution.js"), "test_solution.js"),
+        "javascript": ("node", _create_jest_test_sh(), "test_solution.js"),
         "go": ("go", create_generic_test_sh("go test -v /tests/..."), "solution_test.go"),
         "java": ("java", create_generic_test_sh("mvn test -q"), "TestSolution.java"),
         "rust": ("rust", create_generic_test_sh("cargo test"), "tests.rs"),
@@ -410,12 +521,39 @@ def main(limit: int = LIMIT, skip_clone: bool = False, local_data_dir: Path = No
     if not skip_clone:
         print("\nStep 2: Extracting test files from repositories...")
         task_samples = process_workflows_for_tasks(samples)
+
+        if not task_samples:
+            print("\nNo task samples extracted. Exiting.")
+            return
+
+        print(f"  -> {len(task_samples)} test files extracted")
+
+        # In clone mode, the "text" field already contains real test code.
+        # Generate instructions from that test code.
+        print("\nStep 3: Generating task descriptions...")
+        dataset = Dataset.from_list(task_samples)
+        result = run_completions(
+            dataset,
+            model=MODEL,
+            map_type="chat",
+            map_config={
+                "user_message": TEST_TO_INSTRUCTION_PROMPT,
+                "output_column": "task_description"
+            },
+            max_requests_per_minute=500,
+            max_tokens_per_minute=1_000_000,
+        )
+        instructions = result.dataset["task_description"]
+        print(f"  -> Generated {len(instructions)} task descriptions")
     else:
-        # When skipping clone, map workflow content to the expected format
-        print("\nStep 2: Using workflow content directly (skip-clone mode)...")
-        task_samples = []
+        # In skip-clone mode, we only have workflow YAML -- NOT actual test code.
+        # We need TWO LLM passes:
+        #   (a) Generate executable test code from the workflow YAML.
+        #   (b) Generate task instructions from the workflow YAML.
+        print("\nStep 2: Generating test code from workflow YAML (skip-clone mode)...")
+        workflow_samples = []
         for sample in samples:
-            task_samples.append({
+            workflow_samples.append({
                 "text": sample.get("workflow_content", ""),
                 "filename": sample.get("workflow_path", "workflow.yml"),
                 "language": sample.get("language", "python"),
@@ -424,34 +562,76 @@ def main(limit: int = LIMIT, skip_clone: bool = False, local_data_dir: Path = No
                 "test_command": sample.get("test_command", ""),
             })
 
-    if not task_samples:
-        print("\nNo task samples extracted. Exiting.")
-        return
+        dataset = Dataset.from_list(workflow_samples)
 
-    print(f"  -> {len(task_samples)} test files extracted")
+        # (a) Generate real test code from workflow YAML
+        print("  Generating test code from workflows...")
+        test_result = run_completions(
+            dataset,
+            model=MODEL,
+            map_type="chat",
+            map_config={
+                "user_message": WORKFLOW_TO_TEST_CODE_PROMPT,
+                "output_column": "generated_test_code"
+            },
+            max_requests_per_minute=500,
+            max_tokens_per_minute=1_000_000,
+        )
+        # Extract generated test code from result (handle different column names)
+        test_ds = test_result.dataset if hasattr(test_result, 'dataset') else test_result
+        test_col = "generated_test_code"
+        if test_col not in test_ds.column_names:
+            # Curator may use a different column name; find the new one
+            new_cols = [c for c in test_ds.column_names if c not in dataset.column_names]
+            if new_cols:
+                test_col = new_cols[0]
+                print(f"  (Note: output column was '{test_col}' instead of 'generated_test_code')")
+            else:
+                raise ValueError(f"No new columns found in result. Columns: {test_ds.column_names}")
+        generated_tests = test_ds[test_col]
+        print(f"  -> Generated {len(generated_tests)} test files")
 
-    print("\nStep 3: Generating task descriptions...")
-    dataset = Dataset.from_list(task_samples)
+        # (b) Generate task instructions from workflow YAML
+        print("  Generating task descriptions from workflows...")
+        instr_result = run_completions(
+            dataset,
+            model=MODEL,
+            map_type="chat",
+            map_config={
+                "user_message": WORKFLOW_TO_INSTRUCTION_PROMPT,
+                "output_column": "task_description"
+            },
+            max_requests_per_minute=500,
+            max_tokens_per_minute=1_000_000,
+        )
+        instr_ds = instr_result.dataset if hasattr(instr_result, 'dataset') else instr_result
+        instr_col = "task_description"
+        if instr_col not in instr_ds.column_names:
+            new_cols = [c for c in instr_ds.column_names if c not in dataset.column_names]
+            if new_cols:
+                instr_col = new_cols[0]
+        instructions = instr_ds[instr_col]
+        print(f"  -> Generated {len(instructions)} task descriptions")
 
-    result = run_completions(
-        dataset,
-        model=MODEL,
-        map_type="chat",
-        map_config={
-            "user_message": TEST_TO_INSTRUCTION_PROMPT,
-            "output_column": "task_description"
-        },
-        max_requests_per_minute=500,
-        max_tokens_per_minute=1_000_000,
-    )
-    instructions = result.dataset["task_description"]
-    print(f"  -> Generated {len(instructions)} task descriptions")
+        # Build task_samples with the LLM-generated test code (not the YAML)
+        task_samples = []
+        for ws, test_code in zip(workflow_samples, generated_tests):
+            # Strip markdown fences if the LLM wrapped the code in them
+            cleaned = _strip_markdown_fences(test_code)
+            task_samples.append({
+                "text": cleaned,
+                "filename": ws["filename"],
+                "language": ws["language"],
+                "repo": ws["repo"],
+                "repo_url": ws["repo_url"],
+                "test_command": ws["test_command"],
+            })
 
-    print("\nStep 4: Generating harbor task directories...")
+    print(f"\nStep {'3' if skip_clone else '4'}: Generating harbor task directories...")
     task_dir = generate_tasks(task_samples, instructions, "ghactions")
     print(f"  -> Task directory: {task_dir}")
 
-    print("\nStep 5: Uploading to HuggingFace...")
+    print(f"\nStep {'4' if skip_clone else '5'}: Uploading to HuggingFace...")
     repo_url = upload_tasks_to_hf(task_dir, "DCAgent/exp_rpt_ghactions")
     print(f"  -> Repository: {repo_url}")
 
@@ -460,6 +640,21 @@ def main(limit: int = LIMIT, skip_clone: bool = False, local_data_dir: Path = No
     print(f"Output directory: {task_dir}")
     print(f"Repository: {repo_url}")
     print(f"{'='*60}")
+
+
+def _strip_markdown_fences(code: str) -> str:
+    """Remove markdown code fences (```python ... ```) if present."""
+    code = code.strip()
+    # Match opening fence with optional language tag
+    if code.startswith("```"):
+        # Remove first line (```python, ```javascript, ```, etc.)
+        first_newline = code.find("\n")
+        if first_newline != -1:
+            code = code[first_newline + 1:]
+    # Remove closing fence
+    if code.endswith("```"):
+        code = code[:-3].rstrip()
+    return code
 
 
 if __name__ == "__main__":

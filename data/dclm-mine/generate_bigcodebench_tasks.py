@@ -89,6 +89,43 @@ def get_dockerfile_for_libs(libs: List[str]) -> str:
         "sklearn": "scikit-learn",
     }
 
+    # Python standard library modules - never pip install these
+    stdlib_modules = {
+        "abc", "aifc", "argparse", "array", "ast", "asynchat", "asyncio",
+        "asyncore", "atexit", "audioop", "base64", "bdb", "binascii",
+        "binhex", "bisect", "builtins", "bz2", "calendar", "cgi", "cgitb",
+        "chunk", "cmath", "cmd", "code", "codecs", "codeop", "collections",
+        "colorsys", "compileall", "concurrent", "configparser", "contextlib",
+        "contextvars", "copy", "copyreg", "cProfile", "crypt", "csv",
+        "ctypes", "curses", "dataclasses", "datetime", "dbm", "decimal",
+        "difflib", "dis", "distutils", "doctest", "email", "encodings",
+        "enum", "errno", "faulthandler", "fcntl", "filecmp", "fileinput",
+        "fnmatch", "formatter", "fractions", "ftplib", "functools", "gc",
+        "getopt", "getpass", "gettext", "glob", "grp", "gzip", "hashlib",
+        "heapq", "hmac", "html", "http", "idlelib", "imaplib", "imghdr",
+        "imp", "importlib", "inspect", "io", "ipaddress", "itertools",
+        "json", "keyword", "lib2to3", "linecache", "locale", "logging",
+        "lzma", "mailbox", "mailcap", "marshal", "math", "mimetypes",
+        "mmap", "modulefinder", "multiprocessing", "netrc", "nis", "nntplib",
+        "numbers", "operator", "optparse", "os", "ossaudiodev", "parser",
+        "pathlib", "pdb", "pickle", "pickletools", "pipes", "pkgutil",
+        "platform", "plistlib", "poplib", "posix", "posixpath", "pprint",
+        "profile", "pstats", "pty", "pwd", "py_compile", "pyclbr",
+        "pydoc", "queue", "quopri", "random", "re", "readline", "reprlib",
+        "resource", "rlcompleter", "runpy", "sched", "secrets", "select",
+        "selectors", "shelve", "shlex", "shutil", "signal", "site",
+        "smtpd", "smtplib", "sndhdr", "socket", "socketserver", "spwd",
+        "sqlite3", "ssl", "stat", "statistics", "string", "stringprep",
+        "struct", "subprocess", "sunau", "symtable", "sys", "sysconfig",
+        "syslog", "tabnanny", "tarfile", "telnetlib", "tempfile", "termios",
+        "test", "textwrap", "threading", "time", "timeit", "tkinter",
+        "token", "tokenize", "trace", "traceback", "tracemalloc", "tty",
+        "turtle", "turtledemo", "types", "typing", "unicodedata", "unittest",
+        "urllib", "uu", "uuid", "venv", "warnings", "wave", "weakref",
+        "webbrowser", "winreg", "winsound", "wsgiref", "xdrlib", "xml",
+        "xmlrpc", "zipapp", "zipfile", "zipimport", "zlib",
+    }
+
     # Filter out already installed base packages
     base_packages = {
         "numpy", "pandas", "scipy", "matplotlib", "seaborn",
@@ -98,10 +135,12 @@ def get_dockerfile_for_libs(libs: List[str]) -> str:
 
     additional_libs = []
     for lib in libs:
-        lib_lower = lib.lower()
-        if lib_lower not in base_packages:
-            install_name = lib_install_map.get(lib, lib)
-            additional_libs.append(install_name)
+        lib_lower = lib.lower().strip()
+        # Skip stdlib and base packages
+        if lib_lower in stdlib_modules or lib_lower in base_packages:
+            continue
+        install_name = lib_install_map.get(lib, lib)
+        additional_libs.append(install_name)
 
     if additional_libs:
         additional_installs = "RUN pip install --no-cache-dir \\\n    " + " \\\n    ".join(additional_libs)
@@ -179,7 +218,14 @@ def load_bigcodebench(split: str = "v0.1.2", limit: int = LIMIT) -> List[Dict]:
         # Parse libraries from libs field or extract from imports
         libs = sample.get("libs", [])
         if isinstance(libs, str):
-            libs = [l.strip() for l in libs.split(",") if l.strip()]
+            # libs field can be a string like "['random', 'itertools']"
+            import ast
+            try:
+                libs = ast.literal_eval(libs)
+            except (ValueError, SyntaxError):
+                libs = [l.strip().strip("'\"") for l in libs.strip("[]").split(",") if l.strip()]
+        if isinstance(libs, list):
+            libs = [l.strip().strip("'\"") for l in libs if isinstance(l, str)]
 
         samples.append({
             "task_id": task_id,

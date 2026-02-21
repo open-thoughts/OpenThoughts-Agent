@@ -8,8 +8,10 @@ E2EGit contains automated Web GUI tests from real repositories using:
 - Cypress
 - Puppeteer
 
-These are integration tests that span multiple components and require
-understanding of web frameworks and browser testing patterns.
+We extract the underlying application logic being tested (auth flows,
+form validation, CRUD operations, etc.) and generate pure Python unit
+tests with pytest -- no browser or Xvfb required.  This keeps Docker
+images small and avoids brittle browser-driver dependencies.
 """
 
 import itertools
@@ -46,58 +48,15 @@ from data.commons import (
 LIMIT = 10000
 MODEL = "gpt-4o-mini"
 
-# Dockerfile with browser testing capabilities
+# ---------------------------------------------------------------------------
+# Dockerfile -- lightweight, no browser/Xvfb dependencies.
+# We convert E2E tests to plain pytest unit tests, so only pytest + common
+# Python packages are needed.
+# ---------------------------------------------------------------------------
 E2EGIT_DOCKERFILE = """FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install system dependencies for browser testing
-RUN apt-get update && apt-get install -y \\
-    wget \\
-    gnupg \\
-    curl \\
-    unzip \\
-    xvfb \\
-    libxi6 \\
-    libgconf-2-4 \\
-    default-jdk \\
-    chromium \\
-    chromium-driver \\
-    firefox-esr \\
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Node.js for Cypress/Playwright
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \\
-    && apt-get install -y nodejs \\
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python testing packages
-RUN pip install --no-cache-dir \\
-    pytest \\
-    pytest-timeout \\
-    selenium \\
-    playwright \\
-    webdriver-manager \\
-    beautifulsoup4 \\
-    requests
-
-# Install Playwright browsers
-RUN playwright install chromium firefox
-
-# Install Node.js testing packages
-RUN npm install -g cypress puppeteer jest
-
-# Set up display for headless testing
-ENV DISPLAY=:99
-
-RUN mkdir -p /logs/verifier
-"""
-
-# Alternative lightweight Dockerfile
-E2EGIT_DOCKERFILE_LIGHT = """FROM python:3.10-slim
-
-WORKDIR /app
-
 RUN apt-get update && apt-get install -y \\
     curl \\
     && rm -rf /var/lib/apt/lists/*
@@ -105,62 +64,69 @@ RUN apt-get update && apt-get install -y \\
 RUN pip install --no-cache-dir \\
     pytest \\
     pytest-timeout \\
-    selenium \\
     beautifulsoup4 \\
-    requests
+    requests \\
+    flask
 
 RUN mkdir -p /logs/verifier
 """
+
+# ---------------------------------------------------------------------------
+# Prompt: convert original E2E (browser) test code into equivalent pytest
+# unit tests that verify the same *application logic* without needing
+# Selenium, Xvfb, Chromium, or any browser.
+# ---------------------------------------------------------------------------
+E2E_TO_UNIT_TEST_PROMPT = """You are an expert Python test engineer.
+
+You are given:
+1. Original E2E / browser-based test code (may use Selenium, Playwright,
+   Cypress, or Puppeteer).
+2. A task description that was derived from the E2E test.
+
+Your job: write a **pure Python pytest unit test file** (test_solution.py)
+that verifies the application logic described in the task WITHOUT needing
+a browser, Selenium, Xvfb, Chromium, Playwright, Cypress, or Puppeteer.
+
+Rules:
+- Only import `pytest` and standard-library modules (plus the modules the
+  agent is asked to implement in /app/).
+- Use `sys.path.insert(0, "/app")` at the top so that `import <module>`
+  works for the agent's solution.
+- Test the *functions / classes / endpoints* that the task description
+  asks the agent to create. Derive expected behaviour from the original
+  E2E test assertions.
+- Include at least 3 test functions covering the main behaviours.
+- Do NOT use `selenium`, `playwright`, `puppeteer`, `cypress`, `webdriver`,
+  or any browser automation library.
+- Do NOT reference localhost URLs or browser elements (CSS selectors, etc.).
+- Output ONLY the Python code -- no markdown fences, no explanation.
+
+Original E2E test code:
+{{text}}
+
+Task description:
+{{task_description}}
+
+Write test_solution.py:"""
 
 
 def get_e2egit_dockerfile(framework: str = "selenium", lightweight: bool = True) -> str:
-    """Get appropriate Dockerfile for the testing framework."""
-    if lightweight:
-        return E2EGIT_DOCKERFILE_LIGHT
+    """Get Dockerfile for E2EGit tasks (always uses the lightweight image)."""
     return E2EGIT_DOCKERFILE
 
 
-def create_e2egit_test_sh(framework: str = "selenium") -> str:
-    """Create test.sh for E2EGit tasks."""
-    # Framework-specific test commands
-    test_commands = {
-        "selenium": "pytest /tests/test_e2e.py -v --tb=short --timeout=120",
-        "playwright": "pytest /tests/test_e2e.py -v --tb=short --timeout=120",
-        "cypress": "npx cypress run --spec /tests/test_e2e.cy.js",
-        "puppeteer": "npx jest /tests/test_e2e.js --verbose --testTimeout=120000",
-    }
+def create_e2egit_test_sh() -> str:
+    """Create test.sh for E2EGit tasks.
 
-    test_cmd = test_commands.get(framework.lower(), test_commands["selenium"])
-
-    return f'''#!/bin/bash
-set -e
-
-mkdir -p /logs/verifier
-
-cleanup() {{
-    if [ $? -eq 0 ]; then
-        echo "1" > /logs/verifier/reward.txt
-    else
-        echo "0" > /logs/verifier/reward.txt
-    fi
-}}
-trap cleanup EXIT
-
-cd /app
-
-# Start virtual display for headless testing
-Xvfb :99 -screen 0 1024x768x24 &
-export DISPLAY=:99
-
-echo "Running E2E tests ({framework})..."
-{test_cmd} 2>&1 | tee /logs/verifier/test_output.txt
-
-exit ${{PIPESTATUS[0]}}
-'''
+    Runs plain pytest against unit tests -- no Xvfb or browser needed.
+    """
+    return create_generic_test_sh(
+        test_command="pytest /tests/test_solution.py -v --tb=short --timeout=120",
+    )
 
 
 def detect_framework(test_code: str) -> str:
-    """Detect which E2E testing framework is being used."""
+    """Detect which E2E testing framework is used in the *original* test code."""
     test_lower = test_code.lower()
 
     if "from selenium" in test_lower or "webdriver" in test_lower:
@@ -369,58 +335,29 @@ test('shopping cart flow', async ({ page }) => {
 
 
 def create_instruction_from_e2e_test(sample: Dict, generated_instruction: str = None) -> str:
-    """Create task instruction from E2E test code."""
-    test_code = sample.get("test_code", "")
-    framework = sample.get("framework", "selenium")
-    language = sample.get("language", "python")
+    """Create task instruction from E2E test code.
 
+    The instruction asks the agent to implement the *application logic*
+    that was being tested by the original E2E test, without requiring
+    browser-level testing infrastructure.
+    """
     if generated_instruction:
         main_instruction = generated_instruction
     else:
-        main_instruction = "Implement the web application functionality required to pass the following E2E tests."
+        main_instruction = (
+            "Implement the application functionality described below."
+        )
 
-    instruction = f"""# End-to-End Test Implementation Task
-
-## Testing Framework
-{framework.capitalize()}
-
-## Language
-{language.capitalize()}
+    instruction = f"""# Implementation Task
 
 ## Task Description
 
 {main_instruction}
 
-## E2E Test Code
-
-The following test code defines the expected behavior of the web application:
-
-```{language}
-{test_code}
-```
-
-## Your Task
-
-1. Analyze the E2E test to understand the required functionality
-2. Implement the necessary components/pages to make the tests pass
-3. Ensure proper element IDs, classes, and selectors match the test expectations
-4. Handle user interactions (clicks, form submissions, navigation) correctly
-
-Place your implementation in `/app/`
+Place your implementation in `/app/`.
 """
 
     return instruction
-
-
-def get_test_filename(framework: str, language: str) -> str:
-    """Get appropriate test filename for framework."""
-    if framework == "cypress":
-        return "test_e2e.cy.js"
-    elif framework == "puppeteer":
-        return "test_e2e.js"
-    elif language == "python":
-        return "test_e2e.py"
-    return "test_e2e.js"
 
 
 def create_harbor_task(
@@ -430,13 +367,17 @@ def create_harbor_task(
     instruction: str,
     dataset_prefix: str,
 ) -> Path:
-    """Create a harbor task directory for an E2EGit sample."""
+    """Create a harbor task directory for an E2EGit sample.
+
+    The test file is always ``test_solution.py`` and is a plain pytest
+    unit test (generated by the LLM in step 2b).  No browser or Xvfb
+    required.
+    """
     framework = sample.get("framework", "selenium")
     language = sample.get("language", "python")
-    test_filename = get_test_filename(framework, language)
 
     test_files = {
-        test_filename: sample.get("test_code", ""),
+        "test_solution.py": sample.get("unit_test_code", ""),
     }
 
     metadata = {
@@ -451,8 +392,8 @@ def create_harbor_task(
         output_dir=output_dir,
         task_id=task_id,
         instruction=instruction,
-        dockerfile=get_e2egit_dockerfile(framework, lightweight=True),
-        test_sh=create_e2egit_test_sh(framework),
+        dockerfile=get_e2egit_dockerfile(framework),
+        test_sh=create_e2egit_test_sh(),
         test_files=test_files,
         dataset_prefix=dataset_prefix,
         metadata=metadata,
@@ -480,7 +421,17 @@ def generate_tasks(
 
 
 def main(limit: int = LIMIT, upload: bool = True, local_db_path: Path = None) -> None:
-    """Main pipeline for generating E2EGit tasks."""
+    """Main pipeline for generating E2EGit tasks.
+
+    Pipeline:
+      1. Load E2EGit samples (original E2E / browser-based test code).
+      2a. Generate task descriptions (instructions) from E2E test code.
+      2b. Generate equivalent pytest *unit tests* from E2E test code
+          so that tasks can be verified without Xvfb / Selenium / a
+          browser.
+      3. Create harbor task directories.
+      4. (Optional) Upload to HuggingFace.
+    """
 
     print(f"Step 1: Loading E2EGit dataset...")
     samples = load_e2egit(limit=limit, local_db_path=local_db_path)
@@ -490,7 +441,8 @@ def main(limit: int = LIMIT, upload: bool = True, local_db_path: Path = None) ->
         print("\nNo samples found. Exiting.")
         return
 
-    print("\nStep 2: Generating task descriptions from E2E tests...")
+    # -- Step 2a: Generate task descriptions ----------------------------------
+    print("\nStep 2a: Generating task descriptions from E2E tests...")
     dataset = Dataset.from_list([{"text": s["test_code"]} for s in samples])
 
     result = run_completions(
@@ -507,6 +459,41 @@ def main(limit: int = LIMIT, upload: bool = True, local_db_path: Path = None) ->
     instructions = result.dataset["task_description"]
     print(f"  -> Generated {len(instructions)} task descriptions")
 
+    # -- Step 2b: Generate pytest unit tests from E2E test code ---------------
+    print("\nStep 2b: Converting E2E tests to pytest unit tests...")
+    unit_test_dataset = Dataset.from_list([
+        {"text": s["test_code"], "task_description": instr}
+        for s, instr in zip(samples, instructions)
+    ])
+
+    ut_result = run_completions(
+        unit_test_dataset,
+        model=MODEL,
+        map_type="chat",
+        map_config={
+            "user_message": E2E_TO_UNIT_TEST_PROMPT,
+            "output_column": "unit_test_code"
+        },
+        max_requests_per_minute=500,
+        max_tokens_per_minute=1_000_000,
+    )
+    unit_tests = ut_result.dataset["unit_test_code"]
+    print(f"  -> Generated {len(unit_tests)} pytest unit tests")
+
+    # Attach the generated unit test code to each sample so
+    # create_harbor_task can pick it up.
+    for sample, ut_code in zip(samples, unit_tests):
+        # Strip markdown code fences that the LLM sometimes emits.
+        cleaned = ut_code.strip()
+        if cleaned.startswith("```"):
+            # Remove opening fence (```python or ```)
+            first_newline = cleaned.index("\n")
+            cleaned = cleaned[first_newline + 1:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3].rstrip()
+        sample["unit_test_code"] = cleaned
+
+    # -- Step 3: Create harbor task directories --------------------------------
     print("\nStep 3: Generating harbor task directories...")
     dataset_prefix = "e2egit"
     task_dir = generate_tasks(samples, instructions, dataset_prefix)

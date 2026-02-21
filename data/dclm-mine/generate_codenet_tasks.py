@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Generate tasks from IBM CodeNet dataset (14M solutions).
+Generate tasks from competitive programming datasets (CodeNet / code_contests).
 
-CodeNet contains competitive programming problems with:
+Uses deepmind/code_contests which contains competitive programming problems with:
 - Problem descriptions
 - Multiple solutions in various languages
-- Input/output test cases
+- Input/output test cases (public, private, and generated)
 """
 
 import itertools
@@ -36,22 +36,54 @@ from data.commons import (
 LIMIT = 10000
 MODEL = "gpt-4o-mini"
 DEFAULT_LANGUAGE = "python"
+# Maximum number of test cases to include per problem (keeps task dirs small)
+MAX_TESTS_PER_PROBLEM = 10
+
+
+def _extract_tests_from_dict(test_dict: Optional[Dict], max_count: int = 0) -> Tuple[List[str], List[str]]:
+    """
+    Extract (inputs, outputs) lists from a test dict like
+    {"input": [...], "output": [...]}.
+
+    Handles None, non-dict, string-vs-list values.
+    Returns two parallel lists of strings.
+    """
+    if not test_dict or not isinstance(test_dict, dict):
+        return [], []
+
+    inputs = test_dict.get("input", [])
+    outputs = test_dict.get("output", [])
+
+    # Handle single-string values
+    if isinstance(inputs, str):
+        inputs = [inputs]
+    if isinstance(outputs, str):
+        outputs = [outputs]
+
+    # Keep only paired entries
+    paired_count = min(len(inputs), len(outputs))
+    inputs = [str(v) for v in inputs[:paired_count]]
+    outputs = [str(v) for v in outputs[:paired_count]]
+
+    if max_count > 0:
+        inputs = inputs[:max_count]
+        outputs = outputs[:max_count]
+
+    return inputs, outputs
 
 
 def load_codenet(language: str = "python", limit: int = LIMIT) -> List[Dict]:
     """
-    Load CodeNet dataset from HuggingFace.
+    Load competitive programming problems from HuggingFace.
 
-    The dataset is available at various HuggingFace repos.
+    Primary source: deepmind/code_contests
+    Schema: name, description, public_tests, private_tests,
+            generated_tests, source, difficulty, solutions
     """
-    print(f"Loading CodeNet dataset ({language})...")
+    print(f"Loading CodeNet/code_contests dataset ({language})...")
 
-    # Try multiple possible sources (updated Jan 2026)
-    # IBM/CodeNet was removed - using alternatives
     repo_names = [
-        "sumuks/CodeNet-16K",        # 16k curated CodeNet samples
-        "petersa2/CodeNet",          # Alternative CodeNet upload
-        "deepmind/code_contests",    # Best alternative with competitive programming (4k samples)
+        "deepmind/code_contests",
     ]
 
     ds = None
@@ -68,23 +100,28 @@ def load_codenet(language: str = "python", limit: int = LIMIT) -> List[Dict]:
         raise ValueError("Could not load CodeNet/competitive programming dataset from any source")
 
     samples = []
-    print(f"Collecting {limit} samples...")
+    skipped_no_problem = 0
+    skipped_no_tests = 0
+    print(f"Collecting up to {limit} samples (with valid test cases)...")
 
-    for sample in tqdm(itertools.islice(ds, limit * 2), desc="Loading samples"):
-        # Handle deepmind/code_contests schema:
-        # name, description, public_tests, private_tests, generated_tests, source, difficulty, solutions
+    for sample in tqdm(itertools.islice(ds, limit * 3), desc="Loading samples"):
+        # Extract problem description -- supports multiple schemas
         problem = (
             sample.get("description") or
             sample.get("problem_description") or
             sample.get("problem", "")
         )
 
-        # Get solutions - code_contests has a list of solution objects
+        if not problem:
+            skipped_no_problem += 1
+            continue
+
+        # --- Extract solutions for the requested language ---
+        # deepmind/code_contests language codes: 1=C++, 2=C++, 3=PYTHON3, 4=JAVA
         solutions = sample.get("solutions", {})
         solution = ""
         sample_lang = language.lower()
 
-        # Extract solution for the requested language
         if isinstance(solutions, dict):
             lang_map = {"python": 3, "cpp": 2, "java": 4}  # PYTHON3=3, CPP=2, JAVA=4
             lang_code = lang_map.get(language.lower(), 3)
@@ -95,53 +132,81 @@ def load_codenet(language: str = "python", limit: int = LIMIT) -> List[Dict]:
                     solution = sol_solutions[i]
                     break
 
-        if not problem:
+        # --- Collect test cases from ALL available sources ---
+        # Priority: public_tests > private_tests > generated_tests
+        all_inputs: List[str] = []
+        all_outputs: List[str] = []
+
+        for test_key in ("public_tests", "private_tests", "generated_tests"):
+            test_dict = sample.get(test_key)
+            inp, out = _extract_tests_from_dict(test_dict)
+            all_inputs.extend(inp)
+            all_outputs.extend(out)
+
+        # Also check top-level input/output fields (other CodeNet schemas)
+        if not all_inputs:
+            top_input = sample.get("input")
+            top_output = sample.get("output")
+            if top_input is not None and top_output is not None:
+                if isinstance(top_input, str):
+                    top_input = [top_input]
+                if isinstance(top_output, str):
+                    top_output = [top_output]
+                if isinstance(top_input, list) and isinstance(top_output, list):
+                    paired = min(len(top_input), len(top_output))
+                    all_inputs = [str(v) for v in top_input[:paired]]
+                    all_outputs = [str(v) for v in top_output[:paired]]
+
+        # Cap the number of test cases
+        if len(all_inputs) > MAX_TESTS_PER_PROBLEM:
+            all_inputs = all_inputs[:MAX_TESTS_PER_PROBLEM]
+            all_outputs = all_outputs[:MAX_TESTS_PER_PROBLEM]
+
+        # Skip samples that have no test cases at all
+        if not all_inputs or not all_outputs:
+            skipped_no_tests += 1
             continue
-
-        # Get test cases from public_tests
-        public_tests = sample.get("public_tests", {})
-        inputs = public_tests.get("input", []) if isinstance(public_tests, dict) else []
-        outputs = public_tests.get("output", []) if isinstance(public_tests, dict) else []
-
-        # Handle both list and string formats
-        if isinstance(inputs, str):
-            inputs = [inputs]
-        if isinstance(outputs, str):
-            outputs = [outputs]
 
         samples.append({
             "problem_description": problem,
             "solution": solution,
             "language": sample_lang or language,
             "problem_id": sample.get("name", sample.get("id", "")),
-            "inputs": inputs,
-            "outputs": outputs,
+            "inputs": all_inputs,
+            "outputs": all_outputs,
             "difficulty": str(sample.get("difficulty", "")),
         })
 
         if len(samples) >= limit:
             break
 
-    print(f"Loaded {len(samples)} problems")
+    print(f"Loaded {len(samples)} problems "
+          f"(skipped {skipped_no_problem} without description, "
+          f"{skipped_no_tests} without test cases)")
     return samples
 
 
 def create_test_files(sample: Dict) -> Dict[str, str]:
-    """Create input/output test files from sample."""
+    """Create input/output test files from sample.
+
+    Callers must ensure sample has non-empty inputs/outputs lists
+    (load_codenet already filters for this).
+    """
     test_files = {}
 
     inputs = sample.get("inputs", [])
     outputs = sample.get("outputs", [])
 
-    # Create input/output files
+    if not inputs or not outputs:
+        raise ValueError(
+            f"Sample {sample.get('problem_id', '?')} has no test cases. "
+            "This should have been filtered out during loading."
+        )
+
+    # Create input/output files for each test case
     for i, (inp, out) in enumerate(zip(inputs, outputs)):
         test_files[f"inputs/input_{i}.txt"] = str(inp)
         test_files[f"outputs/output_{i}.txt"] = str(out)
-
-    # If no test cases, create placeholder
-    if not inputs:
-        test_files["inputs/input_0.txt"] = ""
-        test_files["outputs/output_0.txt"] = ""
 
     return test_files
 

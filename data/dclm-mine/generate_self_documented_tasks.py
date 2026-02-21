@@ -7,6 +7,8 @@ Find and generate tasks from files that already contain BOTH:
 These are "self-documented" test files where the task description is already present.
 """
 
+import argparse
+import ast
 import itertools
 import json
 import os
@@ -14,7 +16,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from datasets import Dataset, load_dataset
 from tqdm import tqdm
@@ -44,6 +46,161 @@ File content:
 {{text}}
 
 Extract the task description (just the task, no preamble):"""
+
+
+# =============================================================================
+# Standard library modules (should NOT be pip-installed)
+# =============================================================================
+STDLIB_MODULES = {
+    "abc", "aifc", "argparse", "array", "ast", "asynchat", "asyncio",
+    "asyncore", "atexit", "audioop", "base64", "bdb", "binascii",
+    "binhex", "bisect", "builtins", "bz2", "calendar", "cgi", "cgitb",
+    "chunk", "cmath", "cmd", "code", "codecs", "codeop", "collections",
+    "colorsys", "compileall", "concurrent", "configparser", "contextlib",
+    "contextvars", "copy", "copyreg", "cProfile", "crypt", "csv",
+    "ctypes", "curses", "dataclasses", "datetime", "dbm", "decimal",
+    "difflib", "dis", "distutils", "doctest", "email", "encodings",
+    "enum", "errno", "faulthandler", "fcntl", "filecmp", "fileinput",
+    "fnmatch", "formatter", "fractions", "ftplib", "functools", "gc",
+    "getopt", "getpass", "gettext", "glob", "grp", "gzip", "hashlib",
+    "heapq", "hmac", "html", "http", "idlelib", "imaplib", "imghdr",
+    "imp", "importlib", "inspect", "io", "ipaddress", "itertools",
+    "json", "keyword", "lib2to3", "linecache", "locale", "logging",
+    "lzma", "mailbox", "mailcap", "marshal", "math", "mimetypes",
+    "mmap", "modulefinder", "multiprocessing", "netrc", "nis", "nntplib",
+    "numbers", "operator", "optparse", "os", "ossaudiodev", "parser",
+    "pathlib", "pdb", "pickle", "pickletools", "pipes", "pkgutil",
+    "platform", "plistlib", "poplib", "posix", "posixpath", "pprint",
+    "profile", "pstats", "pty", "pwd", "py_compile", "pyclbr",
+    "pydoc", "queue", "quopri", "random", "re", "readline", "reprlib",
+    "resource", "rlcompleter", "runpy", "sched", "secrets", "select",
+    "selectors", "shelve", "shlex", "shutil", "signal", "site",
+    "smtpd", "smtplib", "sndhdr", "socket", "socketserver", "spwd",
+    "sqlite3", "sre_compile", "sre_constants", "sre_parse", "ssl",
+    "stat", "statistics", "string", "stringprep", "struct", "subprocess",
+    "sunau", "symtable", "sys", "sysconfig", "syslog", "tabnanny",
+    "tarfile", "telnetlib", "tempfile", "termios", "test", "textwrap",
+    "threading", "time", "timeit", "tkinter", "token", "tokenize",
+    "trace", "traceback", "tracemalloc", "tty", "turtle", "turtledemo",
+    "types", "typing", "unicodedata", "unittest", "urllib", "uu",
+    "uuid", "venv", "warnings", "wave", "weakref", "webbrowser",
+    "winreg", "winsound", "wsgiref", "xdrlib", "xml", "xmlrpc",
+    "zipapp", "zipfile", "zipimport", "zlib",
+    # Also include common sub-modules
+    "__future__", "_pytest", "pytest", "unittest.mock",
+    "collections.abc", "os.path", "typing_extensions",
+    "io", "abc", "contextlib",
+}
+
+# Known pip-installable packages (module name -> pip package name)
+KNOWN_PIP_PACKAGES = {
+    "numpy": "numpy",
+    "np": "numpy",
+    "pandas": "pandas",
+    "pd": "pandas",
+    "scipy": "scipy",
+    "sklearn": "scikit-learn",
+    "torch": "torch",
+    "tensorflow": "tensorflow",
+    "tf": "tensorflow",
+    "keras": "keras",
+    "flask": "flask",
+    "django": "django",
+    "fastapi": "fastapi",
+    "requests": "requests",
+    "httpx": "httpx",
+    "aiohttp": "aiohttp",
+    "pydantic": "pydantic",
+    "yaml": "pyyaml",
+    "pyyaml": "pyyaml",
+    "PIL": "pillow",
+    "pillow": "pillow",
+    "cv2": "opencv-python",
+    "matplotlib": "matplotlib",
+    "seaborn": "seaborn",
+    "sqlalchemy": "sqlalchemy",
+    "celery": "celery",
+    "redis": "redis",
+    "pymongo": "pymongo",
+    "boto3": "boto3",
+    "botocore": "botocore",
+    "click": "click",
+    "rich": "rich",
+    "tqdm": "tqdm",
+    "pytest": "pytest",
+    "mock": "mock",
+    "six": "six",
+    "attr": "attrs",
+    "attrs": "attrs",
+    "marshmallow": "marshmallow",
+    "jinja2": "jinja2",
+    "Jinja2": "jinja2",
+    "werkzeug": "werkzeug",
+    "lxml": "lxml",
+    "bs4": "beautifulsoup4",
+    "beautifulsoup4": "beautifulsoup4",
+    "cryptography": "cryptography",
+    "jwt": "pyjwt",
+    "pytz": "pytz",
+    "dateutil": "python-dateutil",
+    "paramiko": "paramiko",
+    "fabric": "fabric",
+    "toml": "toml",
+    "tomli": "tomli",
+    "tomllib": "tomli",
+    "msgpack": "msgpack",
+    "protobuf": "protobuf",
+    "grpc": "grpcio",
+    "graphene": "graphene",
+    "hypothesis": "hypothesis",
+    "faker": "faker",
+    "docutils": "docutils",
+    "sphinx": "sphinx",
+    "coverage": "coverage",
+    "mypy": "mypy",
+    "black": "black",
+    "isort": "isort",
+    "aioresponses": "aioresponses",
+    "responses": "responses",
+    "freezegun": "freezegun",
+    "arrow": "arrow",
+    "pendulum": "pendulum",
+    "ujson": "ujson",
+    "orjson": "orjson",
+    "jsonschema": "jsonschema",
+    "voluptuous": "voluptuous",
+    "cerberus": "cerberus",
+    "dynaconf": "dynaconf",
+    "dotenv": "python-dotenv",
+    "decouple": "python-decouple",
+    "networkx": "networkx",
+    "sympy": "sympy",
+    "dask": "dask",
+    "joblib": "joblib",
+    "psutil": "psutil",
+    "watchdog": "watchdog",
+    "apscheduler": "apscheduler",
+    "tenacity": "tenacity",
+    "retry": "retry",
+    "wrapt": "wrapt",
+    "decorator": "decorator",
+    "more_itertools": "more-itertools",
+    "toolz": "toolz",
+    "cytoolz": "cytoolz",
+    "sortedcontainers": "sortedcontainers",
+    "bitarray": "bitarray",
+    "cachetools": "cachetools",
+    "diskcache": "diskcache",
+    "tinydb": "tinydb",
+    "peewee": "peewee",
+    "alembic": "alembic",
+    "pytest_mock": "pytest-mock",
+    "unittest2": "unittest2",
+    "nose": "nose",
+    "numpyro": "numpyro",
+    "jax": "jax",
+    "funsor": "funsor",
+}
 
 
 # =============================================================================
@@ -105,6 +262,55 @@ def extract_docstring(content: str) -> str:
     return ""
 
 
+def is_valid_python3(content: str) -> bool:
+    """Check if content is valid Python 3 syntax."""
+    try:
+        ast.parse(content)
+        return True
+    except SyntaxError:
+        return False
+
+
+def has_relative_imports(content: str) -> bool:
+    """Check if content uses relative imports (from . import X, from ..module import Y)."""
+    try:
+        tree = ast.parse(content)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.level and node.level > 0:
+                return True
+    except SyntaxError:
+        pass
+    return False
+
+
+def extract_third_party_imports(content: str) -> Set[str]:
+    """
+    Extract third-party (non-stdlib, non-project) import module names from test code.
+
+    Returns a set of pip package names that should be installed.
+    """
+    pip_packages = set()
+
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return pip_packages
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                top_module = alias.name.split('.')[0]
+                if top_module in KNOWN_PIP_PACKAGES:
+                    pip_packages.add(KNOWN_PIP_PACKAGES[top_module])
+        elif isinstance(node, ast.ImportFrom):
+            if node.module and node.level == 0:
+                top_module = node.module.split('.')[0]
+                if top_module in KNOWN_PIP_PACKAGES:
+                    pip_packages.add(KNOWN_PIP_PACKAGES[top_module])
+
+    return pip_packages
+
+
 def is_self_documented_test(content: str) -> Tuple[bool, Dict]:
     """
     Check if a file is a self-documented test file.
@@ -114,6 +320,14 @@ def is_self_documented_test(content: str) -> Tuple[bool, Dict]:
     # Must have tests
     has_tests = has_pytest(content) or has_unittest(content) or has_doctest(content)
     if not has_tests:
+        return False, {}
+
+    # Must be valid Python 3 syntax
+    if not is_valid_python3(content):
+        return False, {}
+
+    # Must not have relative imports (they break when running from /tests/)
+    if has_relative_imports(content):
         return False, {}
 
     # Count documentation
@@ -145,6 +359,7 @@ def is_self_documented_test(content: str) -> Tuple[bool, Dict]:
         'comment_lines': comment_lines,
         'doc_ratio': doc_ratio,
         'main_docstring': extract_docstring(content)[:500],
+        'third_party_packages': sorted(extract_third_party_imports(content)),
     }
 
     return True, metadata
@@ -162,6 +377,8 @@ def filter_self_documented_from_stack(limit: int, max_scan: int = 5_000_000) -> 
 
     samples = []
     scanned = 0
+    skipped_syntax = 0
+    skipped_relative = 0
 
     print(f"Scanning for self-documented test files (limit={limit}, max_scan={max_scan})...")
     pbar = tqdm(total=limit, desc="Finding self-documented tests")
@@ -169,7 +386,6 @@ def filter_self_documented_from_stack(limit: int, max_scan: int = 5_000_000) -> 
     for sample in itertools.islice(ds, max_scan):
         scanned += 1
         content = sample.get('content', '')
-        path = sample.get('path', '')
 
         # Check content directly (path may be empty in The Stack)
         is_valid, metadata = is_self_documented_test(content)
@@ -199,20 +415,37 @@ def filter_self_documented_from_stack(limit: int, max_scan: int = 5_000_000) -> 
 # =============================================================================
 
 
-def create_test_sh() -> str:
-    """Create test.sh that runs pytest with venv for PEP 668 compatibility."""
-    return '''#!/bin/bash
+def create_test_sh(third_party_packages: Optional[List[str]] = None) -> str:
+    """Create test.sh that runs pytest with venv, PYTHONPATH, and dependency installation.
+
+    Args:
+        third_party_packages: List of pip package names to install before running tests.
+            These are known third-party packages detected from the test file's imports.
+    """
+    # Build the pip install line for detected third-party packages
+    if third_party_packages:
+        # Deduplicate and sort for deterministic output
+        pkgs = sorted(set(third_party_packages))
+        install_block = f'''
+# Install detected third-party test dependencies
+echo "Installing test dependencies..."
+pip install --quiet {" ".join(pkgs)} 2>&1 | tail -1 || true
+'''
+    else:
+        install_block = ""
+
+    return f'''#!/bin/bash
 set -e
 
 mkdir -p /logs/verifier
 
-cleanup() {
+cleanup() {{
     if [ $? -eq 0 ]; then
         echo "1" > /logs/verifier/reward.txt
     else
         echo "0" > /logs/verifier/reward.txt
     fi
-}
+}}
 trap cleanup EXIT
 
 # Create virtual environment if needed (fixes PEP 668 on Python 3.12+)
@@ -229,13 +462,14 @@ if ! command -v pytest &> /dev/null; then
     echo "Installing pytest..."
     pip install --quiet pytest
 fi
-
+{install_block}
 cd /app
+export PYTHONPATH="/app:${{PYTHONPATH:-}}"
 
 echo "Running tests..."
 pytest /tests/test_solution.py -v --tb=short 2>&1 | tee /logs/verifier/test_output.txt
 
-PYTEST_EXIT=${PIPESTATUS[0]}
+PYTEST_EXIT=${{PIPESTATUS[0]}}
 
 if [ $PYTEST_EXIT -eq 0 ]; then
     echo "All tests passed!"
@@ -263,10 +497,13 @@ def create_harbor_task_directory(
     env_dir.mkdir(exist_ok=True)
     (env_dir / "Dockerfile").write_text(create_standard_dockerfile(), encoding="utf-8")
 
+    # Extract third-party packages from the test code
+    third_party_pkgs = sorted(extract_third_party_imports(test_code))
+
     tests_dir = task_dir / "tests"
     tests_dir.mkdir(exist_ok=True)
     test_sh_path = tests_dir / "test.sh"
-    test_sh_path.write_text(create_test_sh(), encoding="utf-8")
+    test_sh_path.write_text(create_test_sh(third_party_pkgs), encoding="utf-8")
     os.chmod(test_sh_path, 0o755)
     (tests_dir / "test_solution.py").write_text(test_code, encoding="utf-8")
 
@@ -292,6 +529,7 @@ def generate_tasks(samples: List[Dict], instructions: List[str], dataset_prefix:
             "docstring_lines": sample.get("docstring_lines", 0),
             "has_pytest": sample.get("has_pytest", False),
             "has_unittest": sample.get("has_unittest", False),
+            "third_party_packages": sample.get("third_party_packages", []),
         }
         create_harbor_task_directory(temp_dir, i, instruction, sample["text"], dataset_prefix, metadata)
 
@@ -301,8 +539,13 @@ def generate_tasks(samples: List[Dict], instructions: List[str], dataset_prefix:
 
 def main() -> None:
     """Main pipeline."""
-    print("Step 1: Filtering self-documented test files from The Stack...")
-    samples = filter_self_documented_from_stack(LIMIT)
+    parser = argparse.ArgumentParser(description="Generate self-documented tasks from The Stack")
+    parser.add_argument("--limit", type=int, default=LIMIT, help=f"Number of tasks to generate (default: {LIMIT})")
+    args = parser.parse_args()
+    limit = args.limit
+
+    print(f"Step 1: Filtering self-documented test files from The Stack (limit={limit})...")
+    samples = filter_self_documented_from_stack(limit)
     print(f"  -> {len(samples)} self-documented test files found")
 
     if not samples:

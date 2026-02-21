@@ -122,6 +122,16 @@ declare -a NGROK_URLS
 BASE_RAY_PORT=6379
 BASE_API_PORT=8000
 NGROK_PATH="/scratch/08134/negin/ngrok"
+NGROK_DOMAINS=(
+    "domain1.ngrok.pizza"
+    "domain2.ngrok.pizza"
+    "domain3.ngrok.pizza"
+    "domain4.ngrok.pizza"
+    "domain5.ngrok.pizza"
+    "domain6.ngrok.pizza"
+    "domain7.ngrok.pizza"
+    "domain8.ngrok.pizza"
+)
 
 start_ray_cluster_for_shard() {
     local shard_idx=$1
@@ -272,8 +282,11 @@ start_ngrok_for_shard() {
 
     echo "  Starting ngrok for shard $shard_idx on $head_node (port $api_port)..."
 
+    local ngrok_domain=${NGROK_DOMAINS[$shard_idx]}
+    echo "    Domain: $ngrok_domain"
+
     srun --export="$SRUN_EXPORT_ENV" --nodes=1 --ntasks=1 --overlap -w "$head_node" \
-        $NGROK_PATH http $api_port --log=stdout > "$ngrok_log" 2>&1 &
+        $NGROK_PATH http $api_port --url "https://${ngrok_domain}" --log=stdout > "$ngrok_log" 2>&1 &
 
     NGROK_PIDS[$shard_idx]=$!
     echo "    PID: ${NGROK_PIDS[$shard_idx]}, Log: $ngrok_log"
@@ -286,20 +299,21 @@ done
 echo "Waiting for ngrok tunnels to establish..."
 sleep 15
 
-# Get ngrok URLs for each shard
+# Set ngrok URLs from known domains and verify tunnels are up
 for shard_idx in $(seq 0 $((NUM_SHARDS - 1))); do
     head_node=${HEAD_NODES[$shard_idx]}
+    ngrok_url="https://${NGROK_DOMAINS[$shard_idx]}"
+    NGROK_URLS[$shard_idx]="$ngrok_url"
 
+    echo "  Checking shard $shard_idx tunnel ($ngrok_url)..."
     for attempt in $(seq 1 10); do
-        ngrok_url=$(srun --nodes=1 --ntasks=1 --overlap -w "$head_node" \
-            curl -s localhost:4040/api/tunnels 2>/dev/null | grep -o '"public_url":"https://[^"]*"' | head -1 | cut -d'"' -f4)
-        if [ -n "$ngrok_url" ]; then
-            NGROK_URLS[$shard_idx]="$ngrok_url"
-            echo "  Shard $shard_idx ngrok URL: $ngrok_url"
+        if srun --nodes=1 --ntasks=1 --overlap -w "$head_node" \
+            curl -s localhost:4040/api/tunnels 2>/dev/null | grep -q "ngrok"; then
+            echo "    Shard $shard_idx ngrok URL: $ngrok_url"
             break
         fi
         if [ "$attempt" -eq 10 ]; then
-            echo "ERROR: Failed to get ngrok URL for shard $shard_idx"
+            echo "ERROR: ngrok tunnel for shard $shard_idx failed to start"
             exit 1
         fi
         sleep 3

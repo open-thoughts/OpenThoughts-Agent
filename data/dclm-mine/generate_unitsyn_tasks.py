@@ -13,6 +13,7 @@ UniTSyn contains focal function + test function pairs from:
 import itertools
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -63,11 +64,75 @@ def get_test_sh_for_language(language: str) -> str:
 
     setup_commands = ""
     if language == "python":
-        setup_commands = "pip3 install --quiet pytest 2>/dev/null || true"
+        setup_commands = """pip3 install --quiet pytest 2>/dev/null || true
+# If agent didn't create solution.py, find the first .py file in /app and copy it
+if [ ! -f /app/solution.py ]; then
+    for f in /app/*.py; do
+        [ -f "$f" ] && cp "$f" /app/solution.py && break
+    done
+fi"""
     elif language == "javascript":
         setup_commands = "npm install --silent jest 2>/dev/null || true"
 
     return create_generic_test_sh(test_command=test_cmd, setup_commands=setup_commands)
+
+
+def _extract_test_code(test_data) -> str:
+    """
+    Extract valid test code from test data that may come in various formats.
+
+    UniTSyn / KAKA22 datasets store test code in different ways:
+    - A plain code string (the happy path)
+    - A JSON-serialized string containing a list of test objects,
+      e.g. '[{"ut_id": 0, "code": "import unittest\\n...", "FAR": ..., "FRR": ...}]'
+    - A Python list of dicts with a "code" key
+    - A Python list of code strings
+
+    This function normalises all of these to a single code string.
+    """
+    if not test_data:
+        return ""
+
+    # Case 1: Already a Python list
+    if isinstance(test_data, list):
+        if len(test_data) == 0:
+            return ""
+        first = test_data[0]
+        if isinstance(first, dict):
+            return first.get("code", "")
+        if isinstance(first, str):
+            return first
+        return ""
+
+    # Case 2: Not a string -- coerce and return
+    if not isinstance(test_data, str):
+        return str(test_data)
+
+    # Case 3: String that is a JSON array of test objects
+    stripped = test_data.strip()
+    if stripped.startswith("["):
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, list) and len(parsed) > 0:
+                first = parsed[0]
+                if isinstance(first, dict) and "code" in first:
+                    return first["code"]
+                if isinstance(first, str):
+                    return first
+        except (json.JSONDecodeError, TypeError):
+            pass  # Not valid JSON -- fall through and treat as raw code
+
+    # Case 4: String that is a single JSON object with a "code" key
+    if stripped.startswith("{"):
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, dict) and "code" in parsed:
+                return parsed["code"]
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # Case 5: Plain code string (the normal/expected case)
+    return test_data
 
 
 def load_unitsyn_local(data_dir: Path, language: str = "python", limit: int = LIMIT) -> List[Dict]:
@@ -202,16 +267,16 @@ def load_unitsyn(language: str = "python", limit: int = LIMIT, local_data_dir: P
         # Handle test code which might be a list or JSON
         test = sample.get("test_function") or sample.get("test_method") or sample.get("test") or ""
 
-        # Handle KAKA22 format where unit_tests is a list of dicts
+        # Handle KAKA22 format where unit_tests is a list of dicts / JSON string
         if not test and "unit_tests" in sample:
-            unit_tests = sample["unit_tests"]
-            if isinstance(unit_tests, list) and len(unit_tests) > 0:
-                if isinstance(unit_tests[0], dict):
-                    test = unit_tests[0].get("code", "")
-                elif isinstance(unit_tests[0], str):
-                    test = unit_tests[0]
-            elif isinstance(unit_tests, str):
-                test = unit_tests
+            test = sample["unit_tests"]
+
+        # Extract actual code from test data that may be:
+        # - A JSON-serialized list of test objects: '[{"ut_id": 0, "code": "..."}]'
+        # - A Python list of test dicts: [{"ut_id": 0, "code": "..."}]
+        # - A Python list of code strings: ["import unittest..."]
+        # - Already a plain code string (no extraction needed)
+        test = _extract_test_code(test)
 
         if not focal or not test:
             continue
@@ -236,17 +301,53 @@ def create_test_file_content(sample: Dict) -> str:
     test_code = sample.get("test_function", "")
     test_class = sample.get("test_class", "")
 
-    if language == "python":
-        # Add necessary imports if not present
-        imports = ""
-        if "import pytest" not in test_code and "from pytest" not in test_code:
-            imports = "import pytest\n"
-        if "import sys" not in test_code:
-            imports += "import sys\nsys.path.insert(0, '/app')\n"
+    # Safety net: if test_code or test_class still contains embedded JSON
+    # (e.g. a list of test objects), extract the actual code now.
+    test_code = _extract_test_code(test_code)
+    test_class = _extract_test_code(test_class)
 
-        if test_class:
-            return f"{imports}\n{test_class}"
-        return f"{imports}\n{test_code}"
+    if language == "python":
+        # Pick whichever is non-empty (prefer test_class since it may include the class wrapper)
+        body = test_class if test_class else test_code
+        if not body:
+            # Last resort: produce a placeholder that pytest will collect (and skip)
+            body = (
+                "import pytest\n\n"
+                "@pytest.mark.skip(reason='no test code extracted')\n"
+                "def test_placeholder():\n"
+                "    pass\n"
+            )
+
+        content_parts = []
+
+        # Check if the test body already contains its own imports
+        body_has_imports = any(
+            body.lstrip().startswith(prefix)
+            for prefix in ("import ", "from ")
+        )
+
+        if not body_has_imports:
+            content_parts.append("import pytest")
+            content_parts.append("import sys")
+            content_parts.append("sys.path.insert(0, '/app')")
+            content_parts.append("from solution import *")
+            content_parts.append("")
+        elif "sys.path" not in body:
+            # Body has its own imports but no sys.path -- prepend it so /app is importable
+            content_parts.append("import sys")
+            content_parts.append("sys.path.insert(0, '/app')")
+            content_parts.append("from solution import *")
+            content_parts.append("")
+        else:
+            # Body has its own imports and sys.path -- ensure it also imports from solution
+            if "from solution import" not in body:
+                body = body.replace(
+                    "sys.path.insert(0, '/app')",
+                    "sys.path.insert(0, '/app')\nfrom solution import *",
+                )
+
+        content_parts.append(body)
+        return "\n".join(content_parts)
 
     elif language == "java":
         # Wrap in JUnit test class if needed

@@ -252,7 +252,7 @@ def generate_tasks(
     return str(temp_dir)
 
 
-def main(language: str = DEFAULT_LANGUAGE, limit: int = LIMIT) -> None:
+def main(language: str = DEFAULT_LANGUAGE, limit: int = LIMIT, upload: bool = True) -> None:
     """Main pipeline for generating Exercism tasks."""
 
     print(f"Step 1: Loading Exercism dataset ({language})...")
@@ -269,15 +269,20 @@ def main(language: str = DEFAULT_LANGUAGE, limit: int = LIMIT) -> None:
     task_dir = generate_tasks(samples, dataset_prefix)
     print(f"  -> Task directory: {task_dir}")
 
-    print("\nStep 3: Uploading to HuggingFace...")
-    repo_url = upload_tasks_to_hf(task_dir, f"DCAgent/exp_rpt_{dataset_prefix}")
-    print(f"  -> Repository: {repo_url}")
+    if upload:
+        print("\nStep 3: Uploading to HuggingFace...")
+        repo_url = upload_tasks_to_hf(task_dir, f"DCAgent/exp_rpt_{dataset_prefix}")
+        print(f"  -> Repository: {repo_url}")
+    else:
+        repo_url = "Not uploaded"
 
     print(f"\n{'='*60}")
     print(f"Successfully generated {len(samples)} Exercism tasks!")
     print(f"Output directory: {task_dir}")
     print(f"Repository: {repo_url}")
     print(f"{'='*60}")
+
+    return task_dir
 
 
 if __name__ == "__main__":
@@ -288,6 +293,7 @@ if __name__ == "__main__":
                         choices=list(LANGUAGE_CONFIG.keys()),
                         help="Programming language")
     parser.add_argument("--limit", type=int, default=LIMIT, help="Maximum samples to process")
+    parser.add_argument("--no-upload", action="store_true", help="Skip HuggingFace upload")
 
     args = parser.parse_args()
-    main(language=args.language, limit=args.limit)
+    main(language=args.language, limit=args.limit, upload=not args.no_upload)

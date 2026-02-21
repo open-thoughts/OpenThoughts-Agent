@@ -46,6 +46,64 @@ LIMIT = 10000
 MODEL = "gpt-4o-mini"
 
 
+def _extract_test_code(test_data) -> str:
+    """
+    Extract valid Python test code from test data that may come in various formats.
+
+    The pyMethods2Test / KAKA22 datasets store test code in different ways:
+    - A plain Python code string (the happy path)
+    - A JSON-serialized string containing a list of test objects,
+      e.g. '[{"ut_id": 0, "code": "import unittest\\n...", "FAR": ..., "FRR": ...}]'
+    - A Python list of dicts with a "code" key
+    - A Python list of code strings
+
+    This function normalises all of these to a single Python code string.
+    """
+    if not test_data:
+        return ""
+
+    # Case 1: Already a Python list
+    if isinstance(test_data, list):
+        if len(test_data) == 0:
+            return ""
+        first = test_data[0]
+        if isinstance(first, dict):
+            return first.get("code", "")
+        if isinstance(first, str):
+            return first
+        return ""
+
+    # Case 2: Not a string -- coerce and return
+    if not isinstance(test_data, str):
+        return str(test_data)
+
+    # Case 3: String that is a JSON array of test objects
+    stripped = test_data.strip()
+    if stripped.startswith("["):
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, list) and len(parsed) > 0:
+                first = parsed[0]
+                if isinstance(first, dict) and "code" in first:
+                    return first["code"]
+                if isinstance(first, str):
+                    return first
+        except (json.JSONDecodeError, TypeError):
+            pass  # Not valid JSON -- fall through and treat as raw code
+
+    # Case 4: String that is a single JSON object with a "code" key
+    if stripped.startswith("{"):
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, dict) and "code" in parsed:
+                return parsed["code"]
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # Case 5: Plain Python code string (the normal/expected case)
+    return test_data
+
+
 def load_pymethods2test(limit: int = LIMIT, local_data_dir: Path = None) -> List[Dict]:
     """
     Load pyMethods2Test dataset from HuggingFace or Zenodo.
@@ -132,14 +190,14 @@ def load_pymethods2test(limit: int = LIMIT, local_data_dir: Path = None) -> List
 
         # Handle KAKA22 format where unit_tests is a list of dicts
         if not test and "unit_tests" in sample:
-            unit_tests = sample["unit_tests"]
-            if isinstance(unit_tests, list) and len(unit_tests) > 0:
-                if isinstance(unit_tests[0], dict):
-                    test = unit_tests[0].get("code", "")
-                elif isinstance(unit_tests[0], str):
-                    test = unit_tests[0]
-            elif isinstance(unit_tests, str):
-                test = unit_tests
+            test = sample["unit_tests"]
+
+        # Extract actual Python code from test data that may be:
+        # - A JSON-serialized list of test objects: '[{"ut_id": 0, "code": "..."}]'
+        # - A Python list of test dicts: [{"ut_id": 0, "code": "..."}]
+        # - A Python list of code strings: ["import unittest..."]
+        # - Already a plain Python code string (no extraction needed)
+        test = _extract_test_code(test)
 
         if not focal or not test:
             continue
@@ -165,25 +223,59 @@ def create_test_file_content(sample: Dict) -> str:
     test_class = sample.get("test_class", "")
     imports = sample.get("imports", "")
 
+    # Safety net: if test_code or test_class still contains embedded JSON
+    # (e.g. a list of test objects), extract the actual Python code now.
+    test_code = _extract_test_code(test_code)
+    test_class = _extract_test_code(test_class)
+
+    # Pick whichever is non-empty (prefer test_class since it may include the class wrapper)
+    body = test_class if test_class else test_code
+    if not body:
+        # Last resort: produce a placeholder that pytest will collect (and skip)
+        body = (
+            "import pytest\n\n"
+            "@pytest.mark.skip(reason='no test code extracted')\n"
+            "def test_placeholder():\n"
+            "    pass\n"
+        )
+
     # Build the test file
     content_parts = []
 
-    # Add standard imports
-    content_parts.append("import pytest")
-    content_parts.append("import sys")
-    content_parts.append("sys.path.insert(0, '/app')")
+    # Check if the test body already contains its own imports (common in
+    # pyMethods2Test data where each test is a self-contained file).
+    body_has_imports = any(
+        body.lstrip().startswith(prefix)
+        for prefix in ("import ", "from ")
+    )
 
-    # Add any additional imports from the sample
-    if imports:
-        content_parts.append(imports)
+    if not body_has_imports:
+        # Add standard imports only when the body doesn't bring its own
+        content_parts.append("import pytest")
+        content_parts.append("import sys")
+        content_parts.append("sys.path.insert(0, '/app')")
+        content_parts.append("from solution import *")
 
-    content_parts.append("")
+        # Add any additional imports from the sample
+        if imports:
+            content_parts.append(imports)
 
-    # Add test class or function
-    if test_class:
-        content_parts.append(test_class)
+        content_parts.append("")
+    elif "sys.path" not in body:
+        # Body has its own imports but no sys.path -- prepend it so /app is importable
+        content_parts.append("import sys")
+        content_parts.append("sys.path.insert(0, '/app')")
+        content_parts.append("from solution import *")
+        content_parts.append("")
     else:
-        content_parts.append(test_code)
+        # Body has its own imports and sys.path -- ensure it also imports from solution
+        if "from solution import" not in body:
+            body = body.replace(
+                "sys.path.insert(0, '/app')",
+                "sys.path.insert(0, '/app')\nfrom solution import *",
+            )
+
+    content_parts.append(body)
 
     return "\n".join(content_parts)
 

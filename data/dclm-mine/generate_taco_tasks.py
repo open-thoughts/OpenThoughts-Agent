@@ -204,7 +204,7 @@ def generate_tasks(
     return str(temp_dir)
 
 
-def main(limit: int = LIMIT) -> None:
+def main(limit: int = LIMIT, upload: bool = True) -> None:
     """Main pipeline for generating TACO tasks."""
 
     print("Step 1: Loading TACO dataset...")
@@ -236,9 +236,12 @@ def main(limit: int = LIMIT) -> None:
     task_dir = generate_tasks(samples, instructions, "taco")
     print(f"  -> Task directory: {task_dir}")
 
-    print("\nStep 4: Uploading to HuggingFace...")
-    repo_url = upload_tasks_to_hf(task_dir, "DCAgent/exp_rpt_taco")
-    print(f"  -> Repository: {repo_url}")
+    if upload:
+        print("\nStep 4: Uploading to HuggingFace...")
+        repo_url = upload_tasks_to_hf(task_dir, "DCAgent/exp_rpt_taco")
+        print(f"  -> Repository: {repo_url}")
+    else:
+        repo_url = "Not uploaded"
 
     print(f"\n{'='*60}")
     print(f"Successfully generated {len(samples)} TACO tasks!")
@@ -246,12 +249,15 @@ def main(limit: int = LIMIT) -> None:
     print(f"Repository: {repo_url}")
     print(f"{'='*60}")
 
+    return task_dir
+
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Generate tasks from TACO dataset")
     parser.add_argument("--limit", type=int, default=LIMIT, help="Maximum samples to process")
+    parser.add_argument("--no-upload", action="store_true", help="Skip HuggingFace upload")
 
     args = parser.parse_args()
-    main(limit=args.limit)
+    main(limit=args.limit, upload=not args.no_upload)

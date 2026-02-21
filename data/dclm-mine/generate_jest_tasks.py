@@ -70,6 +70,60 @@ def is_jest_file(content: str) -> bool:
     if 'document.' in content or 'window.' in content:
         return False
 
+    # Reject tests that require scoped packages (@org/pkg) -- project-specific
+    if re.search(r"require\(['\"]@", content):
+        return False
+
+    # Reject AMD/RequireJS patterns (define([...], function(...){...}))
+    if re.search(r'^define\s*\(', content, re.MULTILINE):
+        return False
+
+    # Reject tests using undefined globals without requiring them
+    # These indicate test harness globals that won't be available
+    for global_name in ['sinon', 'ko', 'jasmine', 'browser', 'inject', 'context', '$']:
+        if re.search(rf'\b{global_name}\b', content) and not re.search(rf"require\(['\"].*{global_name}", content):
+            return False
+
+    # Reject UMD patterns (factory(require(...))) - these are library bundles, not simple tests
+    if re.search(r'factory\(require\(', content):
+        return False
+
+    # Reject tests with TypeScript syntax (needs ts-jest or babel)
+    if re.search(r':\s*(string|number|boolean|any|void|Promise)\b', content):
+        return False
+
+    # Reject tests using jQuery selectors without require (browser-oriented)
+    if re.search(r"\$\(['\"]", content) and not re.search(r"require\(['\"].*jquery", content, re.IGNORECASE):
+        return False
+
+    # Reject tests requiring project-specific modules (non-npm packages)
+    # Allow common npm packages but reject unknown capitalized module names
+    requires = re.findall(r"require\(['\"]([^'\"]+)['\"]\)", content)
+    # Known safe npm packages
+    safe_packages = {
+        'jest', 'mocha', 'chai', 'expect', 'expect.js', 'assert', 'sinon',
+        'lodash', 'underscore', 'moment', 'axios', 'fs', 'path', 'util',
+        'crypto', 'http', 'https', 'url', 'querystring', 'os', 'child_process',
+        'stream', 'events', 'buffer', 'string_decoder', 'timers', 'net',
+        'supertest', 'nock', 'rewire', 'proxyquire',
+    }
+    for req in requires:
+        # Skip relative paths (already handled above)
+        if req.startswith('.'):
+            continue
+        # Skip node built-ins
+        if req in safe_packages or req.startswith('node:'):
+            continue
+        # Reject scoped packages (already handled but be safe)
+        if req.startswith('@'):
+            return False
+        # Reject PascalCase module names (project-specific like RelayTestUtils)
+        if re.match(r'^[A-Z][a-zA-Z]+', req) and req not in safe_packages:
+            return False
+        # Reject modules with deep paths like 'lib/something'
+        if '/' in req:
+            return False
+
     return True
 
 
@@ -129,10 +183,16 @@ def create_node_dockerfile() -> str:
     """Create Node.js Dockerfile for test environment."""
     return """FROM node:20-slim
 
+# Install bsdutils for the 'script' command (needed by Daytona/terminus agent)
+RUN apt-get update && apt-get install -y --no-install-recommends bsdutils && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Install test frameworks globally
-RUN npm install -g jest mocha chai
+# Install test frameworks and common test helpers globally
+RUN npm install -g jest mocha chai expect.js sinon lodash underscore assert
+
+# Create minimal package.json so local npm install works
+RUN echo '{"name":"app","private":true}' > /app/package.json
 
 # Create minimal jest.config.js so Jest can find tests
 RUN echo 'module.exports = { testEnvironment: "node", testMatch: ["**/tests/**/*.js", "**/*.test.js", "**/*.spec.js"] };' > /app/jest.config.js
@@ -163,12 +223,12 @@ module.exports = {
   testEnvironment: "node",
   rootDir: "/app",
   testMatch: ["**/tests/**/*.js", "**/*.test.js"],
-  moduleDirectories: ["node_modules", "/app", "/app/lib"]
+  moduleDirectories: ["node_modules", "/usr/local/lib/node_modules", "/app", "/app/lib"]
 };
 EOF
 
-# Install dependencies if package.json exists
-if [ -f package.json ]; then
+# Install dependencies if package.json exists and has dependencies
+if [ -f package.json ] && grep -q '"dependencies"' package.json 2>/dev/null; then
     npm install --silent 2>/dev/null || true
 fi
 
@@ -176,7 +236,11 @@ fi
 echo "Checking for missing dependencies..."
 REQUIRES=$(grep -oP "require\\(['\"]\\K[^'\"@./][^'\"]*" /tests/test_solution.js 2>/dev/null | sort -u || true)
 for pkg in $REQUIRES; do
-    if [ ! -d "/app/node_modules/$pkg" ] && [ ! -d "/usr/local/lib/node_modules/$pkg" ]; then
+    # Skip Node.js built-in modules
+    case "$pkg" in
+        fs|path|util|crypto|http|https|url|querystring|os|child_process|stream|events|buffer|string_decoder|timers|net|assert|module|vm|tty|readline|cluster|dns|dgram|zlib|tls) continue ;;
+    esac
+    if ! node -e "require('$pkg')" 2>/dev/null; then
         echo "Installing $pkg..."
         npm install --silent "$pkg" 2>/dev/null || true
     fi
@@ -250,8 +314,14 @@ def generate_jest_tasks(samples: List[Dict], task_descriptions: List[str], datas
 
 def main() -> None:
     """Main pipeline."""
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate Jest/Mocha tasks from The Stack")
+    parser.add_argument("--limit", type=int, default=LIMIT, help="Number of tasks to generate")
+    args = parser.parse_args()
+    limit = args.limit
+
     print("Step 1: Filtering Jest/Mocha files from The Stack...")
-    jest_samples = filter_jest_from_stack(LIMIT)
+    jest_samples = filter_jest_from_stack(limit)
     print(f"  -> {len(jest_samples)} Jest/Mocha files found")
 
     if not jest_samples:
@@ -272,12 +342,15 @@ def main() -> None:
     print("\nStep 3: Generating harbor task directories...")
     task_dir = generate_jest_tasks(jest_samples, task_descriptions, "stack-jest")
 
-    print("\nStep 4: Uploading to HuggingFace...")
-    repo_url = upload_tasks_to_hf(task_dir, "DCAgent/exp_rpt_stack-jest")
-    print(f"  -> Repository: {repo_url}")
+    if not os.environ.get("SKIP_HF_UPLOAD"):
+        print("\nStep 4: Uploading to HuggingFace...")
+        repo_url = upload_tasks_to_hf(task_dir, "DCAgent/exp_rpt_stack-jest")
+        print(f"  -> Repository: {repo_url}")
+    else:
+        print("\nStep 4: Skipping HuggingFace upload (SKIP_HF_UPLOAD set)")
 
     print(f"\n{'='*60}")
-    print(f"Successfully generated {len(jest_samples)} Jest/Mocha tasks!")
+    print(f"Successfully generated {len(jest_samples)} tasks in: {task_dir}")
     print(f"{'='*60}")
 
 

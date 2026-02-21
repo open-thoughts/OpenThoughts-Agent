@@ -115,13 +115,13 @@ RUN echo 'module.exports = { testEnvironment: "node", testMatch: ["**/tests/**/*
 """,
     "go": """FROM golang:1.21-alpine
 WORKDIR /app
-RUN apk add --no-cache bash git
+RUN apk add --no-cache bash git util-linux
 """,
-    "java": """FROM openjdk:17-slim
+    "java": """FROM eclipse-temurin:17-jdk-jammy
 WORKDIR /app
 RUN apt-get update && apt-get install -y maven bash && rm -rf /var/lib/apt/lists/*
 """,
-    "java-gradle": """FROM openjdk:17-slim
+    "java-gradle": """FROM eclipse-temurin:17-jdk-jammy
 WORKDIR /app
 RUN apt-get update && apt-get install -y gradle bash && rm -rf /var/lib/apt/lists/*
 """,
@@ -210,6 +210,7 @@ cleanup() {{
 trap cleanup EXIT
 
 cd {working_dir}
+export PYTHONPATH="{working_dir}:${{PYTHONPATH:-}}"
 {setup_block}
 echo "Running tests..."
 {test_command} 2>&1 | tee /logs/verifier/test_output.txt
@@ -222,7 +223,13 @@ def create_pytest_test_sh(test_file: str = "/tests/test_solution.py") -> str:
     """Create a test.sh for pytest tests."""
     return create_generic_test_sh(
         test_command=f"pytest {test_file} -v --tb=short",
-        setup_commands="pip3 install --quiet pytest 2>/dev/null || true"
+        setup_commands="""pip3 install --quiet pytest 2>/dev/null || true
+# If agent didn't create solution.py, find the first .py file in /app and copy it
+if [ ! -f /app/solution.py ]; then
+    for f in /app/*.py; do
+        [ -f "$f" ] && cp "$f" /app/solution.py && break
+    done
+fi"""
     )
 
 
@@ -465,7 +472,7 @@ The task should:
 1. Describe what functionality needs to be implemented
 2. Include input/output requirements based on the function signature
 3. Be self-contained and actionable
-4. The solution should be placed in /app/
+4. The solution must be written in a file called `/app/solution.py`
 
 Create a clear task description (just the task, no preamble):"""
 
@@ -475,7 +482,7 @@ Given the following test code, create a clear, specific task description that an
 1. Describe what functionality needs to be implemented (not just "make the tests pass")
 2. Include specific requirements that would make the tests pass
 3. Be self-contained and actionable
-4. The solution should be placed in /app/
+4. The solution must be written in a file called `/app/solution.py`
 
 Test code:
 {{text}}
@@ -486,7 +493,7 @@ PROBLEM_STATEMENT_CLEANUP_PROMPT = """Clean up and format the following programm
 1. Be clear and well-formatted
 2. Include input/output format specifications if present
 3. Include examples if available
-4. The solution should be placed in /app/
+4. The solution must be written in a file called `/app/solution.py`
 
 Problem:
 {{description}}
@@ -817,7 +824,7 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 def upload_tasks_to_hf(
-    dataset_path: str, 
+    dataset_path: str,
     repo_id: str,
     private: bool = False,
     token: Optional[str] = None,
@@ -827,24 +834,30 @@ def upload_tasks_to_hf(
 ) -> str:
     """
     Upload a dataset to Hugging Face Hub.
-    
+
     Args:
         dataset_path (str): Path to the local dataset directory containing tasks
         repo_id (str): Hugging Face repository ID (e.g., 'username/dataset-name')
         private (bool): Whether to create a private repository (default: False)
         token (str, optional): Hugging Face token for authentication
         commit_message (str): Commit message for the upload
-    
+
     Returns:
         str: URL of the uploaded dataset repository
-        
+
     Raises:
         ValueError: If dataset_path is invalid or repository ID is malformed
         FileNotFoundError: If dataset_path doesn't exist
         Exception: If upload fails
     """
-    logger = setup_logging()    
-    
+    logger = setup_logging()
+
+    # Allow skipping upload via environment variable
+    if os.environ.get("SKIP_HF_UPLOAD", "").strip() == "1":
+        logger.info(f"SKIP_HF_UPLOAD=1 set, skipping upload for {repo_id}")
+        print(f"[SKIP_HF_UPLOAD] Skipping upload to {repo_id}. Task directory: {dataset_path}")
+        return f"https://huggingface.co/datasets/{repo_id} (skipped)"
+
     if not dataset_path or not isinstance(dataset_path, str):
         raise ValueError("dataset_path must be a non-empty string")
     
@@ -1210,6 +1223,120 @@ def download_hf_dataset(
     logger.info(f"Successfully downloaded dataset {repo_id} to: {dataset_path}")
     return str(dataset_path)
 
+
+def fix_test_sh(test_sh: str) -> str:
+    """Fix infrastructure issues in source test.sh scripts.
+
+    1. PYTHONPATH: Adds /app to PYTHONPATH so agent code is importable
+    2. Auto-installer: Removes the block that pip-installs packages the agent should create
+    """
+    import re
+
+    if not test_sh:
+        return test_sh
+
+    # Fix 1: Add PYTHONPATH=/app after 'cd /app'
+    if 'export PYTHONPATH' not in test_sh:
+        test_sh = test_sh.replace(
+            'cd /app\n',
+            'cd /app\nexport PYTHONPATH="/app:${PYTHONPATH:-}"\n',
+            1
+        )
+
+    # Fix 2: Replace auto-installer with whitelist-filtered version
+    # The original auto-installer blindly pip-installs ANY missing import,
+    # including packages the agent is supposed to CREATE. Replace with a
+    # whitelist that only installs known third-party test dependencies.
+    whitelist_block = '''# Install whitelisted test dependencies (not agent-created packages)
+WHITELIST="requests numpy pandas scipy scikit-learn sklearn torch tensorflow keras httpx aiohttp ddtrace django flask fastapi matplotlib seaborn pillow pydantic pytest-mock requests-mock faker pyyaml pytz cryptography bcrypt hypothesis"
+for pkg in $WHITELIST; do
+    python3 -c "import ${pkg//-/_}" 2>/dev/null || pip install --quiet "$pkg" 2>/dev/null || true
+done
+'''
+    auto_install_pattern = re.compile(
+        r'# Auto-detect and install missing imports.*?'
+        r'\[ -n "\$MISSING" \] && pip install --quiet \$MISSING[^\n]*\n',
+        re.DOTALL
+    )
+    if auto_install_pattern.search(test_sh):
+        test_sh = auto_install_pattern.sub(whitelist_block, test_sh)
+    elif '# Install whitelisted test dependencies' not in test_sh:
+        # No auto-installer found and no whitelist already present:
+        # Insert whitelist block before pytest execution
+        test_sh = test_sh.replace(
+            'pytest /tests/',
+            whitelist_block + 'pytest /tests/',
+            1
+        )
+
+    return test_sh
+
+
+def load_harbor_tasks_as_dicts(hf_repo_id: str, limit: int = 10_000) -> List[Dict[str, str]]:
+    """Load harbor tasks from HF into list of dicts with keys:
+    instruction, test_sh, dockerfile, task_toml, metadata, test_files_json, task_dir_name.
+
+    Uses HDF5 format for fast loading (single file, no directory extraction).
+    """
+    import h5py
+    from scripts.harbor.tasks_parquet_converter import from_hf_dataset_hdf5
+
+    h5_path = from_hf_dataset_hdf5(hf_repo_id)
+    tasks = []
+
+    def _read(group, key):
+        if key in group:
+            ds = group[key]
+            if ds.attrs.get('binary', False):
+                return ""
+            val = ds[()]
+            if isinstance(val, bytes):
+                return val.decode("utf-8", errors="replace")
+            return str(val)
+        return ""
+
+    # Patterns indicating broken source tasks (unsolvable regardless of agent quality)
+    _BROKEN_TEST_PATTERNS = [
+        'scopez_server',           # Requires pre-built Go binary
+        'import smlb',             # Obscure ML package not available
+        'TestPlotBase',            # Removed from pandas internals
+        'pandas.tests.plotting',   # Removed from pandas internals
+    ]
+
+    with h5py.File(h5_path, 'r') as h5:
+        for group_name in sorted(h5.keys()):
+            if len(tasks) >= limit:
+                break
+            g = h5[group_name]
+            task_name = g.attrs.get('task_name', group_name)
+
+            # Collect test files first to check for broken patterns
+            test_files = {}
+            if "tests" in g and isinstance(g["tests"], h5py.Group):
+                for fname in g["tests"].keys():
+                    if fname == "test.sh":
+                        continue
+                    val = _read(g["tests"], fname)
+                    if val:
+                        test_files[fname] = val
+
+            # Skip tasks with broken test patterns
+            all_test_code = "\n".join(test_files.values())
+            if any(pat in all_test_code for pat in _BROKEN_TEST_PATTERNS):
+                continue
+
+            task = {
+                "task_dir_name": task_name,
+                "instruction": _read(g, "instruction.md"),
+                "test_sh": fix_test_sh(_read(g, "tests/test.sh")),
+                "dockerfile": _read(g, "environment/Dockerfile"),
+                "task_toml": _read(g, "task.toml"),
+                "metadata": _read(g, "metadata.json") or "{}",
+            }
+            task["test_files_json"] = json.dumps(test_files)
+            tasks.append(task)
+
+    return tasks
 
 
 def create_standard_task_toml() -> str:

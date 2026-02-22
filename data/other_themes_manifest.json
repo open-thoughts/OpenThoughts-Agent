@@ -1,0 +1,18 @@
+{
+  "baseline_source": "/scratch/10000/eguha3/data_cache/baseline_wk21ayui",
+  "7.6_speed_bonus": "/scratch/10000/eguha3/data_cache/exp-7-6-speed_d8fjexed",
+  "1.1_goldilocks": "/scratch/10000/eguha3/data_cache/exp-1-1-goldilocks_odb029zt",
+  "1.1_70_20_10": "/scratch/10000/eguha3/data_cache/exp-1-1-70-20-10_af3o0n4y",
+  "1.2_minimal": "/scratch/10000/eguha3/data_cache/exp-1-2-minimal_5oiuoab2",
+  "1.2_rich": "/scratch/10000/eguha3/data_cache/exp-1-2-rich_8g6dr_te",
+  "1.3_top50": "/scratch/10000/eguha3/data_cache/exp-1-3-top50_oc7izn6g",
+  "1.4_deduplicated": "/scratch/10000/eguha3/data_cache/exp-1-4-dedup_jvltzu9_",
+  "2.1_proportional": "/scratch/10000/eguha3/data_cache/exp-2-1-proportional_i9sof22p",
+  "4.3_curated_1k": "/scratch/10000/eguha3/data_cache/exp-4-3-curated-1k_m75ay4ol",
+  "5.2_adversarial": "/scratch/10000/eguha3/data_cache/exp-5-2-adversarial_xgh2tp1r",
+  "5.4_2skill": "/scratch/10000/eguha3/data_cache/exp-5-4-2skill_8k73kc2l",
+  "7.1_d1_full": "/scratch/10000/eguha3/data_cache/exp-7-1-d1-full_hvwlvkoc",
+  "7.1_d5_bare": "/scratch/10000/eguha3/data_cache/exp-7-1-d5-bare_asg8zcet",
+  "7.2_random_30": "/scratch/10000/eguha3/data_cache/exp-7-2-dropout30_easclv0j",
+  "7.5_staged": "/scratch/10000/eguha3/data_cache/exp-7-5-staged_e14bf52k"
+}

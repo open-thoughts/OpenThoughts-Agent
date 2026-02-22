@@ -1,0 +1,211 @@
+{
+  "description": "All datasets with 8%+ pass rate on gpt-5-nano",
+  "total_datasets": 29,
+  "datasets": [
+    {
+      "repo_id": "DCAgent/exp_rpt_stack-junit",
+      "name": "stack-junit",
+      "pass_rate_nano": "84%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_crosscodeeval-csharp",
+      "name": "crosscodeeval-csharp",
+      "pass_rate_nano": "68%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp-rdb-r2egym-easy",
+      "name": "r2egym-easy",
+      "pass_rate_nano": "65%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp-rdb-r2egym-trivial",
+      "name": "r2egym-trivial",
+      "pass_rate_nano": "60%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp-rdb-r2egym-medium",
+      "name": "r2egym-medium",
+      "pass_rate_nano": "56%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp-rdb-r2egym-hard",
+      "name": "r2egym-hard",
+      "pass_rate_nano": "56%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_crosscodeeval-java",
+      "name": "crosscodeeval-java",
+      "pass_rate_nano": "48%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_crosscodeeval-typescript",
+      "name": "crosscodeeval-typescript",
+      "pass_rate_nano": "48%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_stack-bash-withtests-gpt5mini",
+      "name": "stack-bash-withtests-gpt5mini",
+      "pass_rate_nano": "32%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp-rdb-r2egym-very_hard",
+      "name": "r2egym-very_hard",
+      "pass_rate_nano": "28%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_stack-cpp",
+      "name": "stack-cpp",
+      "pass_rate_nano": "24%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_stack-bash-withtests",
+      "name": "stack-bash-withtests",
+      "pass_rate_nano": "24%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_stack-bash",
+      "name": "stack-bash",
+      "pass_rate_nano": "20%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_stack-csharp",
+      "name": "stack-csharp",
+      "pass_rate_nano": "12%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_stack-ruby",
+      "name": "stack-ruby",
+      "pass_rate_nano": "12%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_stack-rust",
+      "name": "stack-rust",
+      "pass_rate_nano": "12%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_stack-pytest-gpt5mini",
+      "name": "stack-pytest-gpt5mini",
+      "pass_rate_nano": "8%",
+      "version": "original",
+      "status": "good"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_bigcodebench-v2",
+      "name": "bigcodebench",
+      "pass_rate_nano": "54%",
+      "version": "v2-fixed",
+      "status": "fixed"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_codeelo-v2",
+      "name": "codeelo",
+      "pass_rate_nano": "52%",
+      "version": "v2-fixed",
+      "status": "fixed",
+      "task_count": 500
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_crosscodeeval-python-v2",
+      "name": "crosscodeeval-python",
+      "pass_rate_nano": "48%",
+      "version": "v2-fixed",
+      "status": "fixed"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_e2egit-v2",
+      "name": "e2egit",
+      "pass_rate_nano": "48%",
+      "version": "v2-fixed",
+      "status": "fixed"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_methods2test-v2",
+      "name": "methods2test",
+      "pass_rate_nano": "28%",
+      "version": "v2-fixed",
+      "status": "fixed"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_codereval-python-v2",
+      "name": "codereval-python",
+      "pass_rate_nano": "24%",
+      "version": "v2-fixed",
+      "status": "fixed",
+      "task_count": 230
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_softwareheritage-v2",
+      "name": "softwareheritage",
+      "pass_rate_nano": "12%",
+      "version": "v2-fixed",
+      "status": "fixed"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_stack-php-v2",
+      "name": "stack-php",
+      "pass_rate_nano": "100%",
+      "version": "v2-fixed",
+      "status": "fixed"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_stack-pytest-v2",
+      "name": "stack-pytest",
+      "pass_rate_nano": "40%",
+      "version": "v2-fixed",
+      "status": "fixed"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_stack-dockerfile-v2",
+      "name": "stack-dockerfile",
+      "pass_rate_nano": "16%",
+      "version": "v2-fixed",
+      "status": "fixed"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_stack-selfdoc-v2",
+      "name": "stack-selfdoc",
+      "pass_rate_nano": "16%",
+      "version": "v2-fixed",
+      "status": "fixed"
+    },
+    {
+      "repo_id": "DCAgent/exp_rpt_stack-jest-v2",
+      "name": "stack-jest",
+      "pass_rate_nano": "8%",
+      "version": "v2-fixed",
+      "status": "fixed"
+    }
+  ]
+}

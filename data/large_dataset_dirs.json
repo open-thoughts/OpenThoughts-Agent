@@ -1,0 +1,14 @@
+{
+  "pytest": "/scratch/10000/eguha3/data_cache/stack-pytest_tasks_t3w7lgkr",
+  "jest": "/scratch/10000/eguha3/data_cache/stack-jest_tasks__zyzv9mm",
+  "dockerfile": "/scratch/10000/eguha3/data_cache/stack-dockerfile_tasks_pme6wcfd",
+  "selfdoc": "/scratch/10000/eguha3/data_cache/stack-selfdoc_tasks_c9k8y8ky",
+  "php": "/scratch/10000/eguha3/data_cache/stack-php_tasks_r5ni699e",
+  "pymethods2test": "/scratch/10000/eguha3/data_cache/pymethods2test_tasks_9ui7mg12",
+  "unitsyn": "/scratch/10000/eguha3/data_cache/unitsyn-python_tasks_8208wfth",
+  "methods2test": "/scratch/10000/eguha3/data_cache/methods2test_tasks_2tnyr0_8",
+  "e2egit": "/scratch/10000/eguha3/data_cache/e2egit_tasks_bti9r5pm",
+  "softwareheritage": "/scratch/10000/eguha3/data_cache/swh_tasks_uuhmwn__",
+  "bigcodebench": "/scratch/10000/eguha3/data_cache/bigcodebench_tasks_sg7zgoei",
+  "bugsinpy-mf": "/scratch/10000/eguha3/data_cache/bugsinpy_mf_tasks_pvjz9kim"
+}

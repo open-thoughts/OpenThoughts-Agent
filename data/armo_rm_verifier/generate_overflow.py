@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-Generate StackOverflow dataset with ArmoRM verifier enabled by default.
+Generate Stack Overflow dataset with ArmoRM verifier enabled by default.
+This version extracts from the existing HF dataset instead of raw data
+which is over 20GB
 
 Sample usage:
-    # Full run (Traces + Upload)
+    # Full run (Extraction + Injection + Upload)
     python3 data/armo_rm_verifier/generate_overflow.py
 
-    # Local test (No Traces, No Upload)
-    python3 data/armo_rm_verifier/generate_overflow.py --skip_traces --skip_upload
-
-    # Task generation only (No Traces, with Upload)
-    python3 data/armo_rm_verifier/generate_overflow.py --skip_traces
+    # Local test (No Upload)
+    python3 data/armo_rm_verifier/generate_overflow.py --skip_upload
 """
 
 import os
 import tempfile
 import sys
 import argparse
+import shutil
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -28,71 +28,50 @@ if str(PROJECT_ROOT) not in sys.path:
 # Import from parent package
 from data.commons import (
     upload_tasks_to_hf, 
-    generate_tasks_from_questions, 
-    subsample_tasks_directory, 
-    upsample_tasks_directory, 
-    upload_traces_to_hf
+    download_hf_dataset
 )
-from data.stackexchange.generate_codereview import (
-    download_and_extract_dataset, 
-    parse_posts_xml, 
-    extract_questions_from_data
-)
-from scripts.harbor.run_and_export_traces import run_dataset_to_traces
+from scripts.harbor import tasks_parquet_converter as tpc
 from data.armo_rm_verifier.armorm_verifier import inject_armorm_verifier
 
 def main() -> None:
-    """Main function - generates StackOverflow tasks with ArmoRM enabled by default"""
-    parser = argparse.ArgumentParser(description="Generate StackOverflow dataset with ArmoRM")
-    parser.add_argument("--skip_traces", action="store_true", help="Skip trace generation")
+    """Main function - processes StackOverflow tasks with ArmoRM"""
+    parser = argparse.ArgumentParser(description="Generate Stack Overflow dataset with ArmoRM")
     parser.add_argument("--skip_upload", action="store_true", help="Skip upload to Hugging Face")
     args = parser.parse_args()
     
-    # 1. Load data
-    print("Downloading and parsing StackOverflow data...")
-    # Using the original URL from generate_overflow.py
-    posts_xml_path = download_and_extract_dataset("https://archive.org/download/stackexchange/stackoverflow.com-Posts.7z")
+    source_repo = "mlfoundations-dev/stackexchange-overflow-sandboxes"
+    target_repo = "DCAgent/stackexchange-overflow-sandboxes-armo-rm"
     
-    # Original script used limit=10_000 for parse_posts_xml
-    questions_data = parse_posts_xml(posts_xml_path, limit=10_000)
-    questions = extract_questions_from_data(questions_data)
+    print(f"Step 1: Downloading source tasks from {source_repo}...")
+    snapshot_dir = Path(download_hf_dataset(source_repo))
     
-    # 2. Task Generation
-    print("Generating base tasks...")
-    final_dataset_dir = generate_tasks_from_questions(questions, "overflow")
-
-    # 3. ArmoRM Verifier Injection (Enabled by default)
-    print("Injecting local ArmoRM verifier...")
-    inject_armorm_verifier(final_dataset_dir)
-    suffix = "-armo-rm"
-
-    # 4. Standard Post-Processing
-    subsampled_dataset_dir = subsample_tasks_directory(final_dataset_dir, 10_000)
-    final_tasks_dir = subsampled_dataset_dir
-
-    # 5. Trace Generation (Optional)
-    if not args.skip_traces:
-        print("Generating traces using teacher model...")
-        hf_dataset = run_dataset_to_traces(
-            final_tasks_dir,
-            model_name="gpt-5-nano-2025-08-07", 
-            agent_name="terminus-2", 
-            n_concurrent=256, 
-            agent_kwargs={"max_episodes": 8}
-        )
-        
-        if not args.skip_upload:
-            print("Uploading traces to Hugging Face...")
-            upload_traces_to_hf(hf_dataset, f"DCAgent/stackexchange-overflow-sandboxes-traces-terminus-2{suffix}", "SFT")
-    else:
-        print("Skipping trace generation.")
+    # 2. Extract tasks from parquet
+    print("Step 2: Extracting tasks from parquet files...")
+    parquet_files = sorted(snapshot_dir.rglob("*.parquet"))
+    if not parquet_files:
+        raise FileNotFoundError(f"No parquet files found in {snapshot_dir}")
     
-    # 6. Upload Tasks
+    output_dir = Path(tempfile.mkdtemp(prefix="overflow_armorm_"))
+    print(f"Extracting to: {output_dir}")
+    
+    # Use the converter directly to extract
+    tpc.from_parquet(
+        parquet_path=str(parquet_files[0]),
+        base=str(output_dir),
+        on_exist="overwrite"
+    )
+
+    # 3. ArmoRM Verifier Injection
+    print("Step 3: Injecting local ArmoRM verifier into extracted tasks...")
+    inject_armorm_verifier(str(output_dir))
+
+    # 4. Upload Tasks
     if not args.skip_upload:
-        print("Uploading tasks to Hugging Face...")
-        upload_tasks_to_hf(final_tasks_dir, f"DCAgent/stackexchange-overflow-sandboxes{suffix}")
+        print(f"Step 4: Uploading ArmoRM-verified tasks to {target_repo}...")
+        upload_tasks_to_hf(str(output_dir), target_repo)
+        print(f"Success! Tasks uploaded to: https://huggingface.co/datasets/{target_repo}")
     else:
-        print(f"Upload skipped. Final tasks are available in: {final_tasks_dir}")
+        print(f"Upload skipped. Local tasks are available in: {output_dir}")
     
     print("Generation Complete!")
 

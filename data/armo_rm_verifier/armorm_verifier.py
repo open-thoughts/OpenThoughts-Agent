@@ -89,8 +89,7 @@ def run_verifier():
     model = AutoModelForSequenceClassification.from_pretrained(
         model_id, 
         device_map="auto",
-        trust_remote_code=True,
-        torch_dtype=torch.bfloat16
+        trust_remote_code=True
     )
 
     # 3. Process and Score
@@ -137,10 +136,10 @@ python3 -u /tests/test_state.py
 '''
 
 RESOURCES_TEMPLATE = '''
-    [resources]
-    cpus = 8
-    memory = "24G"
-    storage = "10G"
+[environment]
+cpus = 8
+memory_mb = 24576
+storage_mb = 10240
 '''
 
 def inject_armorm_verifier(dataset_dir: str):

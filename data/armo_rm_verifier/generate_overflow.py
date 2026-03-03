@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
-Generate Stack Overflow dataset with ArmoRM verifier enabled by default.
-This version extracts from the existing HF dataset instead of raw data
-which is over 20GB
+Generate Stack Overflow dataset with ArmoRM Reward verifier.
+This version extracts from an existing HF tasks dataset instead of raw XML.
 
 Sample usage:
-    # Full run (Extraction + Injection + Upload)
-    python3 data/armo_rm_verifier/generate_overflow.py
+    # Use standard multi-turn trajectory verifier
+    python3 data/armo_rm_verifier/generate_overflow.py --verifier_type standard
 
-    # Local test (No Upload)
+    # Use response.txt based verifier
+    python3 data/armo_rm_verifier/generate_overflow.py --verifier_type response
+
+    # Task generation only (No Traces, no Upload)
     python3 data/armo_rm_verifier/generate_overflow.py --skip_upload
 """
 
@@ -31,16 +33,24 @@ from data.commons import (
     download_hf_dataset
 )
 from scripts.harbor import tasks_parquet_converter as tpc
+
+# Import both ArmoRM verifiers
 from data.armo_rm_verifier.armorm_verifier import inject_armorm_verifier
+from data.armo_rm_verifier.armorm_response_verifier import inject_armorm_response_verifier
 
 def main() -> None:
-    """Main function - processes StackOverflow tasks with ArmoRM"""
-    parser = argparse.ArgumentParser(description="Generate Stack Overflow dataset with ArmoRM")
+    """Main function - processes StackOverflow tasks with chosen ArmoRM Reward verifier"""
+    parser = argparse.ArgumentParser(description="Generate Stack Overflow dataset with ArmoRM Reward")
+    parser.add_argument(
+        "--verifier_type", 
+        choices=["standard", "response"], 
+        default="standard",
+        help="Which ArmoRM verifier to use: 'standard' (trajectory) or 'response' (response.txt)"
+    )
     parser.add_argument("--skip_upload", action="store_true", help="Skip upload to Hugging Face")
     args = parser.parse_args()
     
     source_repo = "mlfoundations-dev/stackexchange-overflow-sandboxes"
-    target_repo = "DCAgent/stackexchange-overflow-sandboxes-armo-rm"
     
     print(f"Step 1: Downloading source tasks from {source_repo}...")
     snapshot_dir = Path(download_hf_dataset(source_repo))
@@ -61,9 +71,17 @@ def main() -> None:
         on_exist="overwrite"
     )
 
-    # 3. ArmoRM Verifier Injection
-    print("Step 3: Injecting local ArmoRM verifier into extracted tasks...")
-    inject_armorm_verifier(str(output_dir))
+    # 3. Verifier Injection
+    if args.verifier_type == "response":
+        print("Step 3: Injecting local ArmoRM Response verifier into extracted tasks...")
+        inject_armorm_response_verifier(str(output_dir))
+        suffix = "-armo-rm-response"
+    else:
+        print("Step 3: Injecting local ArmoRM Standard verifier into extracted tasks...")
+        inject_armorm_verifier(str(output_dir))
+        suffix = "-armo-rm"
+
+    target_repo = f"DCAgent/stackexchange-overflow-sandboxes{suffix}"
 
     # 4. Upload Tasks
     if not args.skip_upload:

@@ -136,28 +136,28 @@ python3 -u /tests/test_state.py
 '''
 
 RESOURCES_TEMPLATE = '''
-[environment]
-cpus = 8
-memory_mb = 24576
-storage_mb = 10240
+    [environment]
+    cpus = 8
+    memory_mb = 24576
+    storage_mb = 10240
 '''
 
 def inject_armorm_verifier(dataset_dir: str):
     """Adds the ArmoRM verifier files to each task directory."""
     tasks_root = Path(dataset_dir)
     print(f"Injecting ArmoRM verifier into tasks at: {tasks_root}")
-    
+
     # Get the baseline TOML and update the timeout for ArmoRM loading
     base_toml = create_standard_task_toml()
     # Increase verifier timeout from 720 to 1200 seconds
     updated_toml = base_toml.replace("timeout_sec = 720.0", "timeout_sec = 1200.0")
-    
+
     # Append ArmoRM-specific hardware requirements
     armorm_task_toml = updated_toml.strip() + "\n" + RESOURCES_TEMPLATE + "\n"
 
     for task_dir in tasks_root.iterdir():
         if not task_dir.is_dir(): continue
-            
+
         # Write the customized task.toml
         with open(task_dir / "task.toml", "w") as f:
             f.write(armorm_task_toml)
@@ -165,15 +165,15 @@ def inject_armorm_verifier(dataset_dir: str):
         # Setup tests directory
         tests_dir = task_dir / "tests"
         tests_dir.mkdir(exist_ok=True)
-        
+
         # Write the python logic to test_state.py
         with open(tests_dir / "test_state.py", "w") as f:
             f.write(VERIFIER_TEMPLATE)
-            
+
         # Write the bash entrypoint
         test_sh_path = tests_dir / "test.sh"
         with open(test_sh_path, "w") as f:
             f.write(TEST_SH_TEMPLATE)
         os.chmod(test_sh_path, 0o755)
-        
+
     print("Verifier injection complete.")

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """
-Generate StackExchange Tezos dataset with ArmoRM verifier enabled by default.
+Generate StackExchange Tezos dataset with ArmoRM Reward verifier.
 
 Sample usage:
-    # Full run (Traces + Upload)
-    python3 data/armo_rm_verifier/generate_tezos.py
+    # Use standard multi-turn trajectory verifier
+    python3 data/armo_rm_verifier/generate_tezos.py --verifier_type standard
+
+    # Use response.txt based verifier
+    python3 data/armo_rm_verifier/generate_tezos.py --verifier_type response
 
     # Local test (No Traces, No Upload)
     python3 data/armo_rm_verifier/generate_tezos.py --skip_traces --skip_upload
@@ -39,11 +42,20 @@ from data.stackexchange.generate_codereview import (
     extract_questions_from_data
 )
 from scripts.harbor.run_and_export_traces import run_dataset_to_traces
+
+# Import both ArmoRM verifiers
 from data.armo_rm_verifier.armorm_verifier import inject_armorm_verifier
+from data.armo_rm_verifier.armorm_response_verifier import inject_armorm_response_verifier
 
 def main() -> None:
-    """Main function - generates StackExchange Tezos tasks with ArmoRM enabled by default"""
+    """Main function - generates StackExchange Tezos tasks with chosen ArmoRM verifier"""
     parser = argparse.ArgumentParser(description="Generate StackExchange Tezos dataset with ArmoRM")
+    parser.add_argument(
+        "--verifier_type", 
+        choices=["standard", "response"], 
+        default="standard",
+        help="Which ArmoRM verifier to use: 'standard' (trajectory) or 'response' (response.txt)"
+    )
     parser.add_argument("--skip_traces", action="store_true", help="Skip trace generation")
     parser.add_argument("--skip_upload", action="store_true", help="Skip upload to Hugging Face")
     args = parser.parse_args()
@@ -58,10 +70,15 @@ def main() -> None:
     print("Generating base tasks...")
     final_dataset_dir = generate_tasks_from_questions(questions, "tezos")
 
-    # 3. ArmoRM Verifier Injection (Enabled by default)
-    print("Injecting local ArmoRM verifier...")
-    inject_armorm_verifier(final_dataset_dir)
-    suffix = "-armo-rm"
+    # 3. Verifier Injection
+    if args.verifier_type == "response":
+        print("Injecting local ArmoRM Response verifier...")
+        inject_armorm_response_verifier(final_dataset_dir)
+        suffix = "-armo-rm-response"
+    else:
+        print("Injecting local ArmoRM Standard verifier...")
+        inject_armorm_verifier(final_dataset_dir)
+        suffix = "-armo-rm"
 
     # 4. Standard Post-Processing
     subsampled_dataset_dir = subsample_tasks_directory(final_dataset_dir, 10_000)

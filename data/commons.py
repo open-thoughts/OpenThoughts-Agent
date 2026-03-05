@@ -1287,6 +1287,8 @@ def load_harbor_tasks_as_dicts(hf_repo_id: str, limit: int = 10_000) -> List[Dic
     def _read(group, key):
         if key in group:
             ds = group[key]
+            if isinstance(ds, h5py.Group):
+                return ""  # skip nested groups (e.g. subdirectories in tests/)
             if ds.attrs.get('binary', False):
                 return ""
             val = ds[()]
@@ -1340,8 +1342,8 @@ def load_harbor_tasks_as_dicts(hf_repo_id: str, limit: int = 10_000) -> List[Dic
 
 
 def create_standard_task_toml() -> str:
-
-    return """
+    import textwrap
+    return textwrap.dedent("""\
     version = "1.0"
 
     [agent]
@@ -1359,7 +1361,7 @@ def create_standard_task_toml() -> str:
     [verifier]
     restart_environment = false
     timeout_sec = 720.0
-"""
+    """)
 
 
 def create_llm_verifier_task_toml() -> str:
@@ -1369,7 +1371,8 @@ def create_llm_verifier_task_toml() -> str:
     Returns:
         str: Task TOML content with env var for verifier
     """
-    return """
+    import textwrap
+    return textwrap.dedent("""\
     version = "1.0"
 
     [agent]
@@ -1386,7 +1389,7 @@ def create_llm_verifier_task_toml() -> str:
     restart_environment = false
     timeout_sec = 720.0
     env = { OPENAI_API_KEY = "${OPENAI_API_KEY}" }
-"""
+    """)
 
 
 def create_standard_dockerfile() -> str:

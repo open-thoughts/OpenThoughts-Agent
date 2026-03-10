@@ -1,0 +1,17 @@
+{
+  "r_s": 85,
+  "r_b": 110,
+  "role": "seller",
+  "seed": 42,
+  "K": 10,
+  "p_min": 60.0,
+  "p_max": 240.0,
+  "delta_max": 18.0,
+  "counterpart_opening": 88.0,
+  "item_context": {
+    "title": "Office Chair",
+    "description": "Ergonomic office chair, adjustable height.",
+    "list_price": 120.0,
+    "category": "furniture"
+  }
+}

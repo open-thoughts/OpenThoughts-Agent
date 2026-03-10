@@ -1,0 +1,15 @@
+version = "1.0"
+
+[agent]
+timeout_sec = 1800.0
+
+[metadata]
+author_name = "dc-agent"
+author_email = "dc-agent@negotiation"
+difficulty = "medium"
+category = "negotiation"
+tags = ["negotiation", "bargaining", "multi-round"]
+
+[verifier]
+restart_environment = false
+timeout_sec = 60.0

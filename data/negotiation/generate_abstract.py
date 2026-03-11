@@ -46,7 +46,7 @@ class NegotiationGenerator(BaseDataGenerator):
     """BaseDataGenerator-compatible wrapper for the negotiation task pipeline."""
 
     parser_description = "Generate multi-round bilateral negotiation sandboxes dataset"
-    default_target_repo: Optional[str] = "DCAgent/negotiation-tasks"
+    default_target_repo: Optional[str] = "OpenThoughts-Agent/negotiation-tasks"
 
     def add_arguments(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument(

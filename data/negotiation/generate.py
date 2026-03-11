@@ -13,7 +13,7 @@ to /logs/verifier/reward.txt.
 Usage:
   python -m data.negotiation.generate --num-instances 100 --output-dir ./out --seed 42
   python -m data.negotiation.generate --num-instances 50 --source data/negotiation/craigslist_bargains/train.csv
-  python -m data.negotiation.generate --num-instances 10 --output-dir ./out --upload-repo DCAgent/negotiation-tasks
+  python -m data.negotiation.generate --num-instances 10 --output-dir ./out --upload-repo OpenThoughts-Agent/negotiation-tasks
 """
 
 from __future__ import annotations
@@ -118,8 +118,8 @@ version = "1.0"
 timeout_sec = 1800.0
 
 [metadata]
-author_name = "dc-agent"
-author_email = "dc-agent@negotiation"
+author_name = "OpenThoughts-Agent"
+author_email = "yz4232@stanford.edu"
 difficulty = "medium"
 category = "negotiation"
 tags = ["negotiation", "bargaining", "multi-round"]
@@ -604,7 +604,7 @@ def main() -> None:
         "--upload-repo",
         type=str,
         default=None,
-        help="If set, upload generated tasks to this HF repo (e.g. DCAgent/negotiation-tasks)",
+        help="If set, upload generated tasks to this HF repo (e.g. OpenThoughts-Agent/negotiation-tasks)",
     )
     parser.add_argument(
         "--no-upload",

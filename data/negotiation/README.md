@@ -1,8 +1,8 @@
 # Negotiation Tasks
 
-This module implements a sandbox-compatible **multi-round bilateral** negotiation task suite for DC-Agent / OpenThoughts-Agent.
+This module implements a sandbox-compatible **multi-round bilateral** negotiation task suite for OpenThoughts-Agent.
 
-The tasks are inspired by classic bargaining benchmarks (DealOrNoDeal, CraigslistBargain) but are adapted to the Harbor/DC-Agent task format with:
+The tasks are inspired by classic bargaining benchmarks (DealOrNoDeal, CraigslistBargain) but are adapted to the Harbor/OpenThoughts-Agent task format with:
 
 - **Multi-round alternating offers** (up to K rounds)
 - **LLM counterpart** (Claude Haiku, `temperature=0`) with a hidden reservation price
@@ -269,7 +269,7 @@ python -m data.negotiation.generate --num-instances 50 \
 ```bash
 # Generate and upload in one go
 python -m data.negotiation.generate --num-instances 200 --output-dir ./out \
-  --upload-repo DCAgent/negotiation-tasks
+  --upload-repo OpenThoughts-Agent/negotiation-tasks
 
 # Generate only (no upload)
 python -m data.negotiation.generate --num-instances 200 --output-dir ./out --no-upload

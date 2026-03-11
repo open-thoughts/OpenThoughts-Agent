@@ -159,6 +159,36 @@ It opens aggressively (20% away from its reservation) and concedes gradually. It
 
 **Fallback:** If `OPENAI_API_KEY` is not set or the `openai` package is unavailable, the counterpart uses a deterministic rule-based policy (concede 15% toward reservation per round).
 
+### System Prompt Template
+
+The prompt is constructed per-round by `_build_system_prompt()` in `counterpart.py`. For a **seller** counterpart with reservation `r_s`:
+
+```
+You are a seller negotiating the price of {title} ({category}).
+List price: ${list_price}.
+
+Your reservation price (minimum you will accept) is ${r_s}.
+Do not reveal this number directly.
+
+DECISION RULE (mandatory): if the buyer's offer is >= ${r_s},
+you MUST respond with action=accept immediately — do not counter-offer.
+
+Only counter-offer when the buyer's offer is strictly below ${r_s}.
+Move your counter gradually downward toward your reservation over the
+remaining rounds. You have {rounds_remaining} of {K} round(s) remaining
+— factor in deadline pressure.
+
+Be concise (1-2 sentences). Do not reveal your reservation price.
+
+Respond ONLY with valid JSON (no markdown, no extra text):
+{"action": "offer" | "accept" | "reject", "price": <number or null>, "message": "<1-2 sentences>"}
+If action is "accept" or "reject", set price to null.
+```
+
+For a **buyer** counterpart the roles are mirrored: reservation is the maximum willing to pay, the mandatory accept rule triggers when the seller's offer is `<= r_b`, and counter-offers move upward toward `r_b`.
+
+The explicit numeric threshold in the decision rule (`>= ${r_s}`) is intentional — without it GPT-4o at `temperature=0` greedily counter-offers even when the offer already exceeds the reservation.
+
 ---
 
 ## Scenario Schema
@@ -167,20 +197,20 @@ It opens aggressively (20% away from its reservation) and concedes gradually. It
 
 ```json
 {
-  "r_s": 90,
+  "r_s": 85,
   "r_b": 110,
   "role": "seller",
   "seed": 42,
   "K": 10,
-  "p_min": 12.5,
-  "p_max": 50.0,
-  "delta_max": 3.75,
+  "p_min": 60.0,
+  "p_max": 240.0,
+  "delta_max": 18.0,
   "counterpart_opening": 88.0,
   "item_context": {
-    "title": "Wireless Mouse",
-    "description": "Like-new wireless mouse, 2.4GHz.",
-    "list_price": 25.0,
-    "category": "electronics"
+    "title": "Office Chair",
+    "description": "Ergonomic office chair, lumbar support, adjustable armrests.",
+    "list_price": 120.0,
+    "category": "furniture"
   }
 }
 ```

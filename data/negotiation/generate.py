@@ -119,7 +119,7 @@ timeout_sec = 1800.0
 
 [metadata]
 author_name = "OpenThoughts-Agent"
-author_email = "yz4232@stanford.edu"
+author_email = "negotiation@openthoughts-agent.invalid"
 difficulty = "medium"
 category = "negotiation"
 tags = ["negotiation", "bargaining", "multi-round"]

@@ -131,29 +131,169 @@ timeout_sec = 60.0
 
 # Placeholder items when no --source (synthetic)
 DEFAULT_ITEMS: List[Dict[str, Any]] = [
+    # --- Electronics (cheap) ---
     {
         "title": "Wireless Mouse",
-        "description": "Like-new wireless mouse, 2.4GHz.",
+        "description": "Like-new wireless mouse, 2.4GHz, lightly used.",
         "list_price": 25.0,
         "category": "electronics",
-        "r_s": 18.0,
-        "r_b": 24.0,
+        "r_s": 18.0,   # ~72% of list
+        "r_b": 24.0,   # ~96% of list; ZOPA = 6
     },
     {
-        "title": "Office Chair",
-        "description": "Ergonomic office chair, adjustable height.",
-        "list_price": 120.0,
-        "category": "furniture",
-        "r_s": 85.0,
-        "r_b": 110.0,
+        "title": "USB-C Hub",
+        "description": "7-in-1 USB-C hub with HDMI, USB 3.0, SD card reader.",
+        "list_price": 35.0,
+        "category": "electronics",
+        "r_s": 25.0,   # ~71% of list
+        "r_b": 34.0,   # ~97% of list; ZOPA = 9
+    },
+    {
+        "title": "Car Phone Mount",
+        "description": "Magnetic dashboard phone mount, universal fit.",
+        "list_price": 20.0,
+        "category": "automotive",
+        "r_s": 13.0,   # ~65% of list
+        "r_b": 18.0,   # ~90% of list; ZOPA = 5
+    },
+    {
+        "title": "Yoga Mat",
+        "description": "Non-slip 6mm yoga mat with carrying strap.",
+        "list_price": 30.0,
+        "category": "sports-outdoors",
+        "r_s": 20.0,   # ~67% of list
+        "r_b": 28.0,   # ~93% of list; ZOPA = 8
+    },
+    {
+        "title": "Strategy Board Game",
+        "description": "Award-winning strategy board game, complete set.",
+        "list_price": 40.0,
+        "category": "toys-games",
+        "r_s": 28.0,   # ~70% of list
+        "r_b": 38.0,   # ~95% of list; ZOPA = 10
+    },
+    # --- Electronics / tools (mid-low) ---
+    {
+        "title": "Cordless Screwdriver",
+        "description": "Compact cordless screwdriver with 20 bit set.",
+        "list_price": 35.0,
+        "category": "tools",
+        "r_s": 25.0,   # ~71% of list
+        "r_b": 33.0,   # ~94% of list; ZOPA = 8
+    },
+    {
+        "title": "Coffee Maker",
+        "description": "12-cup programmable drip coffee maker, stainless steel.",
+        "list_price": 45.0,
+        "category": "home-kitchen",
+        "r_s": 32.0,   # ~71% of list
+        "r_b": 42.0,   # ~93% of list; ZOPA = 10
     },
     {
         "title": "Bookshelf",
-        "description": "5-tier bookshelf, wood finish.",
+        "description": "5-tier bookshelf, wood finish, easy assembly.",
         "list_price": 60.0,
         "category": "furniture",
-        "r_s": 45.0,
-        "r_b": 55.0,
+        "r_s": 45.0,   # ~75% of list
+        "r_b": 55.0,   # ~92% of list; ZOPA = 10
+    },
+    # --- Mid-range ---
+    {
+        "title": "Webcam HD 1080p",
+        "description": "Full HD webcam with built-in microphone and privacy cover.",
+        "list_price": 55.0,
+        "category": "electronics",
+        "r_s": 40.0,   # ~73% of list
+        "r_b": 52.0,   # ~95% of list; ZOPA = 12
+    },
+    {
+        "title": "Bluetooth Speaker",
+        "description": "Portable waterproof Bluetooth speaker, 20hr battery.",
+        "list_price": 65.0,
+        "category": "electronics",
+        "r_s": 48.0,   # ~74% of list
+        "r_b": 62.0,   # ~95% of list; ZOPA = 14
+    },
+    {
+        "title": "Power Drill",
+        "description": "18V cordless power drill with 2 batteries and charger.",
+        "list_price": 65.0,
+        "category": "tools",
+        "r_s": 48.0,   # ~74% of list
+        "r_b": 62.0,   # ~95% of list; ZOPA = 14
+    },
+    {
+        "title": "Air Fryer",
+        "description": "4-quart digital air fryer with 8 cooking presets.",
+        "list_price": 75.0,
+        "category": "home-kitchen",
+        "r_s": 55.0,   # ~73% of list
+        "r_b": 70.0,   # ~93% of list; ZOPA = 15
+    },
+    {
+        "title": "Portable Jump Starter",
+        "description": "2000A peak portable car jump starter with USB charging ports.",
+        "list_price": 75.0,
+        "category": "automotive",
+        "r_s": 55.0,   # ~73% of list
+        "r_b": 70.0,   # ~93% of list; ZOPA = 15
+    },
+    {
+        "title": "Mechanical Keyboard",
+        "description": "Tenkeyless mechanical keyboard, blue switches, RGB backlight.",
+        "list_price": 80.0,
+        "category": "electronics",
+        "r_s": 60.0,   # ~75% of list
+        "r_b": 78.0,   # ~98% of list; ZOPA = 18
+    },
+    {
+        "title": "Hiking Backpack",
+        "description": "40L hiking backpack with hydration bladder sleeve and rain cover.",
+        "list_price": 85.0,
+        "category": "sports-outdoors",
+        "r_s": 62.0,   # ~73% of list
+        "r_b": 80.0,   # ~94% of list; ZOPA = 18
+    },
+    {
+        "title": "Bedside Table",
+        "description": "2-drawer solid wood bedside table, walnut finish.",
+        "list_price": 90.0,
+        "category": "furniture",
+        "r_s": 65.0,   # ~72% of list
+        "r_b": 85.0,   # ~94% of list; ZOPA = 20
+    },
+    # --- Higher-price ---
+    {
+        "title": "Office Chair",
+        "description": "Ergonomic office chair, lumbar support, adjustable armrests.",
+        "list_price": 120.0,
+        "category": "furniture",
+        "r_s": 85.0,   # ~71% of list
+        "r_b": 110.0,  # ~92% of list; ZOPA = 25
+    },
+    {
+        "title": "External SSD 1TB",
+        "description": "1TB portable external SSD, USB 3.2, 1000MB/s read speed.",
+        "list_price": 120.0,
+        "category": "electronics",
+        "r_s": 90.0,   # ~75% of list
+        "r_b": 115.0,  # ~96% of list; ZOPA = 25
+    },
+    {
+        "title": "Smart Watch",
+        "description": "Fitness smart watch with GPS, heart rate monitor, 7-day battery.",
+        "list_price": 180.0,
+        "category": "electronics",
+        "r_s": 140.0,  # ~78% of list
+        "r_b": 175.0,  # ~97% of list; ZOPA = 35
+    },
+    {
+        "title": "Standing Desk",
+        "description": "Electric height-adjustable standing desk, 55x28in, memory presets.",
+        "list_price": 280.0,
+        "category": "furniture",
+        "r_s": 220.0,  # ~79% of list
+        "r_b": 268.0,  # ~96% of list; ZOPA = 48
     },
 ]
 

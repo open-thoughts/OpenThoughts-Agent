@@ -242,6 +242,7 @@ CLAUDE.md
 scripts/data/nl2bash/local_runs
 data/nl2bash/local_runs
 data/nl2bash_sampled_verified/runs
+data/negotiation/out/
 # Google Cloud SDK and credentials
 google-cloud-sdk/
 google-cloud-cli-linux-arm.tar.gz

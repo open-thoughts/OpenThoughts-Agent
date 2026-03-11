@@ -40,7 +40,7 @@ negotiation-{id}/
 ├── data/
 │   └── scenario.json           # Full scenario (r_s, r_b, role, K, p_min, p_max, counterpart_opening, ...)
 ├── environment/
-│   ├── Dockerfile              # ubuntu:24.04 + anthropic + counterpart.py
+│   ├── Dockerfile              # ubuntu:24.04 + openai + counterpart.py
 │   └── counterpart.py          # Stateful LLM counterpart CLI
 └── tests/
     └── test.sh                 # Verifier: reads negotiation_log.json → reward.txt
@@ -157,7 +157,7 @@ The counterpart is an LLM (Claude Haiku, `temperature=0` for reproducibility) gi
 
 It opens aggressively (20% away from its reservation) and concedes gradually. It accepts once the agent's offer crosses its reservation.
 
-**Fallback:** If `ANTHROPIC_API_KEY` is not set or the `anthropic` package is unavailable, the counterpart uses a deterministic rule-based policy (concede 15% toward reservation per round).
+**Fallback:** If `OPENAI_API_KEY` is not set or the `openai` package is unavailable, the counterpart uses a deterministic rule-based policy (concede 15% toward reservation per round).
 
 ---
 
@@ -279,7 +279,7 @@ python -m data.negotiation.generate --num-instances 200 --output-dir ./out --no-
 
 ## Environment Requirements
 
-The counterpart requires the `anthropic` Python package and `ANTHROPIC_API_KEY` to be set in the container environment. The Dockerfile installs `anthropic` via pip. If the API key is absent, the counterpart falls back to a deterministic rule-based policy automatically — no crash.
+The counterpart requires the `openai` Python package and `OPENAI_API_KEY` to be set in the container environment. The Dockerfile installs `openai` via pip. If the API key is absent, the counterpart falls back to a deterministic rule-based policy automatically — no crash.
 
 ---
 

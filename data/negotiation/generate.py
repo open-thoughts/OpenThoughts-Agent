@@ -98,14 +98,14 @@ if __name__ == "__main__":
 VERIFIER
 """
 
-# Dockerfile: install anthropic, copy counterpart script
+# Dockerfile: install openai, copy counterpart script
 DOCKERFILE_TEMPLATE = """\
 FROM ubuntu:24.04
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y python3 python3-pip && rm -rf /var/lib/apt/lists/*
-RUN pip3 install anthropic --break-system-packages
+RUN pip3 install openai --break-system-packages
 
 COPY counterpart.py /app/counterpart.py
 """

@@ -3,7 +3,7 @@
 LLM-based counterpart for bilateral price negotiation (Harbor task format).
 
 Called by the agent each round as a CLI tool. Maintains state between calls
-in /app/negotiation_state.json. Uses Claude Haiku (ANTHROPIC_API_KEY env var)
+in /app/negotiation_state.json. Uses GPT-4o-mini (OPENAI_API_KEY env var)
 to generate counterpart responses; falls back to a rule-based policy if no
 API key is present.
 
@@ -218,29 +218,28 @@ def _build_messages(history: List[Dict[str, Any]], agent_offer: float) -> List[D
 def call_llm_counterpart(counterpart_role: str, counterpart_reservation: float,
                           item: Dict[str, Any], history: List[Dict[str, Any]],
                           agent_offer: float, K: int, rounds_remaining: int) -> Dict[str, Any]:
-    """Call Claude Haiku to generate counterpart response. Falls back to rule-based on any error."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    """Call GPT-4o-mini to generate counterpart response. Falls back to rule-based on any error."""
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
     if not api_key:
         return _rule_based_response(counterpart_role, counterpart_reservation, agent_offer, history, rounds_remaining)
 
     try:
-        import anthropic  # type: ignore
+        from openai import OpenAI  # type: ignore
     except ImportError:
         return _rule_based_response(counterpart_role, counterpart_reservation, agent_offer, history, rounds_remaining)
 
     try:
-        client = anthropic.Anthropic(api_key=api_key)
+        client = OpenAI(api_key=api_key)
         system = _build_system_prompt(counterpart_role, counterpart_reservation, item, K, rounds_remaining)
         messages = _build_messages(history, agent_offer)
 
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
             max_tokens=150,
             temperature=0,  # deterministic for reproducible evaluation
-            system=system,
-            messages=messages,
+            messages=[{"role": "system", "content": system}, *messages],
         )
-        text = response.content[0].text.strip()
+        text = response.choices[0].message.content.strip()
         parsed: Dict[str, Any] = json.loads(text)
         # Validate required keys
         if "action" not in parsed or parsed["action"] not in ("offer", "accept", "reject"):

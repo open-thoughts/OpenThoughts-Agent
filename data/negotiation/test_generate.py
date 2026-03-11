@@ -251,10 +251,10 @@ class TestExampleTask(unittest.TestCase):
         self.assertIsNotNone(m, "timeout_sec not found in task.toml")
         self.assertGreaterEqual(float(m.group(1)), 1800.0)
 
-    def test_example_dockerfile_has_anthropic(self):
+    def test_example_dockerfile_has_openai(self):
         path = ROOT / "data" / "negotiation" / "example_task" / "environment" / "Dockerfile"
         content = path.read_text()
-        self.assertIn("anthropic", content)
+        self.assertIn("openai", content)
         self.assertIn("counterpart.py", content)
 
     def test_example_verifier_reward_simulation(self):
@@ -386,9 +386,9 @@ class TestFullGeneration(unittest.TestCase):
                 self.assertIn("counterpart_opening", loaded)
                 self.assertEqual(loaded["r_s"], scenario["r_s"])
                 self.assertEqual(loaded["role"], role)
-                # Dockerfile references anthropic and counterpart.py
+                # Dockerfile references openai and counterpart.py
                 dockerfile = (task_dir / "environment" / "Dockerfile").read_text()
-                self.assertIn("anthropic", dockerfile)
+                self.assertIn("openai", dockerfile)
                 self.assertIn("counterpart.py", dockerfile)
                 # Verifier reads negotiation_log.json not contract.json
                 verifier = (task_dir / "tests" / "test.sh").read_text()

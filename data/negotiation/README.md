@@ -200,6 +200,30 @@ It opens aggressively (20% away from its reservation) and concedes gradually. It
 
 ---
 
+## Synthetic Items
+
+When no `--source` is provided, the generator draws from a built-in pool of **20 synthetic items** spanning 7 categories and four price tiers. Reservation prices are calibrated so that:
+
+- **Seller floor (`r_s`):** ~70–79% of list price (seller's minimum acceptable price)
+- **Buyer ceiling (`r_b`):** ~90–98% of list price (buyer's maximum acceptable price)
+- **ZOPA width:** ~20–25% of list price — realistic but negotiable
+
+| Category | Items | Price range |
+|----------|-------|-------------|
+| electronics | Wireless Mouse, USB-C Hub, Webcam, Bluetooth Speaker, Mechanical Keyboard, External SSD, Smart Watch | $25 – $180 |
+| furniture | Bookshelf, Bedside Table, Office Chair, Standing Desk | $60 – $280 |
+| tools | Cordless Screwdriver, Power Drill | $35 – $65 |
+| home-kitchen | Coffee Maker, Air Fryer | $45 – $75 |
+| sports-outdoors | Yoga Mat, Hiking Backpack | $30 – $85 |
+| automotive | Car Phone Mount, Portable Jump Starter | $20 – $75 |
+| toys-games | Strategy Board Game | $40 |
+
+Items are cycled deterministically by index (`item = items[i % len(items)]`), so generating more instances than there are items simply repeats items with different seeds (and randomly assigned roles), producing varied scenarios.
+
+To supply your own items, use `--source` with a CraigslistBargain-style CSV (see ZOPA Handling Modes below).
+
+---
+
 ## ZOPA Handling Modes
 
 When loading items from a CSV (e.g., CraigslistBargain), reservation values may be missing or form no ZOPA. The generator supports two modes via `--zopa-mode`:
@@ -261,7 +285,7 @@ The counterpart requires the `anthropic` Python package and `ANTHROPIC_API_KEY` 
 
 ## Example Task
 
-A specimen task is provided under `data/negotiation/example_task/`. It models a seller negotiating a Wireless Mouse with `r_s = 90`, `r_b = 110`, and counterpart opening at `88.0`.
+A specimen task is provided under `data/negotiation/example_task/`. It models a seller negotiating an Office Chair with `r_s = 85`, `r_b = 110`, and counterpart opening at `88.0`.
 
 Run locally (e.g., with Harbor):
 ```bash

@@ -5,7 +5,7 @@ This module implements a sandbox-compatible **multi-round bilateral** negotiatio
 The tasks are inspired by classic bargaining benchmarks (DealOrNoDeal, CraigslistBargain) but are adapted to the Harbor/OpenThoughts-Agent task format with:
 
 - **Multi-round alternating offers** (up to K rounds)
-- **LLM counterpart** (Claude Haiku, `temperature=0`) with a hidden reservation price
+- **LLM counterpart** (GPT-4o, `temperature=0`) with a hidden reservation price
 - **Deterministic reward** based on final agreed price vs. both parties' reservations
 - **Scalable instance generation** and HF dataset upload
 - **Terminal-native agent execution** via a CLI counterpart script
@@ -148,7 +148,7 @@ where ε = 1e-9 for numerical stability.
 
 ## Counterpart Behavior
 
-The counterpart is an LLM (Claude Haiku, `temperature=0` for reproducibility) given:
+The counterpart is an LLM (GPT-4o, `temperature=0` for reproducibility) given:
 
 - Its role (buyer or seller)
 - Its reservation price (hidden from agent)

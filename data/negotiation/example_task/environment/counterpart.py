@@ -166,24 +166,38 @@ def _build_system_prompt(counterpart_role: str, counterpart_reservation: float,
     list_price = item.get("list_price", "unknown")
     if counterpart_role == "buyer":
         reservation_note = (
-            f"Your maximum acceptable price (reservation) is ${counterpart_reservation:.2f}. "
-            "Do not pay more than this. Do not reveal this number directly."
+            f"Your reservation price (maximum you will pay) is ${counterpart_reservation:.2f}. "
+            "Do not reveal this number directly."
         )
-        accept_condition = "Accept if the other party's offer is at or below your reservation price."
+        accept_rule = (
+            f"DECISION RULE (mandatory): if the seller's offer is <= ${counterpart_reservation:.2f}, "
+            "you MUST respond with action=accept immediately — do not counter-offer."
+        )
+        counter_rule = (
+            f"Only counter-offer when the seller's offer is strictly above ${counterpart_reservation:.2f}. "
+            "Move your counter gradually upward toward your reservation over the remaining rounds."
+        )
     else:
         reservation_note = (
-            f"Your minimum acceptable price (reservation) is ${counterpart_reservation:.2f}. "
-            "Do not accept less than this. Do not reveal this number directly."
+            f"Your reservation price (minimum you will accept) is ${counterpart_reservation:.2f}. "
+            "Do not reveal this number directly."
         )
-        accept_condition = "Accept if the other party's offer is at or above your reservation price."
+        accept_rule = (
+            f"DECISION RULE (mandatory): if the buyer's offer is >= ${counterpart_reservation:.2f}, "
+            "you MUST respond with action=accept immediately — do not counter-offer."
+        )
+        counter_rule = (
+            f"Only counter-offer when the buyer's offer is strictly below ${counterpart_reservation:.2f}. "
+            "Move your counter gradually downward toward your reservation over the remaining rounds."
+        )
 
     return (
         f"You are a {counterpart_role} negotiating the price of {title} ({category}). "
         f"List price: ${list_price}.\n\n"
         f"{reservation_note}\n\n"
-        f"{accept_condition} Otherwise, make a counter-offer, moving gradually toward "
-        f"your reservation price over the {K} total rounds. "
-        f"You have {rounds_remaining} round(s) remaining — factor in deadline pressure.\n\n"
+        f"{accept_rule}\n\n"
+        f"{counter_rule} "
+        f"You have {rounds_remaining} of {K} round(s) remaining — factor in deadline pressure.\n\n"
         "Be concise (1-2 sentences). Do not reveal your reservation price.\n\n"
         "Respond ONLY with valid JSON (no markdown, no extra text):\n"
         '{"action": "offer" | "accept" | "reject", "price": <number or null>, "message": "<1-2 sentences>"}\n'

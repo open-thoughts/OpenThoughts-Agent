@@ -156,7 +156,7 @@ def _rule_based_response(counterpart_role: str, counterpart_reservation: float,
     return {"action": "offer", "price": new_price, "message": msg}
 
 # ---------------------------------------------------------------------------
-# LLM counterpart via Anthropic Claude
+# LLM counterpart via OpenAI GPT-4o
 # ---------------------------------------------------------------------------
 
 def _build_system_prompt(counterpart_role: str, counterpart_reservation: float,
@@ -206,7 +206,7 @@ def _build_system_prompt(counterpart_role: str, counterpart_reservation: float,
 
 
 def _build_messages(history: List[Dict[str, Any]], agent_offer: float) -> List[Dict[str, Any]]:
-    """Convert history to Claude message format (last 8 turns for context)."""
+    """Convert history to chat message format (last 8 turns for context)."""
     messages: List[Dict[str, Any]] = []
     recent = history[-8:]
     for entry in recent:

@@ -248,7 +248,7 @@ When no `--source` is provided, the generator draws from a built-in pool of **20
 | automotive | Car Phone Mount, Portable Jump Starter | $20 – $75 |
 | toys-games | Strategy Board Game | $40 |
 
-Items are cycled deterministically by index (`item = items[i % len(items)]`), so generating more instances than there are items simply repeats items with different seeds (and randomly assigned roles), producing varied scenarios.
+Items and roles are **sampled at random** (with replacement) per instance, so generating more instances than there are items yields varied scenarios with different seeds and role assignments.
 
 To supply your own items, use `--source` with a CraigslistBargain-style CSV (see ZOPA Handling Modes below).
 
@@ -304,6 +304,17 @@ python -m data.negotiation.generate --num-instances 200 --output-dir ./out \
 # Generate only (no upload)
 python -m data.negotiation.generate --num-instances 200 --output-dir ./out --no-upload
 ```
+
+For HPC or launcher-driven runs, use the class-based generator:
+
+```bash
+python -m hpc.launch --job_type datagen \
+  --datagen_script data/negotiation/generate_abstract.py \
+  --datagen_target_repo OpenThoughts-Agent/negotiation-tasks \
+  --datagen_extra_args "--stage tasks --limit 500 --seed 42"
+```
+
+See `data/README.md` for the full `BaseDataGenerator` workflow.
 
 ---
 

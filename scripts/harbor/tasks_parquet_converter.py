@@ -519,44 +519,57 @@ def from_parquet(
     base: str,
     on_exist: str = "error",
     max_workers: int = 10,
+    batch_size: int = 256,
 ) -> list[Path]:
-    """Extract tasks from parquet file to directory in parallel.
+    """Extract tasks from parquet file to directory in parallel batches.
+
+    Reads the parquet in row-group batches to avoid loading the entire file
+    (which can contain large binary blobs) into memory at once.
 
     Args:
         parquet_path: Path to parquet file
         base: Base directory to extract to
         on_exist: What to do if target exists ('skip', 'error', 'overwrite')
         max_workers: Number of parallel workers (10 by default)
+        batch_size: Rows to process per batch (default 256)
 
     Returns:
         List of extracted task directories
     """
     pa_mod, pq_mod = _require_pyarrow()
-    table = pq_mod.read_table(parquet_path)
-    cols = {name: i for i, name in enumerate(table.column_names)}
-    if "path" not in cols or "task_binary" not in cols:
+
+    pf = pq_mod.ParquetFile(parquet_path)
+    total_rows = pf.metadata.num_rows
+
+    # Validate schema on first row group
+    schema_names = [f.name for f in pf.schema_arrow]
+    if "path" not in schema_names or "task_binary" not in schema_names:
         raise RuntimeError("Parquet must have columns: 'path', 'task_binary'")
 
     base = Path(base).resolve()
-    path_col = table.column(cols["path"]).to_pylist()
-    data_col = table.column(cols["task_binary"]).to_pylist()
-
-    # Prepare arguments for parallel processing
-    tasks_args = [
-        (i, rel_path, data, base, on_exist)
-        for i, (rel_path, data) in enumerate(zip(path_col, data_col))
-    ]
-
     written: list[Path] = []
+    row_offset = 0
 
-    # Process tasks in parallel
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(_process_parquet_row, args) for args in tasks_args]
+    with tqdm(total=total_rows, desc="Extracting tasks") as pbar:
+        for batch in pf.iter_batches(batch_size=batch_size, columns=["path", "task_binary"]):
+            path_col = batch.column("path").to_pylist()
+            data_col = batch.column("task_binary").to_pylist()
 
-        # Collect results with progress bar
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Extracting tasks"):
-            result = future.result()
-            if result is not None:
-                written.append(result)
+            tasks_args = [
+                (row_offset + i, rel_path, data, base, on_exist)
+                for i, (rel_path, data) in enumerate(zip(path_col, data_col))
+            ]
+
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(_process_parquet_row, args) for args in tasks_args]
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result is not None:
+                        written.append(result)
+                    pbar.update(1)
+
+            row_offset += len(path_col)
+            # Let GC reclaim batch memory
+            del path_col, data_col, tasks_args
 
     return written

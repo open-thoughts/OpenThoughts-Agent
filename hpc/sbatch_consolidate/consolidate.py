@@ -228,14 +228,19 @@ def consolidate(
         shutil.copytree(source_path, staged_input_dir, dirs_exist_ok=True)
 
     if base_repo:
-        print(f"Downloading base repo: {base_repo}")
-        snapshot_download(
-            repo_id=base_repo,
-            repo_type="model",
-            local_dir=base_dir,
-            local_dir_use_symlinks=False,
-            token=token,
-        )
+        base_path = Path(base_repo).expanduser()
+        if base_path.is_dir():
+            print(f"Staging local base repo from {base_path}")
+            shutil.copytree(base_path, base_dir, dirs_exist_ok=True)
+        else:
+            print(f"Downloading base repo: {base_repo}")
+            snapshot_download(
+                repo_id=base_repo,
+                repo_type="model",
+                local_dir=base_dir,
+                local_dir_use_symlinks=False,
+                token=token,
+            )
 
     zero_to_fp32 = _zero_to_fp32_script(project_root)
     print("Running zero_to_fp32 consolidation...")

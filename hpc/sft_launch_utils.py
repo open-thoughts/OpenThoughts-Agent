@@ -256,6 +256,49 @@ def _estimate_thinking_rate(
     return rate, n_real_thinking, n_total
 
 
+def _apply_nothink_config_overrides(base_config: dict, exp_args: dict) -> None:
+    """Load a ``_nothink`` config variant and apply differing values.
+
+    When auto-detection switches from a thinking to a nothink template, the
+    corresponding ``_nothink`` YAML file may contain different hyperparameters
+    (e.g. ``save_steps``).  This function derives the nothink config path from
+    the original ``train_config_path``, loads it, and merges any values that
+    differ from the current config — *except* keys that are managed by the
+    launch pipeline (``template``, ``dataset``, ``dataset_dir``).
+    """
+    original_path = exp_args.get("train_config_path")
+    if not original_path:
+        return
+
+    original = Path(original_path)
+    # Derive nothink path: foo.yaml -> foo_nothink.yaml
+    nothink_path = original.with_stem(original.stem + "_nothink")
+    if not nothink_path.exists():
+        return
+
+    try:
+        with open(nothink_path, "r") as f:
+            nothink_config = yaml.safe_load(f.read()) or {}
+    except Exception:
+        return
+
+    # Keys managed by the pipeline — never override from the nothink file.
+    _SKIP_KEYS = {"template", "dataset", "dataset_dir"}
+    applied: list[str] = []
+    for key, value in nothink_config.items():
+        if key in _SKIP_KEYS:
+            continue
+        if base_config.get(key) != value:
+            base_config[key] = value
+            applied.append(key)
+
+    if applied:
+        print(
+            f"[prep_for_thinking] Applied overrides from {nothink_path.name}: "
+            f"{', '.join(applied)}"
+        )
+
+
 def maybe_preprocess_thinking(
     base_config: dict,
     exp_args: dict,
@@ -345,6 +388,9 @@ def maybe_preprocess_thinking(
             )
             base_config["template"] = nothink_template
             use_nothink = True
+            # Try to load the _nothink config variant for any additional
+            # overrides (e.g. different save_steps, hyperparams).
+            _apply_nothink_config_overrides(base_config, exp_args)
         else:
             print(
                 f"[prep_for_thinking] WARNING: No nothink variant for template "

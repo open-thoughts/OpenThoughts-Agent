@@ -110,6 +110,7 @@ terminal_bench:
     repo_org: DCAgent
     episodes: last
     dataset_type: SFT
+    cleanup: true
 
 # Trainer configuration
 trainer:
@@ -142,7 +143,7 @@ trainer:
   eval_interval: 999999
   eval_before_train: false
   # Resumable checkpointing
-  ckpt_interval: 999999
+  ckpt_interval: 5
   resume_mode: latest
   # HF upload-ready checkpoints
   hf_save_interval: 5

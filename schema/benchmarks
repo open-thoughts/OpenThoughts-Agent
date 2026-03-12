@@ -1,0 +1,33 @@
+create table public.benchmarks (
+  id uuid not null default extensions.uuid_generate_v4 (),
+  name text not null,
+  benchmark_version_hash character(64) null,
+  is_external boolean not null default false,
+  external_link text null,
+  description text null,
+  updated_at timestamp with time zone null default now(),
+  duplicate_of uuid null,
+  constraint benchmarks_pkey primary key (id),
+  constraint benchmarks_name_key unique (name),
+  constraint benchmarks_duplicate_of_fkey foreign KEY (duplicate_of) references benchmarks (id) on delete RESTRICT,
+  constraint benchmarks_no_self_duplicate check (
+    (
+      (duplicate_of is null)
+      or (duplicate_of <> id)
+    )
+  )
+) TABLESPACE pg_default;
+
+create index IF not exists idx_benchmarks_name on public.benchmarks using btree (name) TABLESPACE pg_default;
+
+create index IF not exists idx_benchmarks_benchmark_version_hash on public.benchmarks using btree (benchmark_version_hash) TABLESPACE pg_default;
+
+create index IF not exists idx_benchmarks_is_external on public.benchmarks using btree (is_external) TABLESPACE pg_default;
+
+create index IF not exists idx_benchmarks_updated_at on public.benchmarks using btree (updated_at desc) TABLESPACE pg_default;
+
+create index IF not exists idx_benchmarks_duplicate_of on public.benchmarks using btree (duplicate_of) TABLESPACE pg_default;
+
+create trigger update_benchmarks_updated_at_trigger BEFORE
+update on benchmarks for EACH row
+execute FUNCTION update_benchmarks_updated_at ();

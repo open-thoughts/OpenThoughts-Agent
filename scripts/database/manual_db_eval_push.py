@@ -148,6 +148,51 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def resolve_job_dir(user_path: Path) -> Path:
+    """Walk down from user-provided path to find the actual Harbor job directory.
+
+    Users may pass in any level of nesting:
+      - The job dir itself (contains trial subdirectories)
+      - A parent dir (e.g., trace_runs/<name>) that contains trace_jobs/<name>/
+      - A trace_jobs/ dir that contains the job dir
+
+    The actual job dir is identified by containing subdirectories whose names
+    match the Harbor trial naming pattern (task_hash__trial_id).
+    """
+    import re
+    _TRIAL_DIR_PATTERN = re.compile(r"^.+__\w+$")
+
+    def _looks_like_job_dir(d: Path) -> bool:
+        """Check if directory contains Harbor trial subdirectories."""
+        if not d.is_dir():
+            return False
+        for child in d.iterdir():
+            if child.is_dir() and _TRIAL_DIR_PATTERN.match(child.name):
+                return True
+        return False
+
+    # Check the path itself first
+    if _looks_like_job_dir(user_path):
+        return user_path
+
+    # Try trace_jobs/<subdir>/ (the common case: user passes the run root)
+    trace_jobs = user_path / "trace_jobs"
+    if trace_jobs.is_dir():
+        for child in sorted(trace_jobs.iterdir()):
+            if _looks_like_job_dir(child):
+                print(f"[resolve] Found job dir at {child}")
+                return child
+
+    # Try direct children (user passes trace_jobs/ itself)
+    for child in sorted(user_path.iterdir()):
+        if _looks_like_job_dir(child):
+            print(f"[resolve] Found job dir at {child}")
+            return child
+
+    # Give up — return original and let downstream error
+    return user_path
+
+
 def derive_benchmark_name(job_dir: Path) -> str:
     """Derive benchmark name from job config or directory name.
 
@@ -169,14 +214,17 @@ def derive_hf_repo_id(job_name: str, org: str = "DCAgent2") -> str:
 def main() -> None:
     args = _parse_args()
 
-    # Validate job directory
-    job_dir = Path(args.job_dir).expanduser().resolve()
-    if not job_dir.exists():
-        print(f"Error: Job directory does not exist: {job_dir}")
+    # Validate and resolve job directory
+    raw_path = Path(args.job_dir).expanduser().resolve()
+    if not raw_path.exists():
+        print(f"Error: Path does not exist: {raw_path}")
         sys.exit(1)
-    if not job_dir.is_dir():
-        print(f"Error: Path is not a directory: {job_dir}")
+    if not raw_path.is_dir():
+        print(f"Error: Path is not a directory: {raw_path}")
         sys.exit(1)
+    job_dir = resolve_job_dir(raw_path)
+    if job_dir != raw_path:
+        print(f"[resolve] Using job dir: {job_dir}")
 
     # Check for required environment variables
     if not os.environ.get("SUPABASE_URL"):

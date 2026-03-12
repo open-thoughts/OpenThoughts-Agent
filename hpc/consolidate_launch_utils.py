@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from typing import Optional, Callable
 
+from hpc.checkpoint_utils import is_huggingface_repo, needs_pre_download, pre_download_model
 from hpc.hf_utils import sanitize_hf_repo_id
 from hpc.launch_utils import (
     sanitize_repo_for_job,
@@ -86,6 +87,21 @@ def launch_consolidate_job(
         print(f"Truncated output repo for HF compliance: {output_repo} -> {effective_output_repo}")
     input_kind = "local" if input_is_local else "repo"
 
+    # Pre-download base_repo on no-internet clusters (login node has internet)
+    if base_repo and needs_pre_download(hpc) and is_huggingface_repo(base_repo):
+        print(f"Pre-downloading base repo for no-internet cluster: {base_repo}")
+        dl_result = pre_download_model(base_repo)
+        base_repo = dl_result.local_path
+        print(f"  Base repo cached at: {base_repo}")
+
+    # Pre-download input repo on no-internet clusters when input is an HF repo
+    if not input_is_local and needs_pre_download(hpc) and is_huggingface_repo(str(input_value)):
+        print(f"Pre-downloading input repo for no-internet cluster: {input_value}")
+        dl_result = pre_download_model(str(input_value))
+        input_value = dl_result.local_path
+        input_kind = "local"
+        print(f"  Input repo cached at: {input_value}")
+
     # Define local derive function that captures input_value
     def _derive_consolidate_job_name(_: dict) -> str:
         identifier = sanitize_repo_for_job(str(input_value))
@@ -153,6 +169,12 @@ def launch_consolidate_job(
     if not os.path.exists(python_script_path):
         raise FileNotFoundError(f"Consolidate helper script not found at {python_script_path}")
 
+    cluster_env_file = getattr(hpc, "dotenv_filename", "") or ""
+
+    # Generate proxy setup for no-internet clusters (JSC, Leonardo)
+    ssh_tunnel_setup = getattr(hpc, "get_ssh_tunnel_setup", lambda: "")()
+    proxy_setup = getattr(hpc, "get_proxy_setup", lambda: "")()
+
     substitutions = {
         "partition_directive": f"#SBATCH -p {partition}" if partition else "",
         "account_directive": f"#SBATCH --account {account}" if account else "",
@@ -164,6 +186,9 @@ def launch_consolidate_job(
         "output_path": output_path,
         "experiments_dir": experiments_dir,
         "environment_preamble": environment_preamble,
+        "cluster_env_file": cluster_env_file,
+        "ssh_tunnel_setup": ssh_tunnel_setup,
+        "proxy_setup": proxy_setup,
         "consolidate_input": input_value,
         "consolidate_input_kind": input_kind,
         "consolidate_base_repo": base_repo or "",

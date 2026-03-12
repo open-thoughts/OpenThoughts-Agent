@@ -27,7 +27,7 @@ Example:
         --repo_id org/dataset \
         --revision main \
         --extract_dir ./data/tmp_tasks \
-        --oracle-check \
+        --oracle_check \
         --timeout 600 \
         --target_repo org/validated-dataset
 
@@ -282,6 +282,7 @@ def _import_harbor_components():
             EnvironmentConfig,
             JobConfig,
             LocalDatasetConfig,
+            RetryConfig,
             VerifierConfig,
         )
         from harbor.orchestrators.base import OrchestratorEvent
@@ -299,9 +300,34 @@ def _import_harbor_components():
         "AgentConfig": AgentConfig,
         "EnvironmentConfig": EnvironmentConfig,
         "LocalDatasetConfig": LocalDatasetConfig,
+        "RetryConfig": RetryConfig,
         "VerifierConfig": VerifierConfig,
         "OrchestratorEvent": OrchestratorEvent,
     }
+
+
+def _make_retry_config(components: dict) -> object:
+    """Create a RetryConfig matching the tracegen YAML (retries transient Daytona errors)."""
+    RetryConfig = components["RetryConfig"]
+    return RetryConfig(
+        max_retries=10,
+        include_exceptions={
+            "DaytonaRateLimitError",
+            "AgentEnvironmentTimeoutError",
+        },
+        exclude_exceptions={
+            "AgentTimeoutError",
+            "VerifierTimeoutError",
+            "RewardFileNotFoundError",
+            "RewardFileEmptyError",
+            "VerifierOutputParseError",
+            "SandboxBuildFailedError",
+            "VerifierRuntimeError",
+        },
+        wait_multiplier=2.0,
+        min_wait_sec=1.0,
+        max_wait_sec=90.0,
+    )
 
 
 def _run_harbor_smoke_test(
@@ -342,6 +368,7 @@ def _run_harbor_smoke_test(
     )
     job_config.orchestrator.n_concurrent_trials = max(1, effective_concurrency)
     job_config.orchestrator.quiet = True
+    job_config.orchestrator.retry = _make_retry_config(components)
     agent_model = "gpt-5-codex" if filter_successful else "gpt-5-nano"
     agent_kwargs = {"max_episodes": 160} if filter_successful else {"max_episodes": 1}
     agent_kwargs.setdefault("reasoning_effort", "medium")
@@ -401,15 +428,16 @@ def _run_harbor_smoke_test(
             rate=0.0,
         )
 
-        async def _progress_hook(trial_result):
+        async def _progress_hook(hook_event):
             nonlocal success_count, failure_count
+            trial_result = hook_event.result
             rewards = None
-            if trial_result.verifier_result is not None:
+            if trial_result is not None and trial_result.verifier_result is not None:
                 rewards = trial_result.verifier_result.rewards
-            is_success = trial_result.exception_info is None
+            is_success = trial_result is not None and trial_result.exception_info is None
             if is_success and filter_successful:
                 is_success = _reward_positive(rewards)
-            stage_status[trial_result.task_name] = bool(is_success)
+            stage_status[hook_event.task_name] = bool(is_success)
             if is_success:
                 success_count += 1
             else:
@@ -497,6 +525,7 @@ def _run_oracle_solution_check(
     )
     job_config.orchestrator.n_concurrent_trials = max(1, effective_concurrency)
     job_config.orchestrator.quiet = True
+    job_config.orchestrator.retry = _make_retry_config(components)
     job_config.agents = [
         AgentConfig(
             name=AgentName.ORACLE.value,
@@ -555,16 +584,18 @@ def _run_oracle_solution_check(
             rate=0.0,
         )
 
-        async def _progress_hook(trial_result):
+        async def _progress_hook(hook_event):
             nonlocal success_count, failure_count
+            trial_result = hook_event.result
             rewards = None
-            if trial_result.verifier_result is not None:
+            if trial_result is not None and trial_result.verifier_result is not None:
                 rewards = trial_result.verifier_result.rewards
             is_success = (
-                trial_result.exception_info is None
+                trial_result is not None
+                and trial_result.exception_info is None
                 and _reward_is_one(rewards)
             )
-            stage_status[trial_result.task_name] = bool(is_success)
+            stage_status[hook_event.task_name] = bool(is_success)
             if is_success:
                 success_count += 1
             else:
@@ -638,12 +669,12 @@ def parse_args(argv: Optional[Iterable[str]] = None) -> argparse.Namespace:
     )
     oracle_group = p.add_mutually_exclusive_group()
     oracle_group.add_argument(
-        "--oracle-check",
+        "--oracle_check",
         action="store_true",
         help="Run oracle agent validation requiring reward=1.0 at solution/solve.sh",
     )
     oracle_group.add_argument(
-        "--oracle-check-only",
+        "--oracle_check_only",
         action="store_true",
         help="Skip Daytona and smoke tests; run only the oracle solution check",
     )

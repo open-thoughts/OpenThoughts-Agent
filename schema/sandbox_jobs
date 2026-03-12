@@ -1,0 +1,49 @@
+create table public.sandbox_jobs (
+  id uuid not null default extensions.uuid_generate_v4 (),
+  created_at timestamp with time zone not null default now(),
+  job_name text not null,
+  username text not null,
+  started_at timestamp with time zone null,
+  ended_at timestamp with time zone null,
+  git_commit_id text null,
+  package_version text null,
+  n_trials integer not null,
+  config jsonb not null,
+  metrics jsonb null,
+  stats jsonb null,
+  agent_id uuid not null,
+  model_id uuid not null,
+  benchmark_id uuid not null,
+  n_rep_eval integer not null,
+  hf_traces_link text null,
+  job_status public.job_status_enum not null default 'Started'::job_status_enum,
+  slurm_job_id text null,
+  submitted_at timestamp with time zone null,
+  constraint sandbox_jobs_pkey primary key (id),
+  constraint sandbox_jobs_agent_id_fkey foreign KEY (agent_id) references agents (id),
+  constraint sandbox_jobs_benchmark_id_fkey foreign KEY (benchmark_id) references benchmarks (id),
+  constraint sandbox_jobs_model_id_fkey foreign KEY (model_id) references models (id),
+  constraint sandbox_job_version_check check (
+    (
+      (job_status = 'Pending'::job_status_enum)
+      or (git_commit_id is not null)
+      or (package_version is not null)
+    )
+  )
+) TABLESPACE pg_default;
+
+create index IF not exists idx_sandbox_jobs_job_name on public.sandbox_jobs using btree (job_name) TABLESPACE pg_default;
+
+create index IF not exists idx_sandbox_jobs_username on public.sandbox_jobs using btree (username) TABLESPACE pg_default;
+
+create index IF not exists idx_sandbox_jobs_agent_id on public.sandbox_jobs using btree (agent_id) TABLESPACE pg_default;
+
+create index IF not exists idx_sandbox_jobs_model_id on public.sandbox_jobs using btree (model_id) TABLESPACE pg_default;
+
+create index IF not exists idx_sandbox_jobs_benchmark_id on public.sandbox_jobs using btree (benchmark_id) TABLESPACE pg_default;
+
+create index IF not exists idx_sandbox_jobs_created_at on public.sandbox_jobs using btree (created_at desc) TABLESPACE pg_default;
+
+create index IF not exists idx_sandbox_jobs_started_at on public.sandbox_jobs using btree (started_at desc) TABLESPACE pg_default;
+
+create index IF not exists idx_sandbox_jobs_slurm_job_id on public.sandbox_jobs using btree (slurm_job_id) TABLESPACE pg_default;

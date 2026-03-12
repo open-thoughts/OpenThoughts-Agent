@@ -41,6 +41,7 @@ orchestrator:
     - RewardFileEmptyError
     - VerifierOutputParseError
     - SandboxBuildFailedError
+    - VerifierRuntimeError
     wait_multiplier: 2.0
     min_wait_sec: 1.0
     max_wait_sec: 60.0
@@ -83,7 +84,7 @@ agents:
     metrics_endpoint: https://replace-with-vllm-host/metrics
     metrics_timeout_sec: 10
     model_info:
-      max_input_tokens: 32000
+      max_input_tokens: 23808
       max_output_tokens: 8192
       input_cost_per_token: 0
       output_cost_per_token: 0

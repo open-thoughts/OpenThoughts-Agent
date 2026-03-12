@@ -69,24 +69,20 @@ fi
 
 cd "$DCFT"
 
-ORG="${HF_ORG:-DCAgent2}"
-USER_MODEL_LIST="${1:-}"
+ORG="${HF_ORG:-laion}"
+USER_MODEL_LIST="${1:-${DCFT}/scripts/huggingface/laion_squash.txt}"
 SCRATCH_ROOT="${SCRATCH:-$PWD}"
 
 mkdir -p "${SCRATCH_ROOT}/OpenThoughts-Agent/experiments"
-if [ -n "$USER_MODEL_LIST" ]; then
-  if [ ! -f "$USER_MODEL_LIST" ]; then
-    echo "ERROR: Provided model list file '$USER_MODEL_LIST' does not exist." >&2
-    exit 1
-  fi
+if [ -f "$USER_MODEL_LIST" ]; then
   MODEL_LIST_FILE="$USER_MODEL_LIST"
-  echo "Using user-supplied model list: $MODEL_LIST_FILE"
+  echo "Using model list: $MODEL_LIST_FILE"
 else
   MODEL_LIST_FILE="$(mktemp "${SCRATCH_ROOT}/OpenThoughts-Agent/experiments/${ORG}_public_models.XXXXXX.txt")"
   trap 'rm -f "$MODEL_LIST_FILE"' EXIT
 
   echo "Listing public models for organization: ${ORG}"
-  python scripts/database/list_public_models.py --org "${ORG}" --output "${MODEL_LIST_FILE}"
+  python scripts/huggingface/list_public_models.py --org "${ORG}" --output "${MODEL_LIST_FILE}"
 fi
 
 if [ ! -s "${MODEL_LIST_FILE}" ]; then

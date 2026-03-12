@@ -1,0 +1,242 @@
+# 16GPU TP4 config — the actual deployed config for our RL campaign
+# 4 nodes × 4 GPUs = 16 GPUs total (Jupiter GH200)
+# Base: 24GPU_base.yaml with all --skyrl_override flags baked in
+# All 18 jobs (v1 + v3) use this exact config.
+#
+# GPU allocation (16 GPUs):
+#   - Policy model: 8 GPUs (2 nodes × 4, FSDP2)
+#   - Reference model: 8 GPUs (2 nodes × 4, FSDP2)
+#   - vLLM inference: 2 engines × TP4 = 8 GPUs (colocated with trainer)
+#
+# Key differences from 24GPU_base.yaml:
+#   - TP4 with 2 engines (not TP1 with 16)
+#   - KL loss enabled (coef=0.01)
+#   - Higher LR (1e-5 vs 5e-6), weight decay (0.01), lower grad norm (1.0)
+#   - Temperature 1.0 (not 0.7), top_k disabled
+#   - Checkpoint every 3 steps, HF upload every 10
+#   - Fewer parallel workers (128 vs 768), lower staleness (8 vs 16)
+#   - Agent timeout 900s (not 1800s)
+#
+# Usage:
+#   python -m hpc.launch --job_type rl --rl_config /e/scratch/jureap59/etash/16GPU_tp4_deployed.yaml \
+#     --model_path laion/r2egym-nl2bash-stack-bugsseq \
+#     --train_data /path/to/tasks/exp_rpt_nemotron-cpp \
+#     --num_nodes 4 --job_name rl_v1_tp4s64_8x_nemotron-cpp \
+#     --daytona_api_key $DAYTONA_API_KEY
+
+entrypoint: examples.terminal_bench.entrypoints.main_tbench
+
+# Hydra config groups (+ prefix in CLI)
+config_groups:
+  terminal_bench_config: terminal_bench
+
+# Terminal bench / agentic environment settings
+terminal_bench:
+  trials_dir: null
+
+  harbor:
+    # Agent settings
+    name: terminus-2
+    max_episodes: 999999
+    enable_summarize: false
+    store_all_messages: true
+    enable_episode_logging: false
+    record_terminal_session: false
+    enable_pane_logging: false
+
+    # Strict JSON parser
+    strict_json_parser: true
+
+    # Interleaved Thinking Settings
+    interleaved_thinking: true
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+
+    # Timeout: 900s (not 1800s from base)
+    override_timeout_sec: 900
+
+    # Environment settings
+    override_cpus: 1
+    override_memory_mb: 2048
+    override_storage_mb: 2048
+
+    # Auto snapshot
+    auto_snapshot: true
+
+    # Verifier settings
+    verifier_override_timeout_sec: 120
+
+    # Retry settings
+    max_retries: 3
+    min_wait_sec: 60.0
+    max_wait_sec: 600.0
+    wait_multiplier: 2.0
+
+    exclude_exceptions:
+      - AgentTimeoutError
+      - VerifierTimeoutError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - VerifierOutputParseError
+      - ContextLengthExceededError
+
+    # Concurrency: 256 (not 280)
+    n_concurrent_trials: 256
+
+    # Logging
+    log_level: INFO
+
+    # Binary rewards
+    enable_reward_shaping: false
+
+    # RLOO-N error classification
+    enable_error_classification: true
+    mask_exceptions:
+      - DaytonaError
+      - EnvironmentStartTimeoutError
+      - NetworkError
+      - ConnectionError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+    zero_exceptions:
+      - AgentTimeoutError
+      - ContextLengthExceededError
+    default_error_treatment: zero
+
+  model_info:
+    max_input_tokens: 32768
+    max_output_tokens: 8192
+
+  archiving:
+    enabled: false
+
+  trace_upload:
+    enabled: true
+    repo_org: DCAgent
+    episodes: last
+    dataset_type: SFT
+    cleanup: true
+
+# Trainer configuration
+trainer:
+  strategy: fsdp2
+  algorithm:
+    advantage_estimator: rloo_n
+    use_kl_loss: true
+    kl_loss_coef: 0.01
+    eps_clip_low: 0.2
+    eps_clip_high: 0.2
+    loss_reduction: token_mean
+
+  # Training loop
+  epochs: 10
+  max_steps: 80
+  update_epochs_per_batch: 1
+
+  # Batch sizes
+  train_batch_size: 64
+  policy_mini_batch_size: 64
+  eval_batch_size: 64
+
+  # Micro batch sizes
+  micro_forward_batch_size_per_gpu: 1
+  micro_train_batch_size_per_gpu: 1
+
+  max_prompt_length: 999999
+
+  # Evaluation and checkpointing
+  eval_interval: 999999
+  eval_before_train: false
+  ckpt_interval: 3
+  resume_mode: latest
+  hf_save_interval: 10
+  hf_hub_repo_id: null
+  hf_hub_private: false
+  hf_hub_revision: main
+
+  # Database registration
+  enable_db_registration: true
+
+  # Logging
+  project_name: OpenThoughts-Agent
+  log_level: INFO
+  tracker_commit_each_step: true
+  logger: console
+
+  # Paths
+  run_name: null
+  ckpt_path: null
+  export_path: null
+
+  policy:
+    optimizer_config:
+      lr: 1e-5
+      weight_decay: 0.01
+      adam_betas: [0.9, 0.999]
+      max_grad_norm: 1.0
+    fsdp_config:
+      cpu_offload: false
+      reshard_after_forward: false
+      fsdp_size: 4
+  ref:
+    fsdp_config:
+      cpu_offload: false
+      reshard_after_forward: false
+      fsdp_size: 4
+
+  placement:
+    colocate_all: false
+    policy_num_nodes: 2
+    ref_num_nodes: 2
+    policy_num_gpus_per_node: 4
+    ref_num_gpus_per_node: 4
+
+  fully_async:
+    max_staleness_steps: 8
+    num_parallel_generation_workers: 128
+
+generator:
+  backend: vllm
+  timeout_multiplier: 8.0
+  model_dtype: bfloat16
+
+  # TP4 with 2 engines (8 GPUs for inference, colocated with trainer)
+  inference_engine_tensor_parallel_size: 4
+  num_inference_engines: 2
+
+  n_samples_per_prompt: 8
+  eval_n_samples_per_prompt: 8
+
+  gpu_memory_utilization: 0.9
+
+  max_num_seqs: 64
+  max_num_batched_tokens: 65536
+
+  enable_prefix_caching: true
+  enable_chunked_prefill: true
+
+  run_engines_locally: true
+  weight_sync_backend: nccl
+  async_engine: true
+  batched: false
+  enable_http_endpoint: true
+  enable_ray_prometheus_stats: false
+  append_eos_token_after_stop_str_in_multi_turn: true
+  max_turns: 999999
+
+  sampling_params:
+    max_generate_length: 8192
+    temperature: 1.0
+    top_p: 0.95
+    top_k: -1
+
+  engine_init_kwargs:
+    max_model_len: 32768
+    kv_cache_dtype: fp8
+    prefix_caching_hash_algo: xxhash
+    custom_chat_template_chat_completion_path: chat_templates/qwen3_thinking_acc.jinja2
+
+data:
+  train_data: []
+  val_data: ["open-thoughts/OpenThoughts-TB-dev"]

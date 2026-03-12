@@ -754,6 +754,10 @@ class RLArgs:
         default=None,
         metadata={"help": "Dataset type for trace upload registration: 'SFT' or 'RL' (default: SFT)"}
     )
+    trace_upload_cleanup: Optional[bool] = field(
+        default=None,
+        metadata={"help": "Remove traces directory after successful upload to conserve inodes (default: true)"}
+    )
 
 
 def _option_strings(field_name: str) -> list[str]:

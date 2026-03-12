@@ -235,6 +235,10 @@ eval/tacc/runs/
 AGENTS.md
 CLAUDE.md
 
+# paper
+paper/
+figures/
+
 # Mac
 .DS_Store
 

@@ -41,6 +41,34 @@ from harbor.utils.container_cache import (
 )
 
 
+def discover_task_dirs(data_paths: list[str | Path]) -> list[Path]:
+    """Find all task subdirs (containing instruction.md) within dataset root dirs."""
+    task_dirs = []
+    for data_path in data_paths:
+        root = Path(data_path)
+        if not root.is_dir():
+            continue
+        for subdir in sorted(root.iterdir()):
+            if subdir.is_dir() and (subdir / "instruction.md").exists():
+                task_dirs.append(subdir)
+    return task_dirs
+
+
+def get_snapshot_env_dirs(
+    task_dirs: list[Path], truncate: int = 12
+) -> dict[str, Path]:
+    """Map env hash -> representative environment dir (containing Dockerfile)."""
+    from harbor.utils.container_cache import get_task_environment_hash
+    from harbor.models.task.paths import TaskPaths
+
+    hash_to_env_dir: dict[str, Path] = {}
+    for task_dir in task_dirs:
+        env_hash = get_task_environment_hash(task_dir, truncate)
+        if env_hash and env_hash not in hash_to_env_dir:
+            hash_to_env_dir[env_hash] = TaskPaths(task_dir).environment_dir
+    return hash_to_env_dir
+
+
 def load_tasks_from_local_dataset(
     dataset_path: Path,
     task_names: list[str] | None = None,

@@ -3,7 +3,7 @@
 Utility for exporting all public Hugging Face models owned by an organization.
 
 Example:
-    python scripts/database/list_public_models.py --org DCAgent --output hf_models.txt
+    python scripts/huggingface/list_public_models.py --org laion --output hf_models.txt
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--org",
-        default="DCAgent",
+        default="laion",
         help="Hugging Face organization ID to inspect (default: %(default)s).",
     )
     parser.add_argument(

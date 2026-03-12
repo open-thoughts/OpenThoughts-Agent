@@ -1,0 +1,222 @@
+# Negin's Run 3: Qwen3 8B on 16 GPUs - optimized from Runs 1/2
+#
+# Key changes from Run 1 baseline:
+#   - lr: 1e-6 -> 1e-5 (10x; KL had 100x headroom at 0.001 vs target 0.1)
+#   - n_concurrent_trials: 256 -> 768 (3x more parallel Daytona sandboxes)
+#   - gpu_memory_utilization: 0.65 -> 0.80 (safe; 0.90 caused OOM in Job 220621)
+#   - CONTAINER_LAUNCH_GRACE_PERIOD_SEC: 2.0 -> 0.25 (harbor queue.py change)
+#   - --gpu-bind=closest added (NUMA-aware GPU binding via ray_utils.py)
+#
+# Based on: qwen3_8b_16x80GB_..._autosnap_console.yaml
+#
+# Usage:
+#   python -m hpc.launch \
+#       --job_type rl \
+#       --rl_config jupiter/negin_qwen3_8b_16GPU_bs64_rloo_n_run3 \
+#       --train_data '["DCAgent/code-contests-sandboxes-with-tests"]' \
+#       --model_path /e/scratch/jureap59/guha1/otagent/hub/models--laion--r2egym-nl2bash-stack-bugsseq/snapshots/1e2611c5bd7aec4479129ef497c504b77b8f6726 \
+#       --num_nodes 4 \
+#       --time_limit 11:59:00
+
+# SkyRL entrypoint module
+entrypoint: examples.terminal_bench.entrypoints.main_tbench
+
+# Hydra config groups (+ prefix in CLI)
+config_groups:
+  terminal_bench_config: terminal_bench
+
+# Terminal bench / agentic environment settings
+terminal_bench:
+  trials_dir: null
+
+  harbor:
+    # Agent settings
+    name: terminus-2
+    max_episodes: 999999
+    enable_summarize: false
+    store_all_messages: true
+    enable_episode_logging: false
+
+    # Strict JSON parser
+    strict_json_parser: true
+
+    # Interleaved Thinking Settings
+    interleaved_thinking: true
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+
+    # Timeout settings
+    override_timeout_sec: 900
+
+    # Environment settings
+    override_cpus: 1
+    override_memory_mb: 2048
+    override_storage_mb: 2048
+
+    # Auto snapshot (reuse Daytona snapshots by Dockerfile hash)
+    auto_snapshot: true
+
+    # Verifier settings
+    verifier_override_timeout_sec: 120
+
+    # Retry settings
+    max_retries: 3
+    min_wait_sec: 60.0
+    max_wait_sec: 600.0
+    wait_multiplier: 2.0
+
+    exclude_exceptions:
+      - AgentTimeoutError
+      - VerifierTimeoutError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - VerifierOutputParseError
+      - ContextLengthExceededError
+
+    # Orchestrator settings - 3x from Run 1 to reduce wait_for_generation_buffer
+    n_concurrent_trials: 768
+
+    # Logging settings
+    log_level: INFO
+
+    # Reward shaping (disabled - binary rewards)
+    enable_reward_shaping: false
+
+    # RLOO-N error classification
+    enable_error_classification: true
+    mask_exceptions:
+      - DaytonaError
+      - EnvironmentStartTimeoutError
+      - NetworkError
+      - ConnectionError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+    zero_exceptions:
+      - AgentTimeoutError
+      - ContextLengthExceededError
+    default_error_treatment: zero
+
+  model_info:
+    max_input_tokens: 32768
+    max_output_tokens: 8192
+
+  archiving:
+    enabled: false
+
+# Trainer configuration
+trainer:
+  strategy: fsdp2
+  algorithm:
+    advantage_estimator: rloo_n
+    use_kl_loss: true
+    kl_loss_coef: 0.01
+    eps_clip_low: 0.2
+    eps_clip_high: 0.2
+    loss_reduction: token_mean
+
+  epochs: 10
+  update_epochs_per_batch: 1
+
+  # Batch sizes
+  train_batch_size: 64
+  policy_mini_batch_size: 64
+  eval_batch_size: 64
+
+  micro_forward_batch_size_per_gpu: 4
+  micro_train_batch_size_per_gpu: 2
+
+  max_prompt_length: 999999
+
+  eval_interval: 999999
+  eval_before_train: false
+  ckpt_interval: 10
+  resume_mode: latest
+  hf_save_interval: 20
+  hf_hub_repo_id: null
+  hf_hub_private: false
+  hf_hub_revision: main
+
+  enable_db_registration: true
+
+  logger: console
+  project_name: OpenThoughts-Agent
+  log_level: INFO
+  tracker_commit_each_step: true
+
+  run_name: null
+  ckpt_path: null
+  export_path: null
+
+  # Policy optimizer - lr=1e-5 (10x from Runs 1/2)
+  policy:
+    optimizer_config:
+      lr: 1e-5
+      weight_decay: 0.01
+      adam_betas: [0.9, 0.999]
+      max_grad_norm: 1.0
+    fsdp_config:
+      cpu_offload: false
+      reshard_after_forward: false
+      fsdp_size: 4
+
+  ref:
+    fsdp_config:
+      cpu_offload: false
+      reshard_after_forward: false
+      fsdp_size: 4
+
+  placement:
+    colocate_all: false
+    policy_num_nodes: 2
+    ref_num_nodes: 2
+    policy_num_gpus_per_node: 4
+    ref_num_gpus_per_node: 4
+
+  fully_async:
+    max_staleness_steps: 8
+    num_parallel_generation_workers: 128
+
+# Generator configuration
+generator:
+  backend: vllm
+  timeout_multiplier: 2.0
+  model_dtype: bfloat16
+
+  inference_engine_tensor_parallel_size: 1
+  num_inference_engines: 8
+
+  n_samples_per_prompt: 8
+  eval_n_samples_per_prompt: 8
+
+  # 0.80 is safe on GH200; 0.90 caused OOM (Job 220621), 0.65 wastes capacity
+  gpu_memory_utilization: 0.80
+
+  max_num_seqs: 32
+  max_num_batched_tokens: 32768
+
+  enable_prefix_caching: true
+  enable_chunked_prefill: true
+
+  run_engines_locally: true
+  weight_sync_backend: nccl
+  async_engine: true
+  batched: false
+  enable_http_endpoint: true
+
+  append_eos_token_after_stop_str_in_multi_turn: true
+  max_turns: 999999
+
+  sampling_params:
+    max_generate_length: 8192
+    temperature: 1.0
+    top_p: 0.95
+    top_k: -1
+
+  engine_init_kwargs:
+    max_model_len: 32768
+
+# Data paths
+data:
+  train_data: []
+  val_data: ["open-thoughts/OpenThoughts-TB-dev"]

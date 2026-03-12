@@ -188,6 +188,102 @@ def extract_reward(record) -> Optional[float]:
     return None
 
 
+def mean_reward_per_trial(rows: list) -> Optional[float]:
+    """Compute the flat mean reward across all trials (Harbor-style 'accuracy').
+
+    This matches Harbor's Mean metric: every trial contributes equally,
+    with errors/missing results counted as 0. No per-task grouping.
+    """
+    values = []
+    for row in rows:
+        reward = extract_reward(row)
+        values.append(reward if reward is not None else 0.0)
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+# ---------------------------------------------------------------------------
+# Infrastructure-error filtering (matches Harbor drop_ei logic)
+# ---------------------------------------------------------------------------
+
+DEFAULT_DROP_EXCEPTIONS: frozenset[str] = frozenset(
+    [
+        "AgentEnvironmentTimeoutError",
+        "DaytonaError",
+        "DaytonaRateLimitError",
+        "DaytonaNotFoundError",
+        "EnvironmentStartTimeoutError",
+        "SandboxBuildFailedError",
+        "PodmanHPCTimeoutError",
+        "PodmanHPCCommandError",
+        "ApptainerTimeoutError",
+        "ApptainerCommandError",
+    ]
+)
+
+
+def filter_ei(
+    rows: list[dict],
+    drop_exceptions: frozenset[str] = DEFAULT_DROP_EXCEPTIONS,
+) -> list[dict]:
+    """Drop rows whose result is an infrastructure error type."""
+    filtered = []
+    for row in rows:
+        error = extract_error_type(row)
+        if error is not None and error in drop_exceptions:
+            continue
+        filtered.append(row)
+    return filtered
+
+
+def tasks_with_n_attempts(
+    rows: list[dict],
+    n_attempts: int,
+) -> set[str]:
+    """Return tasks that have at least *n_attempts* rows after filtering."""
+    from collections import Counter
+    counts = Counter(row["task"] for row in rows)
+    return {task for task, count in counts.items() if count >= n_attempts}
+
+
+def mean_reward_per_trial_ei(
+    rows: list[dict],
+    drop_exceptions: frozenset[str] = DEFAULT_DROP_EXCEPTIONS,
+    n_attempts: int = 1,
+) -> Optional[float]:
+    """Mean reward after dropping infra-errored trials and incomplete tasks.
+
+    Mirrors Harbor's MeanDropEI metric.
+    """
+    clean = filter_ei(rows, drop_exceptions)
+    complete_tasks = tasks_with_n_attempts(clean, n_attempts)
+    values = []
+    for row in clean:
+        if row["task"] not in complete_tasks:
+            continue
+        reward = extract_reward(row)
+        values.append(reward if reward is not None else 0.0)
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def ei_common_tasks(
+    all_datasets: dict[str, list[dict]],
+    drop_exceptions: frozenset[str] = DEFAULT_DROP_EXCEPTIONS,
+    n_attempts: int = 1,
+) -> set[str]:
+    """Return tasks present and complete (post-EI-filter) in ALL datasets."""
+    per_model: list[set[str]] = []
+    for rows in all_datasets.values():
+        clean = filter_ei(rows, drop_exceptions)
+        per_model.append(tasks_with_n_attempts(clean, n_attempts))
+    if not per_model:
+        return set()
+    return set.intersection(*per_model)
+
+
 def extract_error_type(record) -> Optional[str]:
     """Extract an error type name from a record's ``result`` field.
 

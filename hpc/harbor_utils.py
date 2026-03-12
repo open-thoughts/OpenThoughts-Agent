@@ -637,9 +637,12 @@ def build_harbor_command(
         modified_config["orchestrator"] = {}
     modified_config["orchestrator"]["n_concurrent_trials"] = n_concurrent
 
-    # Update all agents in the config with model_name and merged kwargs
+    # Update all agents in the config with model_name and merged kwargs.
+    # If agent_name is specified, also override the agent name (e.g., "oracle").
     agents = modified_config.get("agents", [])
     for agent in agents:
+        if agent_name:
+            agent["name"] = agent_name
         # Set model_name directly in config
         agent["model_name"] = model_name
         # Merge kwargs into the agent's existing kwargs
@@ -679,21 +682,55 @@ def build_harbor_command(
     ]
 
     # Add dataset (slug or path).
-    # For dataset_path: update the config's datasets[].path directly instead of
-    # passing -p on the CLI.  Harbor's -p flag replaces the entire datasets list
-    # with a fresh LocalDatasetConfig, discarding YAML settings like n_tasks.
+    # CLI dataset flags take top priority — clear the YAML datasets so there is
+    # no ambiguity between YAML placeholder paths and the actual dataset.
     if dataset_slug:
-        cmd.extend(["--dataset", dataset_slug])
-    elif dataset_path:
-        datasets = modified_config.get("datasets", [])
-        if datasets:
-            # Preserve existing dataset settings (n_tasks, task_names, etc.)
-            datasets[0]["path"] = dataset_path
-        else:
-            modified_config["datasets"] = [{"path": dataset_path}]
-        # Re-write the merged config with the updated dataset path
+        # Clear YAML datasets so Harbor only sees the CLI --dataset flag.
+        modified_config.pop("datasets", None)
+        modified_config.pop("tasks", None)
         with open(merged_config_path, "w") as f:
             yaml.safe_dump(modified_config, f)
+        cmd.extend(["--dataset", dataset_slug])
+    elif dataset_path:
+        # Replace YAML datasets path with the provided path, preserving
+        # other dataset-level fields like n_tasks from the original config.
+        yaml_datasets = modified_config.get("datasets") or [{}]
+        base_dataset = yaml_datasets[0] if yaml_datasets else {}
+        if isinstance(base_dataset, dict):
+            base_dataset["path"] = dataset_path
+        else:
+            base_dataset = {"path": dataset_path}
+        modified_config["datasets"] = [base_dataset]
+        modified_config.pop("tasks", None)
+        with open(merged_config_path, "w") as f:
+            yaml.safe_dump(modified_config, f)
+    else:
+        # Neither dataset_slug nor dataset_path provided.  Strip the YAML
+        # placeholder (if any) so we fail fast with a clear message rather
+        # than having Harbor attempt to load a bogus placeholder path.
+        _placeholder = "/replace/with/tasks/path"
+        yaml_datasets = modified_config.get("datasets") or []
+        if yaml_datasets and any(
+            d.get("path", "") == _placeholder for d in yaml_datasets if isinstance(d, dict)
+        ):
+            modified_config.pop("datasets", None)
+            modified_config.pop("tasks", None)
+            with open(merged_config_path, "w") as f:
+                yaml.safe_dump(modified_config, f)
+
+        # Final safety check: merged config must have datasets, tasks, or a
+        # --dataset CLI flag.  Without any of these Harbor will error with
+        # "Either datasets or tasks must be provided."
+        has_datasets = bool(modified_config.get("datasets"))
+        has_tasks = bool(modified_config.get("tasks"))
+        has_cli_dataset = "--dataset" in cmd
+        if not (has_datasets or has_tasks or has_cli_dataset):
+            raise ValueError(
+                "[build_harbor_command] BUG: No datasets, tasks, or --dataset flag. "
+                f"dataset_slug={dataset_slug!r}, dataset_path={dataset_path!r}. "
+                "The merged config will cause Harbor to fail. "
+                "Ensure --dataset_path or --dataset is provided."
+            )
 
     # Add jobs_dir if specified
     if jobs_dir:
@@ -708,6 +745,18 @@ def build_harbor_command(
 
     def _flag_present(flag: str) -> bool:
         return any(arg == flag or arg.startswith(f"{flag}=") for arg in extra_args)
+
+    # Auto-resume on transient Daytona infrastructure errors so that flaky
+    # sandbox creation / rate limits don't permanently fail tasks.
+    if not _flag_present("--auto-resume"):
+        extra_args.append("--auto-resume")
+    if not _flag_present("--filter-error-type"):
+        for err_type in (
+            "DaytonaRateLimitError",
+            "EnvironmentStartTimeoutError",
+            "DaytonaError",
+        ):
+            extra_args.extend(["--filter-error-type", err_type])
 
     if not (_flag_present("--export-traces") or _flag_present("--no-export-traces")):
         extra_args.append("--export-traces")

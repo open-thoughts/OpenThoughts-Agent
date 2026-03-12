@@ -1,0 +1,87 @@
+{
+  "debug": false,
+  "tasks": [],
+  "agents": [
+    {
+      "name": "terminus-2",
+      "kwargs": {
+        "key": "fake_key",
+        "api_base": "http://localhost:8000/v1"
+      },
+      "model_name": "hosted_vllm/DCAgent/nl2bash-nl2bash-bugsseq_Qwen3-8B-maxEps24-112925harbor_step_73",
+      "import_path": null,
+      "max_timeout_sec": null,
+      "override_timeout_sec": null,
+      "override_setup_timeout_sec": null
+    }
+  ],
+  "metrics": [],
+  "datasets": [
+    {
+      "path": "/e/data1/datasets/playground/mmlaion/shared/guha1/datasets/DCAgent_dev_set_v2",
+      "n_tasks": null,
+      "task_names": null,
+      "exclude_task_names": null
+    }
+  ],
+  "job_name": "DCAgent_dev_set_v2_DCAgent_nl2bash-nl2bash-bugsseq_Qwen3-8B-maxEps24-112925harbor_step_73",
+  "jobs_dir": "/e/data1/datasets/playground/mmlaion/shared/guha1/eval_jobs",
+  "verifier": {
+    "disable": false,
+    "max_timeout_sec": null,
+    "override_timeout_sec": null
+  },
+  "n_attempts": 3,
+  "environment": {
+    "type": "daytona",
+    "delete": false,
+    "kwargs": {
+      "auto_snapshot": true
+    },
+    "force_build": false,
+    "import_path": null,
+    "override_cpus": null,
+    "override_gpus": null,
+    "override_memory_mb": null,
+    "dockerfile_override": null,
+    "override_storage_mb": null,
+    "override_build_timeout_sec": null,
+    "suppress_override_warnings": false
+  },
+  "orchestrator": {
+    "type": "local",
+    "quiet": false,
+    "retry": {
+      "max_retries": 3,
+      "max_wait_sec": 60,
+      "min_wait_sec": 1,
+      "wait_multiplier": 1,
+      "exclude_exceptions": [
+        "AgentTimeoutError",
+        "RewardFileEmptyError",
+        "VerifierTimeoutError",
+        "RewardFileNotFoundError",
+        "VerifierOutputParseError"
+      ],
+      "include_exceptions": null
+    },
+    "kwargs": {},
+    "plain_output": false,
+    "n_concurrent_trials": 128,
+    "adaptive_concurrency": {
+      "enabled": false,
+      "algorithm": "gradient2",
+      "max_limit": null,
+      "min_limit": null,
+      "window_size": 5,
+      "algorithm_kwargs": {},
+      "metrics_endpoint": null,
+      "poll_interval_sec": 120,
+      "metrics_timeout_sec": 10,
+      "queue_p95_drop_threshold": null
+    }
+  },
+  "timeout_multiplier": 1,
+  "dockerfile_override": null,
+  "instruction_override": null
+}

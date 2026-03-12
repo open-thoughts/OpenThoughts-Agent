@@ -261,7 +261,8 @@ def call_llm_counterpart(counterpart_role: str, counterpart_reservation: float,
         if parsed["action"] == "offer" and parsed.get("price") is None:
             raise ValueError("Offer action requires a price")
         return parsed
-    except Exception:
+    except Exception as e:
+        print(f"LLM counterpart failed: {e}. Falling back to rule-based policy.", file=sys.stderr)
         return _rule_based_response(counterpart_role, counterpart_reservation, agent_offer, history, rounds_remaining)
 
 # ---------------------------------------------------------------------------

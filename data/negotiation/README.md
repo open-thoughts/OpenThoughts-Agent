@@ -311,6 +311,24 @@ python -m data.negotiation.generate --num-instances 200 --output-dir ./out --no-
 
 The counterpart requires the `openai` Python package and `OPENAI_API_KEY` to be set in the container environment. The Dockerfile installs `openai` via pip. If the API key is absent, the counterpart falls back to a deterministic rule-based policy automatically — no crash.
 
+### Injecting `OPENAI_API_KEY` into Harbor
+
+Harbor does **not** automatically pass host environment variables into the Docker sandbox. The key must be present in the sbatch shell environment **before** Harbor is launched so it propagates through the process chain:
+
+```
+DC_AGENT_SECRET_ENV → sbatch sources secrets file → Harbor subprocess inherits → container reads os.environ
+```
+
+In practice, add the key to your cluster secrets file (or `~/.bashrc` on the login node) and ensure it is exported before launching any Harbor eval or tracegen job:
+
+```bash
+export OPENAI_API_KEY="sk-proj-..."
+python eval/local/run_eval.py --datagen-config hpc/datagen_yaml/... \
+  --dataset-path data/negotiation/example_task --harbor-config ...
+```
+
+If the key is unavailable at runtime, the counterpart silently falls back to a rule-based policy (concede 15% per round). Evaluation still produces valid rewards — the counterpart is just deterministic rather than LLM-driven.
+
 ---
 
 ## Example Task

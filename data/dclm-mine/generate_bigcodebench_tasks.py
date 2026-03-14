@@ -41,113 +41,54 @@ from data.commons import (
 LIMIT = 10000
 MODEL = "gpt-4o-mini"
 
-# Base Dockerfile - will be customized per task with required libs
-BIGCODEBENCH_DOCKERFILE_TEMPLATE = """FROM python:3.10-slim
+# Single "fat" Dockerfile that pre-installs ALL BigCodeBench libraries.
+# This replaces per-task Dockerfiles (which each had different pip installs)
+# so all tasks share one Docker image, enabling efficient RL training.
+# Based on BigCodeBench's requirements-eval.txt (62 external packages).
+BIGCODEBENCH_FAT_DOCKERFILE = """FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install system dependencies for common libraries
+# Install system dependencies for all BigCodeBench libraries
 RUN apt-get update && apt-get install -y \\
     build-essential \\
     git \\
     libffi-dev \\
     libxml2-dev \\
     libxslt1-dev \\
+    libsndfile1 \\
+    tesseract-ocr \\
     && rm -rf /var/lib/apt/lists/*
 
-# Install base Python packages
+# Install ALL BigCodeBench Python packages in one layer
+# Core scientific stack
 RUN pip install --no-cache-dir \\
-    pytest \\
-    pytest-timeout \\
-    numpy \\
-    pandas \\
-    scipy \\
-    matplotlib \\
-    seaborn \\
-    scikit-learn \\
-    requests \\
-    beautifulsoup4 \\
-    lxml \\
-    pillow \\
-    opencv-python-headless
-
-{additional_installs}
+    pytest pytest-timeout \\
+    numpy pandas scipy matplotlib seaborn \\
+    scikit-learn scikit-image statsmodels sympy \\
+    requests beautifulsoup4 lxml pillow \\
+    opencv-python-headless \\
+    networkx geopandas geopy shapely folium \\
+    nltk gensim textblob wordcloud wordninja \\
+    cryptography rsa pycryptodome \\
+    Flask flask-login flask-restful flask-wtf Flask-Mail WTForms Werkzeug \\
+    Django \\
+    python-dateutil pytz PyYAML \\
+    openpyxl xlrd xlwt python-docx docxtpl xmltodict \\
+    Faker holidays natsort chardet dnspython \\
+    prettytable texttable \\
+    psutil \\
+    Levenshtein \\
+    requests-mock pyfakefs \\
+    pyquery mechanize \\
+    librosa soundfile \\
+    pytesseract \\
+    numba blake3 \\
+    python-http-client sendgrid \\
+    wikipedia
 
 RUN mkdir -p /logs/verifier
 """
-
-
-def get_dockerfile_for_libs(libs: List[str]) -> str:
-    """Generate Dockerfile with required libraries installed."""
-    # Common library mappings (some need special handling)
-    lib_install_map = {
-        "torch": "torch --index-url https://download.pytorch.org/whl/cpu",
-        "tensorflow": "tensorflow-cpu",
-        "cv2": "opencv-python-headless",
-        "PIL": "pillow",
-        "bs4": "beautifulsoup4",
-        "sklearn": "scikit-learn",
-    }
-
-    # Python standard library modules - never pip install these
-    stdlib_modules = {
-        "abc", "aifc", "argparse", "array", "ast", "asynchat", "asyncio",
-        "asyncore", "atexit", "audioop", "base64", "bdb", "binascii",
-        "binhex", "bisect", "builtins", "bz2", "calendar", "cgi", "cgitb",
-        "chunk", "cmath", "cmd", "code", "codecs", "codeop", "collections",
-        "colorsys", "compileall", "concurrent", "configparser", "contextlib",
-        "contextvars", "copy", "copyreg", "cProfile", "crypt", "csv",
-        "ctypes", "curses", "dataclasses", "datetime", "dbm", "decimal",
-        "difflib", "dis", "distutils", "doctest", "email", "encodings",
-        "enum", "errno", "faulthandler", "fcntl", "filecmp", "fileinput",
-        "fnmatch", "formatter", "fractions", "ftplib", "functools", "gc",
-        "getopt", "getpass", "gettext", "glob", "grp", "gzip", "hashlib",
-        "heapq", "hmac", "html", "http", "idlelib", "imaplib", "imghdr",
-        "imp", "importlib", "inspect", "io", "ipaddress", "itertools",
-        "json", "keyword", "lib2to3", "linecache", "locale", "logging",
-        "lzma", "mailbox", "mailcap", "marshal", "math", "mimetypes",
-        "mmap", "modulefinder", "multiprocessing", "netrc", "nis", "nntplib",
-        "numbers", "operator", "optparse", "os", "ossaudiodev", "parser",
-        "pathlib", "pdb", "pickle", "pickletools", "pipes", "pkgutil",
-        "platform", "plistlib", "poplib", "posix", "posixpath", "pprint",
-        "profile", "pstats", "pty", "pwd", "py_compile", "pyclbr",
-        "pydoc", "queue", "quopri", "random", "re", "readline", "reprlib",
-        "resource", "rlcompleter", "runpy", "sched", "secrets", "select",
-        "selectors", "shelve", "shlex", "shutil", "signal", "site",
-        "smtpd", "smtplib", "sndhdr", "socket", "socketserver", "spwd",
-        "sqlite3", "ssl", "stat", "statistics", "string", "stringprep",
-        "struct", "subprocess", "sunau", "symtable", "sys", "sysconfig",
-        "syslog", "tabnanny", "tarfile", "telnetlib", "tempfile", "termios",
-        "test", "textwrap", "threading", "time", "timeit", "tkinter",
-        "token", "tokenize", "trace", "traceback", "tracemalloc", "tty",
-        "turtle", "turtledemo", "types", "typing", "unicodedata", "unittest",
-        "urllib", "uu", "uuid", "venv", "warnings", "wave", "weakref",
-        "webbrowser", "winreg", "winsound", "wsgiref", "xdrlib", "xml",
-        "xmlrpc", "zipapp", "zipfile", "zipimport", "zlib",
-    }
-
-    # Filter out already installed base packages
-    base_packages = {
-        "numpy", "pandas", "scipy", "matplotlib", "seaborn",
-        "scikit-learn", "sklearn", "requests", "beautifulsoup4",
-        "bs4", "lxml", "pillow", "PIL", "cv2", "opencv-python-headless"
-    }
-
-    additional_libs = []
-    for lib in libs:
-        lib_lower = lib.lower().strip()
-        # Skip stdlib and base packages
-        if lib_lower in stdlib_modules or lib_lower in base_packages:
-            continue
-        install_name = lib_install_map.get(lib, lib)
-        additional_libs.append(install_name)
-
-    if additional_libs:
-        additional_installs = "RUN pip install --no-cache-dir \\\n    " + " \\\n    ".join(additional_libs)
-    else:
-        additional_installs = "# No additional libraries required"
-
-    return BIGCODEBENCH_DOCKERFILE_TEMPLATE.format(additional_installs=additional_installs)
 
 
 def create_bigcodebench_test_sh() -> str:
@@ -342,7 +283,7 @@ def create_harbor_task(
         output_dir=output_dir,
         task_id=task_id,
         instruction=instruction,
-        dockerfile=get_dockerfile_for_libs(libs),
+        dockerfile=BIGCODEBENCH_FAT_DOCKERFILE,
         test_sh=create_bigcodebench_test_sh(),
         test_files=test_files,
         dataset_prefix=dataset_prefix,

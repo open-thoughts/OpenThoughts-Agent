@@ -292,7 +292,7 @@ run_harbor_for_shard() {
             --auto-resume-filter-error-type DaytonaRateLimitError \
             --auto-resume-filter-error-type EnvironmentStartTimeoutError \
             --auto-resume-filter-error-type DaytonaError \
-            --timeout-multiplier 2.0 \
+            --timeout-multiplier 8.0 \
             --config "$HARBOR_CONFIG" \
             --disable-verification \
             --agent-kwarg 'trajectory_config={"raw_content":true,"linear_history":true}' \

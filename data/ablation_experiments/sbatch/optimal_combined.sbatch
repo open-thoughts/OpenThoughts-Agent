@@ -46,16 +46,7 @@ echo "OPTIMAL CONFIG CHANGES FROM BASELINE:"
 echo "  - interleaved_thinking: false -> true  (+1.39%)"
 echo "  - enable_summarize: true -> false      (+1.26%)"
 echo "  - max_tokens: 16384 -> 8192            (+0.90%)"
-echo "  - max_episodes: 128 -> 512             (+0.29%)"
-echo "============================================"
-
-mkdir -p "$EXPERIMENTS_DIR/logs"
-mkdir -p "$EXPERIMENTS_DIR/results/$EXPERIMENT_NAME"
-
-echo ""
-echo "=== Step 1: Environment Setup ==="
-
-module purge
+echo "  - max_episodes: 128 -> 512          can you
 module load gcc/15.1.0
 module load cuda/12.8
 module load tacc-apptainer

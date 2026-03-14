@@ -391,12 +391,10 @@ def create_harbor_task(
     dataset_prefix: str,
 ) -> Path:
     """Create a harbor task directory for a multi-fault BugsInPy task."""
-    # Python Dockerfile with buggy code COPY'd into /app
-    base_dockerfile = get_dockerfile("python")
-    if buggy_code:
-        dockerfile = base_dockerfile.rstrip() + "\n\n# Copy buggy starter code into /app\nCOPY solution.py /app/solution.py\n"
-    else:
-        dockerfile = base_dockerfile
+    # Standard Python Dockerfile — same for all tasks (no per-task COPY).
+    # The buggy solution.py is placed in environment/ and picked up at runtime
+    # by the test.sh fallback that copies any .py file to /app/solution.py.
+    dockerfile = get_dockerfile("python")
 
     test_sh = create_pytest_test_sh("/tests/test_solution.py")
 
@@ -421,7 +419,7 @@ def create_harbor_task(
         metadata=metadata,
     )
 
-    # Write buggy code into environment/ dir so Dockerfile can COPY it
+    # Write buggy code into environment/ dir so test.sh runtime fallback can use it
     if buggy_code:
         env_dir = task_dir / "environment"
         env_dir.mkdir(parents=True, exist_ok=True)

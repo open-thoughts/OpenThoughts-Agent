@@ -1,0 +1,42 @@
+[
+  {
+    "generator": "bash",
+    "total": 25,
+    "passed": 3,
+    "errors": 21,
+    "mean_reward": 0.12,
+    "pass_rate": 12.0,
+    "task_dir": "/scratch/10000/eguha3/data_cache/nemotron-bash_tasks_nz3itc0n",
+    "n_tasks": 25
+  },
+  {
+    "generator": "junit",
+    "total": 25,
+    "passed": 6,
+    "errors": 20,
+    "mean_reward": 0.24,
+    "pass_rate": 24.0,
+    "task_dir": "/scratch/10000/eguha3/data_cache/nemotron-junit_tasks_q035zb9h",
+    "n_tasks": 25
+  },
+  {
+    "generator": "csharp",
+    "total": 25,
+    "passed": 0,
+    "errors": 20,
+    "mean_reward": 0.0,
+    "pass_rate": 0.0,
+    "task_dir": "/scratch/10000/eguha3/data_cache/nemotron-csharp_tasks_10lwz9wr",
+    "n_tasks": 25
+  },
+  {
+    "generator": "rust",
+    "total": 25,
+    "passed": 0,
+    "errors": 25,
+    "mean_reward": 0.0,
+    "pass_rate": 0.0,
+    "task_dir": "/scratch/10000/eguha3/data_cache/nemotron-rust_tasks_xz6t04u_",
+    "n_tasks": 25
+  }
+]

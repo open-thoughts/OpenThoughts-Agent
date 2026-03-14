@@ -52,76 +52,9 @@ SCENARIO_BASE_URL = "http://repairbenchmarks.cs.umass.edu/ManyBugs/scenarios"
 # Per-project Dockerfiles with real build dependencies
 # =============================================================================
 
-PROJECT_DOCKERFILES = {
-    "gzip": """FROM ubuntu:22.04
+# Minimal Dockerfile — test.sh uses diff-based validation (no compilation needed).
+MANYBUGS_DOCKERFILE = """FROM ubuntu:22.04
 WORKDIR /workspace
-RUN apt-get update && apt-get install -y \\
-    build-essential autoconf automake libtool git wget curl \\
-    perl texinfo gzip bison flex rsync \\
-    && rm -rf /var/lib/apt/lists/*
-RUN mkdir -p /logs/verifier /tests
-""",
-    "php": """FROM ubuntu:22.04
-WORKDIR /workspace
-RUN apt-get update && apt-get install -y \\
-    build-essential autoconf automake libtool git wget curl \\
-    perl bison flex re2c libxml2-dev libsqlite3-dev libonig-dev \\
-    libcurl4-openssl-dev pkg-config libssl-dev libreadline-dev \\
-    libzip-dev libpng-dev libjpeg-dev libfreetype6-dev \\
-    && rm -rf /var/lib/apt/lists/*
-RUN mkdir -p /logs/verifier /tests
-""",
-    "python": """FROM ubuntu:22.04
-WORKDIR /workspace
-RUN apt-get update && apt-get install -y \\
-    build-essential autoconf automake libtool git wget curl \\
-    perl zlib1g-dev libffi-dev libssl-dev libreadline-dev \\
-    libbz2-dev libsqlite3-dev libncurses5-dev libgdbm-dev \\
-    liblzma-dev tk-dev uuid-dev \\
-    && rm -rf /var/lib/apt/lists/*
-RUN mkdir -p /logs/verifier /tests
-""",
-    "libtiff": """FROM ubuntu:22.04
-WORKDIR /workspace
-RUN apt-get update && apt-get install -y \\
-    build-essential autoconf automake libtool git wget curl \\
-    perl zlib1g-dev libjpeg-dev liblzma-dev \\
-    && rm -rf /var/lib/apt/lists/*
-RUN mkdir -p /logs/verifier /tests
-""",
-    "lighttpd": """FROM ubuntu:22.04
-WORKDIR /workspace
-RUN apt-get update && apt-get install -y \\
-    build-essential autoconf automake libtool git wget curl \\
-    perl pkg-config libpcre2-dev zlib1g-dev libssl-dev \\
-    && rm -rf /var/lib/apt/lists/*
-RUN mkdir -p /logs/verifier /tests
-""",
-    "wireshark": """FROM ubuntu:22.04
-WORKDIR /workspace
-RUN apt-get update && apt-get install -y \\
-    build-essential autoconf automake libtool git wget curl \\
-    perl cmake libglib2.0-dev libpcap-dev flex bison \\
-    libgcrypt20-dev qtbase5-dev qttools5-dev-tools \\
-    && rm -rf /var/lib/apt/lists/*
-RUN mkdir -p /logs/verifier /tests
-""",
-    "gmp": """FROM ubuntu:22.04
-WORKDIR /workspace
-RUN apt-get update && apt-get install -y \\
-    build-essential autoconf automake libtool git wget curl \\
-    perl m4 texinfo \\
-    && rm -rf /var/lib/apt/lists/*
-RUN mkdir -p /logs/verifier /tests
-""",
-}
-
-DEFAULT_DOCKERFILE = """FROM ubuntu:22.04
-WORKDIR /workspace
-RUN apt-get update && apt-get install -y \\
-    build-essential autoconf automake libtool git wget curl \\
-    perl pkg-config bison flex \\
-    && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /logs/verifier /tests
 """
 
@@ -499,7 +432,7 @@ def create_harbor_task(
 ) -> Path:
     """Create a harbor task directory for a real ManyBugs bug."""
     project = sample.get("project", "")
-    dockerfile = PROJECT_DOCKERFILES.get(project, DEFAULT_DOCKERFILE)
+    dockerfile = MANYBUGS_DOCKERFILE
     buggy_file = sample.get("buggy_file", "solution.c")
     flat_filename = Path(buggy_file).name  # e.g., "powm.c" from "mpn/generic/powm.c"
 

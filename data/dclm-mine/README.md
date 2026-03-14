@@ -57,15 +57,15 @@ Pass rates measured with **terminus-2** agent using **gpt-5-nano** model on 25 s
 | **SoftwareHeritage** | 72% | 10,000 | `DCAgent/exp_rpt_softwareheritage` | ✅ Working |
 | **TravisTorrent** | 72% | 10,000 | `DCAgent/exp_rpt_travistorrent` | ✅ Working |
 | **BugSwarm** | 71% | 2 | `DCAgent/exp_rpt_bugswarm` | ⚠️ Needs manual download |
-| **ManyBugs** | 68% | 155 | `DCAgent/exp_rpt_manybugs` | ✅ Max available |
+| **ManyBugs** | 68% | 155 | `DCAgent/exp_rpt_manybugs-v2` | ✅ v2: minimal Dockerfile |
 | **CrossCodeEval** | 64% | 9,928 | `DCAgent/exp_rpt_crosscodeeval-*` | ✅ Working (4 languages) |
 | **CodeElo** | 60% | 165 | `DCAgent/exp_rpt_codeelo` | ✅ Max available |
 | **E2EGit** | 60% | 8,601 | `DCAgent/exp_rpt_e2egit` | ✅ Max available |
 | **BugsInPy-MF** | 60% | 2 | `DCAgent/exp_rpt_bugsinpy-mf` | ⚠️ Needs manual download |
-| **BigCodeBench** | 57% | 1,140 | `DCAgent/exp_rpt_bigcodebench` | ✅ Max available |
+| **BigCodeBench** | 57% / 40% nano | 1,140 | `DCAgent/exp_rpt_bigcodebench-v3` | ✅ v3: fat Dockerfile |
 | **SWE-bench** | 56% | 2,294 | `DCAgent/exp_rpt_swebench` | ✅ Max available |
 | **CoderEval** | 48% | 230 | `DCAgent/exp_rpt_codereval-python` | ✅ Max available |
-| **BugsInPy** | 48% | 1,215 | `DCAgent/exp_rpt_bugsinpy` | ✅ Max available |
+| **BugsInPy** | 48% | 1,215 | `DCAgent/exp_rpt_bugsinpy-v4` | ✅ v4: no COPY in Dockerfile |
 | **Defects4J** | 42% | 465 | `DCAgent/exp_rpt_defects4j` | ✅ Max available |
 | **TACO** | 4% | 10,000 | `DCAgent/exp_rpt_taco` | ⚠️ Low pass rate |
 | **Exercism** | 4% | 133 | `DCAgent/exp_rpt_exercism-python` | ⚠️ Low pass rate |

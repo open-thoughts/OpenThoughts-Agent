@@ -1,53 +1,46 @@
 #!/usr/bin/env python3
 """
-Patch R2E-Gym tasks to use a generic python:3.11-bookworm base image instead of
-per-task pre-built docker images.
+Patch R2E-Gym tasks from 4,578 unique docker images → 10 images (one per repo).
 
-R2E-Gym tasks currently use one unique docker image per task (~4,578 total),
-each containing the repo code, a virtualenv, and custom test infrastructure
-(r2e_tests/, run_tests.sh). This overwhelms Daytona's snapshot system.
+R2E-Gym/R2E-Gym-Subset contains 4,578 tasks across exactly 10 GitHub repos:
+  pandas (1444), numpy (781), pillow (620), orange3 (482), aiohttp (299),
+  tornado (261), scrapy (215), pyramid (189), datalad (179), coveragepy (108)
 
-After patching, all tasks share a single Dockerfile → 1 snapshot.
-Test infrastructure moves to setup_files/, which Harbor uploads to /setup_files/
-in the container before the agent runs (requires penfever/temp-override branch).
+Each task currently uses a unique pre-built image (repo @ specific buggy commit).
+After patching, each task uses one of 10 shared images where the repo is
+pre-cloned at HEAD with all deps installed. The agent's only setup step is:
+
+    git checkout {commit_hash}   # fast: seconds, not minutes
+
+Per-task test infrastructure (r2e_tests/, run_tests.sh) is extracted once from
+the original docker images and placed in setup_files/, which Harbor uploads to
+/setup_files/ in the container before the agent runs.
+Requires: penfever/temp-override Harbor branch.
 
 Two-phase workflow
 ------------------
-Phase 1 — extract test infrastructure from docker images (run once, requires docker):
+Phase 1 — extract test infrastructure from original docker images (run once):
 
     python patch_r2egym_tasks.py /path/to/tasks --extract-tests [--parallel 8]
 
-    Pulls each unique docker image, extracts /r2e_tests/ and /root/run_tests.sh,
-    and writes them into setup_files/ for each task.
-
-Phase 2 — apply the patch (idempotent, can be re-run):
+Phase 2 — apply patch (idempotent):
 
     python patch_r2egym_tasks.py /path/to/tasks --output-dir /path/to/patched
-
-    Rewrites Dockerfile, instruction.md, test.sh, and moves metadata to setup_files/.
-    If --extract-tests has not been run, tasks missing setup_files/r2e_tests.tar.gz
-    are skipped with a warning.
 
 Changes per task
 ----------------
-  1. environment/Dockerfile      — Generic python:3.11-bookworm; no COPY, no repo-specific layers
-  2. setup_files/metadata.json   — Moved from environment/workspace/metadata.json
-  3. setup_files/r2e_tests.tar.gz — r2e_tests/ extracted from original docker image
-  4. setup_files/run_tests.sh    — run_tests.sh extracted from original docker image
-  5. instruction.md              — Setup preamble prepended (git clone, pip install)
-  6. tests/test.sh               — Updated to use setup_files/ infrastructure
-  7. tests/calculate_reward.py   — Updated path: /workspace → /setup_files
+  1. environment/Dockerfile       — One of 10 repo-specific images (pre-cloned + installed)
+  2. setup_files/metadata.json    — Moved from environment/workspace/metadata.json
+  3. setup_files/r2e_tests.tar.gz — Test infrastructure extracted from original image
+  4. setup_files/run_tests.sh     — Test runner extracted from original image
+  5. instruction.md               — Setup preamble reduced to: git checkout {commit}
+  6. tests/test.sh                — Updated to use setup_files/ infrastructure
 
 Usage
 -----
-    # Dry run (no writes):
     python patch_r2egym_tasks.py /path/to/tasks --dry-run
-
-    # Write patched tasks to a new directory (leaves originals untouched):
     python patch_r2egym_tasks.py /path/to/tasks --output-dir /path/to/patched
-
-    # Patch in-place:
-    python patch_r2egym_tasks.py /path/to/tasks
+    python patch_r2egym_tasks.py /path/to/tasks --extract-tests --parallel 8
 """
 
 from __future__ import annotations
@@ -63,11 +56,83 @@ from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
-# Templates
+# Per-repo Dockerfile configs
+# Each repo gets one shared image: pre-cloned at HEAD, deps pre-installed.
+# Agent only runs: git checkout {commit_hash}
 # ---------------------------------------------------------------------------
 
-DOCKERFILE_TEMPLATE = """\
-FROM python:3.11-bookworm
+# Native apt packages needed beyond the common baseline, keyed by repo name.
+# (Common baseline: git curl wget jq build-essential libffi-dev libssl-dev)
+_REPO_EXTRA_APT: dict[str, str] = {
+    "pandas":     "gfortran libopenblas-dev liblapack-dev pkg-config",
+    "numpy":      "gfortran libopenblas-dev liblapack-dev pkg-config",
+    "pillow":     "libjpeg-dev zlib1g-dev libpng-dev libtiff-dev libwebp-dev",
+    "orange3":    "libxml2-dev libxslt1-dev",
+    "aiohttp":    "",
+    "tornado":    "",
+    "scrapy":     "libxml2-dev libxslt1-dev",
+    "pyramid":    "",
+    "datalad":    "git-annex",
+    "coveragepy": "",
+}
+
+# pip install command run inside the cloned repo.
+# Most repos: pip install -e .[dev] or -e .[test]; fall back to plain -e .
+_REPO_INSTALL_CMD: dict[str, str] = {
+    "pandas":     "pip install -e '.[dev,test]' --no-build-isolation 2>/dev/null || pip install -e . --no-build-isolation",
+    "numpy":      "pip install -e . --no-build-isolation",
+    "pillow":     "pip install -e '.[tests]' 2>/dev/null || pip install -e .",
+    "orange3":    "pip install -e '.[test]' 2>/dev/null || pip install -e .",
+    "aiohttp":    "pip install -e '.[dev]' 2>/dev/null || pip install -e .",
+    "tornado":    "pip install -e . && pip install pytest",
+    "scrapy":     "pip install -e '.[tests]' 2>/dev/null || pip install -e .",
+    "pyramid":    "pip install -e '.[testing]' 2>/dev/null || pip install -e .",
+    "datalad":    "pip install -e '.[devel]' 2>/dev/null || pip install -e .",
+    "coveragepy": "pip install -e '.[dev]' 2>/dev/null || pip install -e .",
+}
+
+# GitHub clone URLs
+_REPO_GITHUB_URL: dict[str, str] = {
+    "pandas":     "https://github.com/pandas-dev/pandas.git",
+    "numpy":      "https://github.com/numpy/numpy.git",
+    "pillow":     "https://github.com/python-pillow/Pillow.git",
+    "orange3":    "https://github.com/biolab/orange3.git",
+    "aiohttp":    "https://github.com/aio-libs/aiohttp.git",
+    "tornado":    "https://github.com/tornadoweb/tornado.git",
+    "scrapy":     "https://github.com/scrapy/scrapy.git",
+    "pyramid":    "https://github.com/Pylons/pyramid.git",
+    "datalad":    "https://github.com/datalad/datalad.git",
+    "coveragepy": "https://github.com/nedbat/coveragepy.git",
+}
+
+# Python version per repo (3.11 is safe for all; adjust if specific repos need 3.10)
+_REPO_PYTHON_VERSION: dict[str, str] = {
+    "pandas":     "3.11",
+    "numpy":      "3.11",
+    "pillow":     "3.11",
+    "orange3":    "3.10",   # orange3 sometimes lags on Python version support
+    "aiohttp":    "3.11",
+    "tornado":    "3.11",
+    "scrapy":     "3.11",
+    "pyramid":    "3.11",
+    "datalad":    "3.11",
+    "coveragepy": "3.11",
+}
+
+
+def _build_dockerfile(repo_name: str) -> str:
+    """Build the Dockerfile for a specific repo."""
+    python_version = _REPO_PYTHON_VERSION.get(repo_name, "3.11")
+    github_url = _REPO_GITHUB_URL[repo_name]
+    install_cmd = _REPO_INSTALL_CMD[repo_name]
+    extra_apt = _REPO_EXTRA_APT.get(repo_name, "").strip()
+
+    apt_extra_line = (
+        f"    {extra_apt} \\\n" if extra_apt else ""
+    )
+
+    return f"""\
+FROM python:{python_version}-bookworm
 
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
@@ -78,29 +143,34 @@ RUN apt-get update && apt-get install -y \\
     libffi-dev libssl-dev \\
     locales locales-all tzdata \\
     tmux \\
+{apt_extra_line}\
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --upgrade pip uv
-RUN mkdir -p /logs /testbed /r2e_tests && chmod 777 /testbed
+
+# Pre-clone the repo and install all dependencies at HEAD.
+# Agent only needs: git checkout {{commit_hash}}
+RUN git clone {github_url} /testbed
 WORKDIR /testbed
+RUN {install_cmd}
+
+RUN mkdir -p /logs /r2e_tests
 """
 
-# test.sh is kept structurally identical to the original r2egym test.sh;
-# the only changes are:
-#   - extract r2e_tests + run_tests.sh from /setup_files/ (uploaded by Harbor)
-#     instead of relying on the pre-built image
-#   - read metadata from /setup_files/metadata.json instead of /workspace/metadata.json
+
+# ---------------------------------------------------------------------------
+# test.sh template
+# ---------------------------------------------------------------------------
+
 TEST_SH_TEMPLATE = """\
 #!/bin/bash
 set -e
 
-# Setup PATH (matches original r2egym convention)
-source ~/.bashrc 2>/dev/null || true
-export PATH=/testbed/.venv/bin:$PATH
+export PATH=/testbed/.venv/bin:/root/.local/bin:$PATH
 
 # ---------------------------------------------------------------------------
-# Restore test infrastructure from setup_files/ (uploaded by Harbor before
-# the agent runs — requires penfever/temp-override Harbor branch).
+# Restore per-task test infrastructure from setup_files/
+# (uploaded by Harbor before the agent runs — penfever/temp-override branch)
 # ---------------------------------------------------------------------------
 if [ -f /setup_files/r2e_tests.tar.gz ]; then
     tar -xzf /setup_files/r2e_tests.tar.gz -C /
@@ -115,141 +185,101 @@ else
     echo "Warning: /setup_files/run_tests.sh not found."
 fi
 
-# Clean up compiled bytecode to avoid stale cache issues
+# Clean up bytecode to avoid stale cache
 find /testbed -name '*.pyc' -delete 2>/dev/null || true
-find /testbed -name '__pycache__' -exec rm -rf {{}} + 2>/dev/null || true
-find /r2e_tests -name '*.pyc'  -delete 2>/dev/null || true
-find /r2e_tests -name '__pycache__' -exec rm -rf {{}} + 2>/dev/null || true
+find /testbed -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+find /r2e_tests  -name '*.pyc' -delete 2>/dev/null || true
+find /r2e_tests  -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 
-# Move test files out of the agent's working directory
-REPO_PATH="/testbed"
-ALT_PATH="/root"
+# Move test infrastructure out of agent's reach
 for skip_file in "run_tests.sh" "r2e_tests"; do
-    if [ -e "$REPO_PATH/$skip_file" ]; then
-        mv "$REPO_PATH/$skip_file" "$ALT_PATH/$skip_file"
+    if [ -e "/testbed/$skip_file" ]; then
+        mv "/testbed/$skip_file" "/root/$skip_file"
     fi
 done
 if [ -d /r2e_tests ]; then
-    mv /r2e_tests "$ALT_PATH/r2e_tests"
+    mv /r2e_tests /root/r2e_tests
 fi
-if [ -d "$ALT_PATH/r2e_tests" ]; then
-    ln -sf "$ALT_PATH/r2e_tests" "$REPO_PATH/r2e_tests"
+if [ -d /root/r2e_tests ]; then
+    ln -sf /root/r2e_tests /testbed/r2e_tests
 fi
 
-# ---------------------------------------------------------------------------
-# Run tests
-# ---------------------------------------------------------------------------
 mkdir -p /logs/verifier
 
+# Run tests
 TEST_OUTPUT_FILE="/tmp/test_output.txt"
 if [ -f /root/run_tests.sh ]; then
     bash /root/run_tests.sh 2>&1 | tee "$TEST_OUTPUT_FILE"
-    TEST_EXIT_CODE=${{PIPESTATUS[0]}}
 else
     echo "Error: /root/run_tests.sh not found after extraction."
     echo "0" > /logs/verifier/reward.txt
     exit 1
 fi
 
-# ---------------------------------------------------------------------------
-# Calculate reward
-# ---------------------------------------------------------------------------
+# Calculate reward (reads expected_output_json from /setup_files/metadata.json)
 mkdir -p /tests
 cat > /tests/calculate_reward.py << 'REWARD_SCRIPT_EOF'
-{calculate_reward_py}
+#!/usr/bin/env python3
+import re, json, sys
+from pathlib import Path
+
+def parse_log_pytest(log):
+    if not log or "short test summary info" not in log:
+        return {}
+    status_map = {}
+    for line in log.split("short test summary info")[1].strip().split("\\n"):
+        if "PASSED" in line:
+            status_map[".".join(line.split("::")[1:])] = "PASSED"
+        elif "FAILED" in line:
+            status_map[".".join(line.split("::")[1:]).split(" - ")[0]] = "FAILED"
+        elif "ERROR" in line:
+            try:
+                name = ".".join(line.split("::")[1:])
+            except IndexError:
+                name = line
+            status_map[name.split(" - ")[0]] = "ERROR"
+    return status_map
+
+def decolor(d):
+    strip = lambda k: re.sub(r"\\u001b\\[\\d+m", "", k)
+    return {strip(k): v for k, v in d.items()}
+
+def get_reward(parsed, expected_json):
+    p = {k.split(" - ")[0]: v for k, v in decolor(parsed).items()}
+    e = {k.split(" - ")[0]: v for k, v in decolor(json.loads(expected_json)).items()}
+    p = dict(sorted(p.items()))
+    e = dict(sorted(e.items()))
+    if len(p) != len(e):
+        return 0.0
+    return 1.0 if all(k in e and p[k] == e[k] for k in p if k) else 0.0
+
+test_output = Path(sys.argv[1]).read_text() if len(sys.argv) > 1 else sys.stdin.read()
+for candidate in ["/setup_files/metadata.json", "/workspace/metadata.json"]:
+    if Path(candidate).exists():
+        meta = json.loads(Path(candidate).read_text())
+        break
+else:
+    Path("/logs/verifier/reward.txt").write_text("0")
+    sys.exit(0)
+
+reward = get_reward(parse_log_pytest(test_output), meta.get("expected_output_json", "{}"))
+Path("/logs/verifier").mkdir(parents=True, exist_ok=True)
+Path("/logs/verifier/reward.txt").write_text(str(reward))
+print(f"Reward: {reward}")
 REWARD_SCRIPT_EOF
 
-chmod +x /tests/calculate_reward.py
 python3 /tests/calculate_reward.py "$TEST_OUTPUT_FILE"
-
 if [ ! -f /logs/verifier/reward.txt ]; then
-    echo "Error: reward.txt was not created"
     echo "0" > /logs/verifier/reward.txt
 fi
 """
 
-# calculate_reward.py updated to read metadata from /setup_files/metadata.json
-CALCULATE_REWARD_PY = """\
-#!/usr/bin/env python3
-import re
-import json
-import sys
-from pathlib import Path
-
-
-def parse_log_pytest(log):
-    if log is None:
-        return {}
-    test_status_map = {}
-    if "short test summary info" not in log:
-        return test_status_map
-    log = log.split("short test summary info")[1].strip()
-    for line in log.split("\\n"):
-        if "PASSED" in line:
-            test_name = ".".join(line.split("::")[1:])
-            test_status_map[test_name] = "PASSED"
-        elif "FAILED" in line:
-            test_name = ".".join(line.split("::")[1:]).split(" - ")[0]
-            test_status_map[test_name] = "FAILED"
-        elif "ERROR" in line:
-            try:
-                test_name = ".".join(line.split("::")[1:])
-            except IndexError:
-                test_name = line
-            test_status_map[test_name.split(" - ")[0]] = "ERROR"
-    return test_status_map
-
-
-def decolor_dict_keys(d):
-    decolor = lambda k: re.sub(r"\\u001b\\[\\d+m", "", k)
-    return {decolor(k): v for k, v in d.items()}
-
-
-def get_reward(parse, expected_output_json):
-    parse = decolor_dict_keys(parse)
-    expected = json.loads(expected_output_json)
-    expected = decolor_dict_keys(expected)
-    parse = {k.split(" - ")[0]: parse[k] for k in sorted(parse.keys())}
-    expected = {k.split(" - ")[0]: expected[k] for k in sorted(expected.keys())}
-    if len(parse) != len(expected):
-        return 0.0
-    return 1.0 if all(
-        k in expected and parse[k] == expected[k]
-        for k in parse.keys() if k
-    ) else 0.0
-
-
-if __name__ == "__main__":
-    test_output = Path(sys.argv[1]).read_text() if len(sys.argv) > 1 else sys.stdin.read()
-
-    # Metadata lives in /setup_files/ after patching (was /workspace/)
-    for candidate in ["/setup_files/metadata.json", "/workspace/metadata.json"]:
-        meta_path = Path(candidate)
-        if meta_path.exists():
-            break
-    else:
-        print("Error: metadata.json not found", file=sys.stderr)
-        Path("/logs/verifier").mkdir(parents=True, exist_ok=True)
-        Path("/logs/verifier/reward.txt").write_text("0")
-        sys.exit(1)
-
-    metadata = json.loads(meta_path.read_text())
-    expected_output_json = metadata.get("expected_output_json", "{}")
-    parsed = parse_log_pytest(test_output)
-    reward = get_reward(parsed, expected_output_json)
-
-    Path("/logs/verifier").mkdir(parents=True, exist_ok=True)
-    Path("/logs/verifier/reward.txt").write_text(str(reward))
-    print(f"Reward: {reward}")
-"""
-
+# instruction preamble: only git checkout needed (repo + deps already in image)
 SETUP_PREAMBLE_TEMPLATE = """\
-## Environment Setup (complete these steps first)
+## Environment Setup (complete this step first)
 
 ```bash
-cd /testbed
-git clone https://github.com/{repo}.git . && git checkout {base_commit}
-pip install -e . 2>/dev/null || pip install -r requirements.txt 2>/dev/null || true
+cd /testbed && git checkout {base_commit}
 ```
 
 ---
@@ -257,119 +287,91 @@ pip install -e . 2>/dev/null || pip install -r requirements.txt 2>/dev/null || t
 """
 
 SOLVE_SH_SETUP_TEMPLATE = """\
-# --- Environment setup (for generic base images) ---
-cd /testbed
-git clone https://github.com/{repo}.git . && git checkout {base_commit}
-pip install -e . 2>/dev/null || pip install -r requirements.txt 2>/dev/null || true
+# --- Environment setup: checkout specific bug-fix commit ---
+cd /testbed && git checkout {base_commit}
 # --- End environment setup ---
 
 """
 
 
 # ---------------------------------------------------------------------------
-# Docker extraction helpers
+# Docker extraction helpers (Phase 1)
 # ---------------------------------------------------------------------------
 
 def _extract_from_image(
     docker_image: str,
     task_dir: Path,
     dry_run: bool = False,
-) -> dict[str, bool]:
-    """
-    Pull docker image and extract r2e_tests/ + run_tests.sh into setup_files/.
-
-    Returns a dict of what was extracted.
-    """
-    results: dict[str, bool] = {}
+) -> dict[str, bool | str]:
+    """Pull docker image, extract r2e_tests/ + run_tests.sh into setup_files/."""
     setup_files_dir = task_dir / "setup_files"
-
     r2e_tar = setup_files_dir / "r2e_tests.tar.gz"
     run_tests_dst = setup_files_dir / "run_tests.sh"
 
     if r2e_tar.exists() and run_tests_dst.exists():
-        # Already extracted
-        results["r2e_tests.tar.gz"] = False
-        results["run_tests.sh"] = False
-        return results
+        return {"r2e_tests.tar.gz": False, "run_tests.sh": False}
 
     if dry_run:
-        results["r2e_tests.tar.gz"] = True
-        results["run_tests.sh"] = True
-        return results
+        return {"r2e_tests.tar.gz": True, "run_tests.sh": True}
 
     setup_files_dir.mkdir(parents=True, exist_ok=True)
+    results: dict[str, bool | str] = {}
 
     try:
-        # Pull image
         subprocess.run(
             ["docker", "pull", docker_image],
             check=True, capture_output=True, text=True, timeout=300,
         )
-
-        # Create a (non-running) container to copy from
-        create_result = subprocess.run(
+        create_out = subprocess.run(
             ["docker", "create", docker_image],
             check=True, capture_output=True, text=True, timeout=30,
         )
-        container_id = create_result.stdout.strip()
+        container_id = create_out.stdout.strip()
 
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmp = Path(tmpdir)
 
-                # Extract r2e_tests/ — try both common locations
-                r2e_extracted = False
-                for src_path in ["/r2e_tests", "/testbed/r2e_tests"]:
-                    cp_result = subprocess.run(
-                        ["docker", "cp", f"{container_id}:{src_path}", str(tmp / "r2e_tests")],
+                # r2e_tests/ — try common locations
+                results["r2e_tests.tar.gz"] = False
+                for src in ["/r2e_tests", "/testbed/r2e_tests"]:
+                    cp = subprocess.run(
+                        ["docker", "cp", f"{container_id}:{src}", str(tmp / "r2e_tests")],
                         capture_output=True, text=True, timeout=60,
                     )
-                    if cp_result.returncode == 0:
-                        # Tar up the extracted directory
+                    if cp.returncode == 0:
                         with tarfile.open(r2e_tar, "w:gz") as tf:
                             tf.add(tmp / "r2e_tests", arcname="r2e_tests")
                         results["r2e_tests.tar.gz"] = True
-                        r2e_extracted = True
                         break
 
-                if not r2e_extracted:
-                    results["r2e_tests.tar.gz"] = False
-
-                # Extract run_tests.sh — try both common locations
-                run_extracted = False
-                for src_path in ["/root/run_tests.sh", "/testbed/run_tests.sh"]:
-                    cp_result = subprocess.run(
-                        ["docker", "cp", f"{container_id}:{src_path}", str(tmp / "run_tests.sh")],
+                # run_tests.sh — try common locations
+                results["run_tests.sh"] = False
+                for src in ["/root/run_tests.sh", "/testbed/run_tests.sh"]:
+                    cp = subprocess.run(
+                        ["docker", "cp", f"{container_id}:{src}", str(tmp / "run_tests.sh")],
                         capture_output=True, text=True, timeout=30,
                     )
-                    if cp_result.returncode == 0:
+                    if cp.returncode == 0:
                         shutil.copy(tmp / "run_tests.sh", run_tests_dst)
                         results["run_tests.sh"] = True
-                        run_extracted = True
                         break
-
-                if not run_extracted:
-                    results["run_tests.sh"] = False
-
         finally:
-            subprocess.run(
-                ["docker", "rm", container_id],
-                capture_output=True, text=True, timeout=30,
-            )
+            subprocess.run(["docker", "rm", container_id],
+                           capture_output=True, text=True, timeout=30)
 
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError as exc:
         results["error"] = True
-        results["error_msg"] = str(e)
+        results["error_msg"] = str(exc)
 
     return results
 
 
 # ---------------------------------------------------------------------------
-# Patching logic
+# Patching logic (Phase 2)
 # ---------------------------------------------------------------------------
 
 def _read_metadata(task_dir: Path) -> dict | None:
-    """Read task metadata from workspace/metadata.json."""
     for candidate in [
         task_dir / "environment" / "workspace" / "metadata.json",
         task_dir / "setup_files" / "metadata.json",
@@ -379,28 +381,35 @@ def _read_metadata(task_dir: Path) -> dict | None:
     return None
 
 
+def _repo_name_from_metadata(metadata: dict) -> str | None:
+    """Extract short repo name (e.g. 'pandas') from metadata."""
+    repo_name = metadata.get("repo_name", "")
+    # repo_name may be "pandas-dev/pandas" or just "pandas"
+    short = repo_name.split("/")[-1].lower() if repo_name else ""
+    # Map common variations
+    aliases = {"pillow": "pillow", "pil": "pillow", "coveragepy": "coveragepy"}
+    return aliases.get(short, short) if short in _REPO_GITHUB_URL else (
+        next((k for k in _REPO_GITHUB_URL if short.startswith(k) or k.startswith(short)), None)
+    )
+
+
 def patch_task(
     task_dir: Path,
     output_dir: Path | None = None,
     dry_run: bool = False,
     require_tests: bool = True,
 ) -> dict[str, bool | str]:
-    """
-    Patch a single task directory.
-
-    Returns a dict mapping filenames to True (changed), False (skipped/unchanged),
-    or {"error": True, "reason": str} on failure.
-    """
-    changes: dict[str, bool | str] = {}
-
+    """Patch a single task. Returns dict of changes."""
     metadata = _read_metadata(task_dir)
     if metadata is None:
         return {"error": True, "reason": "no metadata.json"}
 
-    repo_name = metadata.get("repo_name", "")
+    repo_name = _repo_name_from_metadata(metadata)
+    if repo_name is None:
+        return {"error": True, "reason": f"unknown repo: {metadata.get('repo_name')}"}
+
     base_commit = metadata.get("base_commit", "HEAD")
 
-    # Determine target directory
     if output_dir:
         target = output_dir / task_dir.name
         if not dry_run:
@@ -410,98 +419,83 @@ def patch_task(
     else:
         target = task_dir
 
-    # Check that test infrastructure has been extracted (unless skipping check)
+    # Check test infrastructure is present
     r2e_tar = target / "setup_files" / "r2e_tests.tar.gz"
     run_tests_sh = target / "setup_files" / "run_tests.sh"
-    tests_ready = r2e_tar.exists() and run_tests_sh.exists()
-
-    if require_tests and not tests_ready:
+    if require_tests and not (r2e_tar.exists() and run_tests_sh.exists()):
         return {
             "error": True,
-            "reason": (
-                "setup_files/r2e_tests.tar.gz or run_tests.sh missing — "
-                "run with --extract-tests first"
-            ),
+            "reason": "setup_files missing — run --extract-tests first",
         }
 
-    # --- 1. Dockerfile (fully generic, no COPY) ---
+    changes: dict[str, bool | str] = {}
+
+    # 1. Dockerfile (one of 10, keyed by repo)
     dockerfile_path = target / "environment" / "Dockerfile"
+    new_dockerfile = _build_dockerfile(repo_name)
     if dry_run:
         changes["Dockerfile"] = True
     else:
         dockerfile_path.parent.mkdir(parents=True, exist_ok=True)
-        dockerfile_path.write_text(DOCKERFILE_TEMPLATE)
+        dockerfile_path.write_text(new_dockerfile)
         changes["Dockerfile"] = True
 
-    # --- 2. setup_files/metadata.json (move from environment/workspace/) ---
-    original_workspace = target / "environment" / "workspace" / "metadata.json"
+    # 2. setup_files/metadata.json (move from environment/workspace/)
+    original_workspace_meta = target / "environment" / "workspace" / "metadata.json"
     setup_meta = target / "setup_files" / "metadata.json"
-    if original_workspace.exists() and not setup_meta.exists():
+    if original_workspace_meta.exists() and not setup_meta.exists():
         if dry_run:
             changes["setup_files/metadata.json"] = True
         else:
             setup_meta.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy(original_workspace, setup_meta)
+            shutil.copy(original_workspace_meta, setup_meta)
             changes["setup_files/metadata.json"] = True
     else:
         changes["setup_files/metadata.json"] = False
 
-    # --- 3. instruction.md (prepend setup preamble) ---
+    # 3. instruction.md (prepend lightweight setup preamble)
     instruction_path = target / "instruction.md"
-    already_patched_marker = "## Environment Setup (complete these steps first)"
+    already_patched = "## Environment Setup (complete this step first)"
     if instruction_path.exists():
-        original_text = instruction_path.read_text()
-        if already_patched_marker in original_text:
+        original = instruction_path.read_text()
+        if already_patched in original:
             changes["instruction.md"] = False
         elif dry_run:
             changes["instruction.md"] = True
         else:
-            preamble = SETUP_PREAMBLE_TEMPLATE.format(
-                repo=repo_name,
-                base_commit=base_commit,
-            )
-            instruction_path.write_text(preamble + original_text)
+            preamble = SETUP_PREAMBLE_TEMPLATE.format(base_commit=base_commit)
+            instruction_path.write_text(preamble + original)
             changes["instruction.md"] = True
     else:
         changes["instruction.md"] = False
 
-    # --- 4. tests/test.sh ---
+    # 4. tests/test.sh
     test_sh_path = target / "tests" / "test.sh"
-    new_test_sh = TEST_SH_TEMPLATE.format(calculate_reward_py=CALCULATE_REWARD_PY)
     if dry_run:
         changes["test.sh"] = True
     else:
         test_sh_path.parent.mkdir(parents=True, exist_ok=True)
-        test_sh_path.write_text(new_test_sh)
+        test_sh_path.write_text(TEST_SH_TEMPLATE)
         changes["test.sh"] = True
 
-    # --- 5. solution/solve.sh (prepend environment setup for oracle agent) ---
+    # 5. solution/solve.sh (prepend checkout step for oracle agent)
     solve_sh_path = target / "solution" / "solve.sh"
-    already_patched_solve_marker = "# --- Environment setup (for generic base images) ---"
+    already_patched_solve = "# --- Environment setup: checkout specific bug-fix commit ---"
     if solve_sh_path.exists():
         original_solve = solve_sh_path.read_text()
-        if already_patched_solve_marker in original_solve:
+        if already_patched_solve in original_solve:
             changes["solve.sh"] = False
         elif dry_run:
             changes["solve.sh"] = True
         else:
-            setup_block = SOLVE_SH_SETUP_TEMPLATE.format(
-                repo=repo_name,
-                base_commit=base_commit,
-            )
+            setup_block = SOLVE_SH_SETUP_TEMPLATE.format(base_commit=base_commit)
             lines = original_solve.split("\n")
-            # Insert after the shebang + any leading comments
             insert_idx = next(
                 (i for i, ln in enumerate(lines)
                  if ln.strip() and not ln.strip().startswith("#")),
                 0,
             )
-            patched = (
-                "\n".join(lines[:insert_idx])
-                + "\n"
-                + setup_block
-                + "\n".join(lines[insert_idx:])
-            )
+            patched = "\n".join(lines[:insert_idx]) + "\n" + setup_block + "\n".join(lines[insert_idx:])
             solve_sh_path.write_text(patched)
             changes["solve.sh"] = True
     else:
@@ -511,23 +505,20 @@ def patch_task(
 
 
 # ---------------------------------------------------------------------------
-# CLI
+# CLI runners
 # ---------------------------------------------------------------------------
 
 def run_extract(tasks_root: Path, parallel: int, dry_run: bool) -> None:
-    """Phase 1: extract r2e_tests + run_tests.sh from docker images."""
-    task_dirs = sorted(
-        d for d in tasks_root.iterdir()
-        if d.is_dir() and (d / "instruction.md").exists()
-    )
+    task_dirs = sorted(d for d in tasks_root.iterdir()
+                       if d.is_dir() and (d / "instruction.md").exists())
     print(f"Found {len(task_dirs)} tasks — extracting test infrastructure from docker images")
 
     totals: dict[str, int] = {}
     errors = 0
 
-    def _do_extract(td: Path) -> tuple[str, dict]:
+    def _do(td: Path) -> tuple[str, dict]:
         meta = _read_metadata(td)
-        if meta is None:
+        if not meta:
             return td.name, {"error": True, "reason": "no metadata.json"}
         docker_image = meta.get("docker_image", "")
         if not docker_image:
@@ -535,7 +526,7 @@ def run_extract(tasks_root: Path, parallel: int, dry_run: bool) -> None:
         return td.name, _extract_from_image(docker_image, td, dry_run=dry_run)
 
     with ThreadPoolExecutor(max_workers=parallel) as pool:
-        futures = {pool.submit(_do_extract, td): td for td in task_dirs}
+        futures = {pool.submit(_do, td): td for td in task_dirs}
         for fut in as_completed(futures):
             name, result = fut.result()
             if result.get("error"):
@@ -543,13 +534,13 @@ def run_extract(tasks_root: Path, parallel: int, dry_run: bool) -> None:
                 print(f"  ERROR {name}: {result.get('reason', result.get('error_msg', '?'))}")
             else:
                 for k, v in result.items():
-                    if v:
+                    if v is True:
                         totals[k] = totals.get(k, 0) + 1
 
     action = "Would extract" if dry_run else "Extracted"
     print(f"\n{action}:")
-    for filename, count in sorted(totals.items()):
-        print(f"  {filename}: {count}/{len(task_dirs)}")
+    for k, c in sorted(totals.items()):
+        print(f"  {k}: {c}/{len(task_dirs)}")
     if errors:
         print(f"  Errors: {errors}")
 
@@ -560,31 +551,22 @@ def run_patch(
     dry_run: bool,
     skip_missing_tests: bool,
 ) -> None:
-    """Phase 2: apply the Dockerfile + instruction + test.sh patch."""
-    task_dirs = sorted(
-        d for d in tasks_root.iterdir()
-        if d.is_dir() and (d / "instruction.md").exists()
-    )
+    task_dirs = sorted(d for d in tasks_root.iterdir()
+                       if d.is_dir() and (d / "instruction.md").exists())
     print(f"Found {len(task_dirs)} tasks in {tasks_root}")
 
     if output_dir and not dry_run:
         output_dir.mkdir(parents=True, exist_ok=True)
-        print(f"Output directory: {output_dir}")
 
     totals: dict[str, int] = {}
-    errors = 0
-    skipped = 0
+    errors = skipped = 0
 
     for td in task_dirs:
-        result = patch_task(
-            td,
-            output_dir=output_dir,
-            dry_run=dry_run,
-            require_tests=not skip_missing_tests,
-        )
+        result = patch_task(td, output_dir=output_dir, dry_run=dry_run,
+                            require_tests=not skip_missing_tests)
         if result.get("error"):
-            reason = result.get("reason", "?")
-            if "extract-tests" in str(reason):
+            reason = str(result.get("reason", ""))
+            if "extract-tests" in reason:
                 skipped += 1
             else:
                 errors += 1
@@ -596,58 +578,42 @@ def run_patch(
 
     action = "Would patch" if dry_run else "Patched"
     print(f"\n{action}:")
-    for filename, count in sorted(totals.items()):
-        print(f"  {filename}: {count}/{len(task_dirs)}")
+    for k, c in sorted(totals.items()):
+        print(f"  {k}: {c}/{len(task_dirs)}")
     if skipped:
         print(f"  Skipped (run --extract-tests first): {skipped}")
     if errors:
         print(f"  Errors: {errors}")
 
-    # Report unique Dockerfiles after patching
+    # Report unique Dockerfiles
     if not dry_run:
         out_root = output_dir or tasks_root
-        dockerfiles: set[str] = set()
-        for td in sorted(out_root.iterdir()):
+        unique_dfs: set[str] = set()
+        for td in out_root.iterdir():
             df = td / "environment" / "Dockerfile"
             if df.exists():
-                dockerfiles.add(df.read_text())
-        print(f"\nUnique Dockerfiles: {len(dockerfiles)}")
+                unique_dfs.add(df.read_text())
+        print(f"\nUnique Dockerfiles after patching: {len(unique_dfs)}")
+        print(f"(Expected: {len(_REPO_GITHUB_URL)} — one per repo)")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Patch R2E-Gym tasks for generic base images + Harbor file upload",
+        description="Patch R2E-Gym tasks: 4,578 unique images → 10 (one per repo)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
     parser.add_argument("tasks_dir", help="Root directory containing task folders")
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=None,
-        help="Write patched tasks here (default: patch in-place)",
-    )
-    parser.add_argument(
-        "--extract-tests",
-        action="store_true",
-        help="Phase 1: pull docker images and extract test infrastructure to setup_files/",
-    )
-    parser.add_argument(
-        "--parallel",
-        type=int,
-        default=4,
-        help="Number of parallel docker pulls for --extract-tests (default: 4)",
-    )
-    parser.add_argument(
-        "--skip-missing-tests",
-        action="store_true",
-        help="Patch tasks even if setup_files/r2e_tests.tar.gz is missing (for dry-run/testing)",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show what would change without writing any files",
-    )
+    parser.add_argument("--output-dir", type=Path, default=None,
+                        help="Write patched tasks here (default: in-place)")
+    parser.add_argument("--extract-tests", action="store_true",
+                        help="Phase 1: pull docker images and extract test infra to setup_files/")
+    parser.add_argument("--parallel", type=int, default=4,
+                        help="Parallel docker pulls for --extract-tests (default: 4)")
+    parser.add_argument("--skip-missing-tests", action="store_true",
+                        help="Patch even if setup_files/r2e_tests.tar.gz is missing")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Show what would change without writing files")
     args = parser.parse_args()
 
     tasks_root = Path(args.tasks_dir)
@@ -657,12 +623,8 @@ def main() -> None:
     if args.extract_tests:
         run_extract(tasks_root, parallel=args.parallel, dry_run=args.dry_run)
     else:
-        run_patch(
-            tasks_root,
-            output_dir=args.output_dir,
-            dry_run=args.dry_run,
-            skip_missing_tests=args.skip_missing_tests,
-        )
+        run_patch(tasks_root, output_dir=args.output_dir,
+                  dry_run=args.dry_run, skip_missing_tests=args.skip_missing_tests)
 
 
 if __name__ == "__main__":

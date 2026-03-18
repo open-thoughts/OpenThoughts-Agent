@@ -80,7 +80,7 @@ def _call_llm(instruction: str, model: str, client) -> str:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": USER_PROMPT_TEMPLATE.format(instruction=instruction)},
         ],
-        max_completion_tokens=2048,
+        max_completion_tokens=128000,
     )
     return response.choices[0].message.content.strip()
 

@@ -106,6 +106,13 @@ def _extract_hf_dataset(repo_id: str, revision: Optional[str], base_dir: Path) -
     Writes a temporary parquet snapshot and uses the shared converter to extract
     directories preserving the 'path' column.
     """
+    # Skip extraction if tasks already exist in target directory
+    base_dir.mkdir(parents=True, exist_ok=True)
+    existing_tasks = [d for d in base_dir.iterdir() if d.is_dir() and (d / "environment" / "Dockerfile").exists()]
+    if existing_tasks:
+        CONSOLE.print(f"[cyan][extract][/cyan] Found {len(existing_tasks)} existing tasks in {base_dir}; skipping extraction")
+        return base_dir
+    
     ds = load_dataset(repo_id, revision=revision)
     # Pick a split (prefer train)
     if hasattr(ds, "keys"):
@@ -118,7 +125,6 @@ def _extract_hf_dataset(repo_id: str, revision: Optional[str], base_dir: Path) -
     parquet_path = tmp_dir / "tasks.parquet"
     split.to_parquet(str(parquet_path))
 
-    base_dir.mkdir(parents=True, exist_ok=True)
     tpc.from_parquet(str(parquet_path), base=str(base_dir), on_exist="overwrite")
     return base_dir
 

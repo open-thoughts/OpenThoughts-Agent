@@ -33,7 +33,6 @@ def main():
                 episodes='last',
                 push=False,
                 verbose=True,
-                embed_tools_in_conversation = False,
             )
             if len(ds) > 0:
                 all_datasets.append(ds)

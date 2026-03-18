@@ -10,13 +10,15 @@ from tasks_parquet_converter import from_hf_dataset
 
 
 def main():
-    if len(sys.argv) != 4:
-        print(f"Usage: {sys.argv[0]} <hf_repo_id> <num_shards> <output_file>", file=sys.stderr)
+    if len(sys.argv) < 4:
+        print(f"Usage: {sys.argv[0]} <hf_repo_id> <num_shards> <output_file> [shared_tmp_dir]", file=sys.stderr)
         sys.exit(1)
 
     hf_repo_id = sys.argv[1]
     num_shards = int(sys.argv[2])
     output_file = sys.argv[3]
+    # Optional shared temp dir (for multi-node jobs where /tmp is node-local)
+    shared_tmp = sys.argv[4] if len(sys.argv) > 4 else tempfile.gettempdir()
 
     # Download dataset (uses fingerprint-based caching)
     print(f"Downloading dataset: {hf_repo_id}")
@@ -26,7 +28,7 @@ def main():
     print(f"Fingerprint: {fingerprint}")
 
     # Determine shard directory based on fingerprint
-    shard_dir = Path(tempfile.gettempdir()) / "hf_datasets_shards" / f"{fingerprint}_{num_shards}shards"
+    shard_dir = Path(shared_tmp) / "hf_datasets_shards" / f"{fingerprint}_{num_shards}shards"
     shard_marker = shard_dir / ".sharding_complete"
 
     if shard_dir.exists() and shard_marker.exists():

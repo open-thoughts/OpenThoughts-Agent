@@ -1,0 +1,122 @@
+# A1 dataset name -> sandbox HF repo mapping
+# Extracted from generator code in dclm-mine, nemotron-mine, and guha1 repos
+
+# The Stack (dclm-mine)
+a1_stack_bash: DCAgent/exp_rpt_stack-bash
+a1_stack_pytest: DCAgent/exp_rpt_stack-pytest
+a1_stack_dockerfile: DCAgent/exp_rpt_stack-dockerfile
+a1_stack_jest: DCAgent/exp_rpt_stack-jest
+a1_stack_junit: DCAgent/exp_rpt_stack-junit
+a1_stack_phpunit: DCAgent/exp_rpt_stack-php
+a1_stack_cpp: DCAgent/exp_rpt_stack-cpp-v2-test
+a1_stack_csharp: DCAgent/exp_rpt_stack-csharp-v2-test
+a1_stack_go: DCAgent/exp_rpt_stack-go-v3-test
+a1_stack_rust: DCAgent/exp_rpt_stack-rust-v3-test
+a1_stack_ruby: DCAgent/exp_rpt_stack-ruby
+a1_stack_bash_withtests: DCAgent/exp_rpt_stack-bash-withtests
+a1_stack_bash_withtests_gpt5mini: DCAgent/exp_rpt_stack-bash-withtests-gpt5mini
+a1_stack_pytest_gpt5mini: DCAgent/exp_rpt_stack-pytest-gpt5mini
+a1_stack_pytest_withtests: DCAgent/exp_rpt_stack-pytest-withtests
+a1_stack_pytest_synthetic_gpt5nano: DCAgent/exp_rpt_stack-pytest-v2
+a1_stack_selfdoc: DCAgent/exp_rpt_stack-selfdoc
+
+# Nemotron (nemotron-mine)
+a1_nemotron_bash: DCAgent/exp_rpt_nemotron-bash
+a1_nemotron_pytest: DCAgent/exp_rpt_nemotron-pytest-gpt5mini
+a1_nemotron_cpp: DCAgent/exp_rpt_nemotron-cpp
+a1_nemotron_junit: DCAgent/exp_rpt_nemotron-junit
+a1_nemotron_bash_withtests: DCAgent/exp_rpt_nemotron-bash-withtests
+a1_nemotron_bash_withtests_gpt5mini: DCAgent/exp_rpt_nemotron-bash-withtests-gpt5mini
+a1_nemotron_csharp: DCAgent/exp_rpt_nemotron-csharp
+a1_nemotron_rspec: DCAgent/exp_rpt_nemotron-ruby
+a1_nemotron_rust: DCAgent/exp_rpt_nemotron-rust
+
+# Task generators (nemotron-mine)
+a1_multifile_composition: DCAgent/exp_rpt_multifile
+a1_pr_mining: DCAgent/exp_rpt_pr
+a1_repo_scaffold: DCAgent/exp_rpt_scaffold
+a1_issue_tasks: DCAgent/exp_rpt_issue
+a1_curriculum_variants: DCAgent/exp_rpt_curriculum-easy
+a1_refactoring_tasks: DCAgent/exp_rpt_refactor
+
+# Benchmarks (dclm-mine)
+a1_bugsinpy: DCAgent/exp_rpt_bugsinpy
+a1_bugsinpy_mf: DCAgent/exp_rpt_bugsinpy-mf
+a1_defects4j: DCAgent/exp_rpt_defects4j
+a1_manybugs: DCAgent/exp_rpt_manybugs
+a1_bugswarm: DCAgent/exp_rpt_bugswarm
+a1_pymethods2test: DCAgent/exp_rpt_pymethods2test
+a1_methods2test: DCAgent/exp_rpt_methods2test
+a1_ghactions: DCAgent/exp_rpt_ghactions
+a1_taco: DCAgent/exp_rpt_taco
+a1_codenet_python: DCAgent/exp_rpt_codenet-python
+a1_exercism_python: DCAgent/exp_rpt_exercism-python
+a1_crosscodeeval_python: DCAgent/exp_rpt_crosscodeeval-python-v2
+a1_crosscodeeval_java: DCAgent/exp_rpt_crosscodeeval-java
+a1_crosscodeeval_csharp: DCAgent/exp_rpt_crosscodeeval-csharp
+a1_crosscodeeval_typescript: DCAgent/exp_rpt_crosscodeeval-typescript
+a1_codeelo: DCAgent/exp_rpt_codeelo-v2
+a1_softwareheritage: DCAgent/exp_rpt_softwareheritage
+a1_bigcodebench: DCAgent/exp_rpt_bigcodebench
+a1_codereval: DCAgent/exp_rpt_codereval-python
+a1_quixbugs: DCAgent/exp_rpt_quixbugs-python
+a1_travistorrent: DCAgent/exp_rpt_travistorrent
+a1_unitsyn_python: DCAgent/exp_rpt_unitsyn-python
+a1_e2egit: DCAgent/exp_rpt_e2egit
+
+# Neulab
+a1_agenttuning_alfworld: DCAgent/neulab-agenttuning-alfworld-sandboxes
+a1_agenttuning_db: DCAgent/neulab-agenttuning-db-sandboxes
+a1_agenttuning_kg: DCAgent/neulab-agenttuning-kg-sandboxes
+a1_agenttuning_mind2web: DCAgent/neulab-agenttuning-mind2web-sandboxes
+a1_agenttuning_os: DCAgent/neulab-agenttuning-os-sandboxes
+a1_agenttuning_webshop: DCAgent/neulab-agenttuning-webshop-sandboxes
+a1_code_feedback: DCAgent/neulab-code-feedback-sandboxes
+a1_codeactinstruct: DCAgent/neulab-codeactinstruct-sandboxes
+a1_go_browse_wa: DCAgent/neulab-go-browse-wa-sandboxes
+a1_mind2web: DCAgent/neulab-mind2web-sandboxes
+a1_orca_agentinstruct: DCAgent/neulab-orca-agentinstruct-sandboxes
+a1_swegym_openhands: DCAgent/neulab-swe-gym-openhands-sampled-trajectories-sandboxes
+a1_nnetnav_live: DCAgent/neulab-nnetnav-live-sandboxes
+a1_nebius_swe_agent: DCAgent/neulab-nebius-swe-agent-trajectories-sandboxes
+a1_openhands: DCAgent/neulab-openhands-sandboxes
+a1_nnetnav_wa: DCAgent/neulab-nnetnav-wa-sandboxes
+a1_synatra: DCAgent/neulab-synatra-sandboxes
+a1_swesmith_5k_trajectories: DCAgent/neulab-swe-smith-5ktrajectories-sandboxes
+
+# Perturbed docker / other
+a1_freelancer: DCAgent/perturbed-docker-exp-freelancer-tasks
+a1_taskmaster2: DCAgent/perturbed-docker-exp-taskmaster2-tasks
+a1_magicoder: DCAgent/perturbed-docker-exp-magicoder-tasks-2
+a1_staqc: DCAgent/exp-gfi-staqc-askllm-filtered-10K
+a1_r2egym: DCAgent/exp-swd-r2egym-standard
+a1_swesmith: DCAgent/swesmith-sandboxes-with_tests
+
+# StackExchange
+a1_stackexchange_overflow: DCAgent/stackexchange-overflow-sandboxes-skywork
+a1_stackexchange_superuser: DCAgent/stackexchange-superuser-sandboxes
+a1_stackexchange_tezos: DCAgent/stackexchange-tezos-sandboxes
+a1_stackexchange_tor: DCAgent/stackexchange-tor-sandboxes
+a1_stackexchange_unix: DCAgent/stackexchange-unix-sandboxes
+a1_stackexchange_codereview: DCAgent/stackexchange-codereview-sandboxes
+
+# Other
+a1_glaive_code_assistant: DCAgent/glaive-code-assistant-sandboxes
+a1_nemo_prism_math: DCAgent/nemo-prism-math-sandboxes
+a1_wizardlm_orca: DCAgent/wizardlm-orca-sandboxes
+a1_tulu3_sft_personas_math: DCAgent/tulu3-sft-personas-math-sandboxes
+a1_bash_textbook: DCAgent/bash_textbook_tasks
+a1_nl2bash: DCAgent/nl2bash
+a1_self_instruct: DCAgent/selfinstruct-naive-sandboxes-1
+a1_self_instruct_naive: DCAgent/selfinstruct-naive-sandboxes-2
+a1_code_contests: DCAgent/code-contests-sandboxes-with-tests
+a1_all_puzzles: DCAgent/All_Puzzles_5k-sandboxes
+a1_swebench: mlfoundations-dev/swebench-verified-sandboxes
+a1_sampled_swebench_verified: mlfoundations-dev/swebench-verified-sandboxes
+a1_inferredbugs: mlfoundations-dev/inferredbugs-sandboxes
+a1_qasper: mlfoundations-dev/qasper-sandboxes
+a1_codeforces: mlfoundations-dev/codeforces-sandboxes-1
+a1_nemo_prism_math_v2: DCAgent/nemo-prism-math-sandboxes
+a1_toolscale: DCAgent/toolscale-sandboxes
+a1_ubuntu_package: DCAgent/ubuntu-package-sandboxes
+a1_github_dockerfiles: DCAgent/github-dockerfiles-docker-exp-taskmaster2-tasks

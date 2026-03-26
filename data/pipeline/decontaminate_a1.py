@@ -78,9 +78,7 @@ def load_eval_instructions(cache_dir: str | None = None) -> list[str]:
 
         log.info(f"  {bench_name}: {count} instructions")
 
-    # Truncate all eval instructions to MAX_COMPARE_LEN for consistent matching
-    all_instructions = [instr[:MAX_COMPARE_LEN] for instr in all_instructions]
-    log.info(f"Total eval instructions: {len(all_instructions)} (truncated to {MAX_COMPARE_LEN} chars)")
+    log.info(f"Total eval instructions: {len(all_instructions)}")
     return all_instructions
 
 
@@ -147,35 +145,32 @@ def extract_instruction_from_conversation(conversations: list[dict]) -> str:
                 stop_idx = text.find(stop)
                 if stop_idx > 0:
                     text = text[:stop_idx]
-            return text.strip()[:MAX_COMPARE_LEN]
+            return text.strip()
 
     # Fallback: return chunk from middle of first message (skip system prompt)
     first = conversations[0].get("content", "")
     if len(first) > 1000:
-        return first[500:500 + MAX_COMPARE_LEN].strip()
-    return first.strip()[:MAX_COMPARE_LEN]
+        return first[500:].strip()
+    return first.strip()
 
 
 # ---------------------------------------------------------------------------
 # Fuzzy matching
 # ---------------------------------------------------------------------------
 
-MAX_COMPARE_LEN = 10000
+# No truncation — compare full instruction text for accuracy
 
 
 def _check_one(instruction: str, eval_instructions: list[str], threshold: float) -> Tuple[bool, float]:
     """Check one instruction against all eval instructions.
 
-    Both query and references are truncated to MAX_COMPARE_LEN to ensure
-    token_sort_ratio compares strings of similar length (avoids false negatives
-    when one string is much longer than the other).
+    Compares full instruction text — no truncation.
     """
     if not instruction or len(instruction) < 50:
         return False, 0.0
 
-    query = instruction[:MAX_COMPARE_LEN]
     result = process.extractOne(
-        query,
+        instruction,
         eval_instructions,
         scorer=fuzz.token_sort_ratio,
         score_cutoff=threshold,

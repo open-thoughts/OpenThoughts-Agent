@@ -19,9 +19,14 @@ from __future__ import annotations
 import argparse
 import io
 import logging
+import sys
 import tarfile
 import tempfile
 from pathlib import Path
+
+# Remove editable install finders that point to feuer1's home
+sys.meta_path = [f for f in sys.meta_path if 'editable' not in str(getattr(f, '__module__', '')).lower()]
+sys.path.insert(0, "/e/scratch/jureap59/guha1/OpenThoughts-Agent")
 
 from datasets import Dataset, load_dataset
 from data.completions import run_completions

@@ -1,3 +1,0 @@
-obiwan96/qwen3-8b-openthinker-sft-endless-terminals
-nvidia/Nemotron-Terminal-8B
-nvidia/Nemotron-Terminal-14B

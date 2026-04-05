@@ -1,4 +1,0 @@
-DCAgent/a1-bugswarm
-DCAgent/a1-codeelo
-DCAgent/a1-ghactions
-DCAgent/a1-magicoder

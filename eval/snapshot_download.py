@@ -1,6 +1,8 @@
 import os
 import sys
 import argparse
+import fcntl
+import time
 from huggingface_hub import snapshot_download
 
 def is_valid_task_dir(path):
@@ -112,21 +114,34 @@ def main():
 
     path = None
     if args.local_dir:
-        # When --local-dir is specified, download real files (no symlinks)
-        # Check if local_dir already has valid task dirs
-        if os.path.isdir(args.local_dir):
-            task_dirs = [d for d in os.listdir(args.local_dir)
-                        if is_valid_task_dir(os.path.join(args.local_dir, d))]
-            if task_dirs:
-                print(f"Found existing dataset at {args.local_dir} with {len(task_dirs)} tasks")
-                path = args.local_dir
-        if not path:
-            print("Downloading dataset to local dir (real files, no symlinks)...", file=sys.stderr)
-            path = download_sandboxes_dataset(
-                repo_id=args.repo_id,
-                local_dir=args.local_dir,
-                cache_dir=args.cache_dir
-            )
+        # When --local-dir is specified, download real files (no symlinks).
+        # Use a file lock to prevent race conditions when multiple SLURM jobs
+        # download the same dataset concurrently.
+        lock_path = args.local_dir.rstrip("/") + ".lock"
+        os.makedirs(os.path.dirname(lock_path) or ".", exist_ok=True)
+        lock_fd = open(lock_path, "w")
+        try:
+            print(f"Acquiring dataset lock: {lock_path}", file=sys.stderr)
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            print("Lock acquired.", file=sys.stderr)
+
+            # Check if local_dir already has valid task dirs
+            if os.path.isdir(args.local_dir):
+                task_dirs = [d for d in os.listdir(args.local_dir)
+                            if is_valid_task_dir(os.path.join(args.local_dir, d))]
+                if task_dirs:
+                    print(f"Found existing dataset at {args.local_dir} with {len(task_dirs)} tasks")
+                    path = args.local_dir
+            if not path:
+                print("Downloading dataset to local dir (real files, no symlinks)...", file=sys.stderr)
+                path = download_sandboxes_dataset(
+                    repo_id=args.repo_id,
+                    local_dir=args.local_dir,
+                    cache_dir=args.cache_dir
+                )
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
     else:
         # First try to get existing cached path
         path = get_dataset_path(args.repo_id)

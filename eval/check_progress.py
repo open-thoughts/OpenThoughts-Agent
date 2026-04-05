@@ -19,8 +19,8 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
-REPO_DIR = Path(__file__).resolve().parent.parent.parent
-LOGS_DIR = REPO_DIR / "eval" / "MBZ" / "logs"
+REPO_DIR = Path(__file__).resolve().parent.parent
+LOGS_DIR = REPO_DIR / "eval" / "local" / "logs"  # override with --logs-dir
 DEFAULT_JOBS_DIR = REPO_DIR / "jobs"
 
 
@@ -92,7 +92,8 @@ def get_progress_single(run_tag, jobs_dir):
     if not rf.exists():
         return None, None, None, None, None, None
     try:
-        d = json.load(open(rf))
+        with open(rf) as f:
+            d = json.load(f)
         completed = d.get("stats", {}).get("n_trials", None)
         total = d.get("n_total_trials", None)
         finished = d.get("finished_at") is not None
@@ -604,11 +605,17 @@ examples:
         "--jobs-dir", type=Path, default=DEFAULT_JOBS_DIR,
         help=f"Path to eval jobs directory (default: {DEFAULT_JOBS_DIR})",
     )
+    parser.add_argument(
+        "--logs-dir", type=Path, default=LOGS_DIR,
+        help=f"Path to eval logs directory (default: {LOGS_DIR})",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    global LOGS_DIR
+    LOGS_DIR = args.logs_dir
 
     if args.live:
         interval = max(3, args.interval)

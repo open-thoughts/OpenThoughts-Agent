@@ -2,12 +2,12 @@
 
 ## What's already done (in this repo, will arrive via `git pull`)
 
-1. **`eval/clusters/jupiter.yaml`** — updated sbatch paths to shared `eval/MBZ/unified_eval_harbor.sbatch`
+1. **`eval/clusters/jupiter.yaml`** — updated sbatch paths to shared `eval/unified_eval_harbor.sbatch`
 2. **`eval/jupiter/dcagent_eval_config.yaml`** — updated `jobs_dir` to `zhuang1_eval_jobs`
 3. **`eval/jupiter/dcagent_eval_config_no_override.yaml`** — created (swebench/tb2 variant)
-4. **`eval/MBZ/unified_eval_harbor.sbatch`** — cluster-agnostic v6 sbatch (shared across clusters)
-5. **`eval/MBZ/unified_eval_harbor_dp.sbatch`** — cluster-agnostic DP sbatch
-6. **`eval/MBZ/unified_eval_listener_v6.py`** — shared v6 listener
+4. **`eval/unified_eval_harbor.sbatch`** — cluster-agnostic v6 sbatch (shared across clusters)
+5. **`eval/unified_eval_harbor_dp.sbatch`** — cluster-agnostic DP sbatch
+6. **`eval/unified_eval_listener.py`** — shared v6 listener
 7. **`eval/baseline_model_configs.yaml`** — shared model configs
 
 ## Steps to run on Jupiter
@@ -56,7 +56,7 @@ echo "HF_TOKEN: ${HF_TOKEN:0:8}..."
 
 ### 7. Dry-run
 ```bash
-source ~/secrets.env && python eval/MBZ/unified_eval_listener_v6.py \
+source ~/secrets.env && python eval/unified_eval_listener.py \
   --cluster-config eval/clusters/jupiter.yaml \
   --preset v2 \
   --priority-file eval/MBZ/lists/a1_retrained.txt \
@@ -71,7 +71,7 @@ source ~/secrets.env && python eval/MBZ/unified_eval_listener_v6.py \
 
 ### 8. Real run (example)
 ```bash
-source ~/secrets.env && python eval/MBZ/unified_eval_listener_v6.py \
+source ~/secrets.env && python eval/unified_eval_listener.py \
   --cluster-config eval/clusters/jupiter.yaml \
   --preset swebench \
   --priority-file eval/MBZ/lists/no_eval_models_latest.txt \

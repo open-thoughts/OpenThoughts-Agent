@@ -54,11 +54,11 @@ sbatch \
   --gres gpu:4 \
   --cpus-per-task=32 \
   --job-name data_dp_test \
-  --output eval/MBZ/logs/data_dp_test_%j.out \
-  eval/MBZ/unified_eval_harbor_v6.sbatch \
+  --output eval/local/logs/data_dp_test_%j.out \
+  eval/unified_eval_harbor.sbatch \
   "$MODEL" "$DATASET" "$BENCHMARK_ID" ""
 
 echo "Submitted! Monitor with:"
 echo "  squeue -u \$USER"
-echo "  tail -f eval/MBZ/logs/data_dp_test_*.out"
-echo "  tail -f experiments/logs/vllm_*.log"
+echo "  tail -f eval/local/logs/data_dp_test_*.out"
+echo "  tail -f eval/local/logs/vllm_*.log"

@@ -1,0 +1,3 @@
+open-thoughts/OpenThinker3-7B
+deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+camel-ai/seta-rl-qwen3-8b

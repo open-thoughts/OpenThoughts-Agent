@@ -1,0 +1,8 @@
+nvidia/Nemotron-Terminal-32B
+allenai/SERA-32B
+laion/rl__40GPU_base_32b__exp_rpt_nemotron-bash__sft_GLM-4-7-swesmith
+laion/sft_r2egym-nl2bash-stackoverflow-inferredbugs-32B_Qwen3-32B
+laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_adam-beta1_0-95_Qwen3-32B
+laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_warmup-ratio_0-01_Qwen3-32B
+laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_num-train-epochs_7.0_Qwen3-32B
+laion/alfworld-swesmith-r2egym-swegym-131k-32B-lc

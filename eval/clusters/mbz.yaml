@@ -1,0 +1,39 @@
+# Cluster configuration for MBZ/M1 (x86_64 nodes, 8×GPU)
+# Used by: python eval/unified_eval_listener.py --cluster-config eval/clusters/mbz.yaml
+
+cluster_name: mbz
+
+# SLURM
+slurm_partition: main
+slurm_account: ""
+slurm_time: "24:00:00"
+
+# Conda environments: name → prefix directory
+conda_envs:
+  otagent: /lustrefs/users/${USER}/miniconda3/envs/otagent
+
+# Paths (parameterized with $USER where possible)
+paths:
+  project_root: /lustrefs/users/${USER}/OpenThoughts-Agent
+  hf_cache: /lustrefs/users/${USER}/.cache/huggingface/hub
+  eval_jobs_dir: /lustrefs/users/${USER}/OpenThoughts-Agent/jobs
+  eval_logs_dir: eval/local/mbz/logs
+  listener_logs_dir: experiments/listener_logs
+  sbatch_script: eval/unified_eval_harbor.sbatch
+  dp_sbatch_script: eval/unified_eval_harbor_dp.sbatch
+  harbor_src: /lustrefs/users/${USER}/harbor/src
+  datasets_dirs:
+    - /lustrefs/users/${USER}/.cache/huggingface/hub
+  secrets_file: ~/secrets.env
+
+# Proxy (MBZ compute nodes have internet)
+proxy:
+  enabled: false
+
+# Hardware
+hardware:
+  gpus_per_node: 8
+  cpus_per_node: 96
+  mem_per_node_mb: 1860000
+  arch: x86_64
+  cuda_home: /usr/local/cuda-12.8

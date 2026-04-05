@@ -1,0 +1,40 @@
+# Cluster configuration for M2 (MBZ H200 cluster, 8×GPU per node)
+# Used by: python eval/unified_eval_listener.py --cluster-config eval/clusters/m2.yaml
+
+cluster_name: m2
+
+# SLURM
+slurm_partition: main
+slurm_account: ""
+slurm_time: "24:00:00"
+
+# Conda environments: name → prefix directory
+conda_envs:
+  otagent: /mnt/weka/home/${USER}/miniconda3/envs/otagent
+  otagent2: /mnt/weka/home/${USER}/miniconda3/envs/otagent2
+
+# Paths (parameterized with $USER)
+paths:
+  project_root: /mnt/weka/home/${USER}/OpenThoughts-Agent
+  hf_cache: /mnt/weka/home/${USER}/.cache/huggingface/hub
+  eval_jobs_dir: /mnt/weka/home/${USER}/OpenThoughts-Agent/jobs
+  eval_logs_dir: eval/local/m2/logs
+  listener_logs_dir: experiments/listener_logs
+  sbatch_script: eval/unified_eval_harbor.sbatch
+  dp_sbatch_script: eval/unified_eval_harbor_dp.sbatch
+  harbor_src: /mnt/weka/home/${USER}/harbor/src
+  datasets_dirs:
+    - /mnt/weka/home/${USER}/.cache/huggingface/hub
+  secrets_file: ~/secrets.env
+
+# Proxy (MBZ compute nodes have internet)
+proxy:
+  enabled: false
+
+# Hardware
+hardware:
+  gpus_per_node: 8
+  cpus_per_node: 128
+  mem_per_node_mb: 1612647
+  arch: x86_64
+  cuda_home: /usr/local/cuda-12.8

@@ -410,3 +410,17 @@ train/hpc/dotenv/secret.env
 # Claude
 CLAUDE.md
 development_progress.md
+
+# Eval local runtime data (logs, tracking, job output — per-cluster)
+eval/local/
+eval/MBZ/logs/
+eval/MBZ/tracking/
+eval/MBZ/__pycache__/
+eval/jupiter/logs/
+eval/*/logs/
+jobs/
+
+# Secrets (never commit)
+secret.env
+secrets.env
+*.env.local

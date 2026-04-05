@@ -1842,6 +1842,7 @@ def sync_eval_to_database(
     hf_token: Optional[str] = None,
     hf_episodes: str = "last",
     forced_update: bool = False,
+    is_overlong: bool = False,
     dry_run: bool = False,
 ) -> Dict[str, Any]:
     """Sync evaluation results to Supabase database (with optional HF upload).
@@ -1953,6 +1954,7 @@ def sync_eval_to_database(
         hf_token=token,
         hf_episodes=hf_episodes,
         forced_update=forced_update,
+        is_overlong=is_overlong,
     )
 
     uploaded = result.get("n_trials_uploaded", 0)

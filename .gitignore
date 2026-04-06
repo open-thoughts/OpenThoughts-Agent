@@ -1,3 +1,6 @@
+# Claude Code local instructions (personal, not shared)
+CLAUDE.local.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -411,13 +414,13 @@ train/hpc/dotenv/secret.env
 CLAUDE.md
 development_progress.md
 
-# Eval local runtime data (logs, tracking, job output — per-cluster)
+# Eval runtime data (logs, tracking, job output)
+eval/logs/
 eval/local/
 eval/MBZ/logs/
 eval/MBZ/tracking/
 eval/MBZ/__pycache__/
 eval/jupiter/logs/
-eval/*/logs/
 jobs/
 
 # Secrets (never commit)

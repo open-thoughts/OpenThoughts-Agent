@@ -992,7 +992,7 @@ DEFAULT_SBATCH_SCRIPT = "eval/unified_eval_harbor.sbatch"
 # Empty strings force explicit cluster config — no implicit Jupiter defaults.
 _FALLBACK_EVAL_JOBS_DIR = ""
 _FALLBACK_HF_CACHE = ""
-_FALLBACK_EVAL_LOGS_DIR = "eval/local/logs"
+_FALLBACK_EVAL_LOGS_DIR = "eval/logs"
 
 # Conda env paths: env name → prefix directory (passed as OTAGENT_DIR to sbatch)
 # Overridden by cluster_config["conda_envs"] when --cluster-config is used.
@@ -1794,7 +1794,7 @@ def get_active_slurm_job_ids() -> Set[str]:
 
 
 def get_active_model_dataset_pairs(
-    log_dir: str = "eval/local/logs",
+    log_dir: str = "eval/logs",
 ) -> Tuple[Set[str], Set[Tuple[str, str]], Dict[str, str]]:
     """Return (active_models, active_model_dataset_pairs, active_run_tags) for all active SLURM eval jobs.
 

@@ -6,7 +6,7 @@
 #SBATCH --ntasks-per-node 1
 #SBATCH --cpus-per-task=24
 #SBATCH --gres=gpu:2
-#SBATCH --output=eval/local/logs/%x_%j.out
+#SBATCH --output=eval/logs/%x_%j.out
 #SBATCH --job-name=eval
 
 # ==============================================================================
@@ -394,7 +394,7 @@ trap cleanup EXIT
 # ==============================================================================
 # Start vLLM Server
 # ==============================================================================
-EVAL_LOGS_DIR="${EVAL_LOGS_DIR:-eval/local/logs}"
+EVAL_LOGS_DIR="${EVAL_LOGS_DIR:-eval/logs}"
 mkdir -p "$EVAL_LOGS_DIR"
 
 # Derive unique vLLM port. When the listener packs jobs (EVAL_VLLM_PORT is set),
@@ -923,7 +923,7 @@ export UPLOAD_USERNAME
 export UPLOAD_MODE="${UPLOAD_MODE:-skip_on_error}"
 export RUN_TAG
 
-UPLOAD_LOG="${EVAL_LOGS_DIR:-eval/local/logs}/upload_${SLURM_JOB_ID}.log"
+UPLOAD_LOG="${EVAL_LOGS_DIR:-eval/logs}/upload_${SLURM_JOB_ID}.log"
 mkdir -p "$(dirname "$UPLOAD_LOG")"
 
 echo "Uploading results from: $RUN_DIR" | tee -a "$UPLOAD_LOG"

@@ -18,7 +18,7 @@ paths:
   project_root: /mnt/weka/home/${USER}/OpenThoughts-Agent
   hf_cache: /mnt/weka/home/${USER}/.cache/huggingface/hub
   eval_jobs_dir: /mnt/weka/home/${USER}/OpenThoughts-Agent/jobs
-  eval_logs_dir: eval/local/m2/logs
+  eval_logs_dir: eval/logs
   listener_logs_dir: experiments/listener_logs
   sbatch_script: eval/unified_eval_harbor.sbatch
   dp_sbatch_script: eval/unified_eval_harbor_dp.sbatch

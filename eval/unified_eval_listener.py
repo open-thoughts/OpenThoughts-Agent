@@ -861,7 +861,7 @@ PRESETS: Dict[str, Dict] = {
         "datasets": ["DCAgent2/swebench-verified-random-100-folders"],
         "log_suffix": "swebench",
         "n_concurrent": 32,
-        "error_threshold": 15,
+        "error_threshold": 20,
         "agent_parser": "xml",
         "vllm_max_retries": 10,
         "enable_thinking": True,

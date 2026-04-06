@@ -21,6 +21,10 @@ from pathlib import Path
 
 REPO_DIR = Path(__file__).resolve().parent.parent
 LOGS_DIR = REPO_DIR / "eval" / "local" / "logs"  # override with --logs-dir
+EXTRA_LOG_DIRS = [
+    REPO_DIR / "eval" / "MBZ" / "logs",
+    REPO_DIR / "eval" / "local" / "mbz" / "logs",
+]
 DEFAULT_JOBS_DIR = REPO_DIR / "jobs"
 
 
@@ -44,18 +48,23 @@ def get_running_jobs():
 def parse_eval_log(jid, job_name):
     """Try multiple log naming patterns. SLURM %x is captured at submit time,
     so renamed jobs (eval_dp -> eval_dp_v2) need fallback to original name."""
-    candidates = [
-        LOGS_DIR / f"{job_name}_{jid}.out",
-        LOGS_DIR / f"eval_{jid}.out",
-    ]
+    # Search primary log dir + all extra log dirs
+    all_log_dirs = [LOGS_DIR] + [d for d in EXTRA_LOG_DIRS if d.exists()]
+    candidates = []
+    for log_dir in all_log_dirs:
+        candidates.append(log_dir / f"{job_name}_{jid}.out")
     if job_name.startswith("eval_dp_"):
-        candidates.insert(1, LOGS_DIR / f"eval_dp_{jid}.out")
+        for log_dir in all_log_dirs:
+            candidates.append(log_dir / f"eval_dp_{jid}.out")
     elif job_name.startswith("eval_"):
-        candidates.insert(1, LOGS_DIR / f"eval_{jid}.out")
+        for log_dir in all_log_dirs:
+            candidates.append(log_dir / f"eval_{jid}.out")
     if job_name.startswith("res_dp_"):
-        candidates.insert(1, LOGS_DIR / f"res_dp_{jid}.out")
+        for log_dir in all_log_dirs:
+            candidates.append(log_dir / f"res_dp_{jid}.out")
     elif job_name.startswith("res_"):
-        candidates.insert(1, LOGS_DIR / f"res_{jid}.out")
+        for log_dir in all_log_dirs:
+            candidates.append(log_dir / f"res_{jid}.out")
     model = bench = run_tag = None
     num_shards = 0
     for log in candidates:

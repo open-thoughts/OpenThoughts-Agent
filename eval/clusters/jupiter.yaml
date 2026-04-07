@@ -18,7 +18,7 @@ paths:
   project_root: /e/scratch/jureap59/zhuang1/OpenThoughts-Agent
   hf_cache: /e/data1/datasets/playground/ot/hf_hub
   eval_jobs_dir: /e/data1/datasets/playground/mmlaion/shared/zhuang1_eval_jobs
-  eval_logs_dir: eval/local/jupiter/logs
+  eval_logs_dir: eval/logs
   listener_logs_dir: experiments/listener_logs
   sbatch_script: eval/unified_eval_harbor.sbatch
   dp_sbatch_script: eval/unified_eval_harbor_dp.sbatch

@@ -20,12 +20,12 @@ from datetime import datetime
 from pathlib import Path
 
 REPO_DIR = Path(__file__).resolve().parent.parent
-LOGS_DIR = REPO_DIR / "eval" / "logs"  # override with --logs-dir
+LOGS_DIR = REPO_DIR / "eval" / "logs"
 EXTRA_LOG_DIRS = [
-    REPO_DIR / "eval" / "MBZ" / "logs",
-    REPO_DIR / "eval" / "local" / "logs",
-    REPO_DIR / "eval" / "local" / "m2" / "logs",
-    REPO_DIR / "eval" / "local" / "mbz" / "logs",
+    REPO_DIR / "eval" / "local" / "logs",        # legacy v6 default
+    REPO_DIR / "eval" / "MBZ" / "logs",           # legacy MBZ v4
+    REPO_DIR / "eval" / "local" / "mbz" / "logs", # legacy MBZ v6
+    REPO_DIR / "eval" / "local" / "m2" / "logs",  # legacy M2
 ]
 DEFAULT_JOBS_DIR = REPO_DIR / "jobs"
 

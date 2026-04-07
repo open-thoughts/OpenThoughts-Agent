@@ -12,6 +12,16 @@ scripts/beam/helm-chart/charts/localstack-0.6.5.tgz
 # database bu
 scripts/database/backups
 
+# Eval logs (generated at runtime, not synced)
+eval/logs/
+eval/local/
+
+# Local eval memory/notes (per-cluster, not synced)
+eval/.local_notes/
+
+# Personal Claude Code instructions (not shared)
+CLAUDE.local.md
+
 # C extensions
 *.so
 

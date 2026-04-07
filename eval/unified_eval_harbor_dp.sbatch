@@ -5,7 +5,7 @@
 #SBATCH --ntasks-per-node 1
 #SBATCH --cpus-per-task=72
 #SBATCH --gres=gpu:4
-#SBATCH --output=eval/MBZ/logs/%x_%j.out
+#SBATCH --output=eval/logs/%x_%j.out
 #SBATCH --job-name=eval_dp
 
 # ==============================================================================
@@ -360,7 +360,7 @@ trap cleanup EXIT
 # ==============================================================================
 # Pre-download model (compute nodes have no internet)
 # ==============================================================================
-EVAL_LOGS_DIR="${EVAL_LOGS_DIR:-eval/jupiter/logs}"
+EVAL_LOGS_DIR="${EVAL_LOGS_DIR:-eval/logs}"
 mkdir -p "$EVAL_LOGS_DIR"
 
 echo "Pre-downloading model: $MODEL"

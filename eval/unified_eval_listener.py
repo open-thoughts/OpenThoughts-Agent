@@ -2329,6 +2329,9 @@ def submit_eval(
         mem_needed = (mem_per_node_mb * total_gpus) // gpus_per_node
         cmd.extend(["--cpus-per-task", str(cpus_needed)])
         cmd.extend(["--mem", f"{mem_needed}M"])
+    # Override sbatch --output to use cluster-configured log dir
+    cc_logs = (_CLUSTER_CONFIG or {}).get("paths", {}).get("eval_logs_dir", _FALLBACK_EVAL_LOGS_DIR)
+    cmd.extend(["--output", f"{cc_logs}/%x_%j.out"])
     if nodelist:
         cmd.extend(["--nodelist", nodelist])
     if dependency:

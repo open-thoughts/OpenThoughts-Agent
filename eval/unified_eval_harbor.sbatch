@@ -581,7 +581,7 @@ export HARBOR_VERSION
 if [ -n "$DB_JOB_ID" ]; then
     # v4 flow: listener already created a Pending entry — transition to Started
     echo "Updating Pending job $DB_JOB_ID → Started (run_tag=$RUN_TAG)"
-    proxied $PYTHON_BIN - <<'PY' || true
+    proxied $PYTHON_BIN - <<'PY'
 import os, sys, json
 from database.unified_db.utils import update_job_status_to_started
 
@@ -607,12 +607,19 @@ result = update_job_status_to_started(
 )
 if not result.get("success"):
     print(f"WARNING: Pending→Started update failed: {result.get('error')}", file=sys.stderr)
+    print("Will create a new Started entry as fallback.", file=sys.stderr)
+    sys.exit(1)
 else:
     print(f"DB job {run_tag} → Started")
 PY
+    _db_update_rc=$?
 else
-    # Fallback: create Started entry directly (backward compat / manual runs)
-    echo "No EVAL_DB_JOB_ID — creating Started entry directly"
+    _db_update_rc=1  # No DB_JOB_ID — force fallback
+fi
+
+if [ "$_db_update_rc" -ne 0 ]; then
+    # Fallback: create Started entry directly (Pending entry missing/deleted, or no DB_JOB_ID)
+    echo "Creating new Started entry (fallback)..."
     proxied $PYTHON_BIN - <<'PY' || true
 import os, sys
 

@@ -17,7 +17,7 @@ paths:
   project_root: /lustrefs/users/${USER}/OpenThoughts-Agent
   hf_cache: /lustrefs/users/${USER}/.cache/huggingface/hub
   eval_jobs_dir: /lustrefs/users/${USER}/OpenThoughts-Agent/jobs
-  eval_logs_dir: eval/local/mbz/logs
+  eval_logs_dir: eval/logs
   listener_logs_dir: experiments/listener_logs
   sbatch_script: eval/unified_eval_harbor.sbatch
   dp_sbatch_script: eval/unified_eval_harbor_dp.sbatch

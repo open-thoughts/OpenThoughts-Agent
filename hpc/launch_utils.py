@@ -1655,7 +1655,34 @@ def derive_benchmark_from_job_dir(job_dir: PathInput) -> str:
         except (json.JSONDecodeError, OSError):
             pass  # Fall through to directory name parsing
 
-    # Method 2: Parse from job directory name
+    # Method 2: Read from trial result.json source field
+    # e.g., "DCAgent2_terminal_bench_2" → "terminal_bench_2"
+    try:
+        for entry in sorted(job_path.iterdir()):
+            if entry.is_dir() and "__" in entry.name:
+                trial_result = entry / "result.json"
+                if trial_result.exists():
+                    trial_data = json.loads(trial_result.read_text())
+                    source = trial_data.get("source", "")
+                    if source:
+                        for org_prefix in ["DCAgent2_", "DCAgent_"]:
+                            if source.startswith(org_prefix):
+                                source = source[len(org_prefix):]
+                                break
+                        return source
+                    task_id = trial_data.get("task_id", {})
+                    task_path = task_id.get("path", "") if isinstance(task_id, dict) else ""
+                    if task_path:
+                        path_parts = task_path.split("/")
+                        for part in path_parts:
+                            for org_prefix in ["DCAgent2_", "DCAgent_"]:
+                                if part.startswith(org_prefix):
+                                    return part[len(org_prefix):]
+                    break
+    except (json.JSONDecodeError, OSError, StopIteration):
+        pass
+
+    # Method 3: Parse from job directory name
     # e.g., eval-terminal-bench@2.0-gpt-5-nano-20260113_145348
     name = job_path.name
 

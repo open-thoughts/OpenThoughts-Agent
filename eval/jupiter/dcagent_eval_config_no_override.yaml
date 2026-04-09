@@ -39,7 +39,7 @@ agents:
       metrics_timeout_sec: 10
       model_info:
         max_input_tokens: 32768
-        max_output_tokens: 8192
+        max_output_tokens: 16384
         input_cost_per_token: 0
         output_cost_per_token: 0
 datasets:

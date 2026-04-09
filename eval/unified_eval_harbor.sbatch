@@ -768,22 +768,64 @@ if [ "${EVAL_FORCE_FRESH:-false}" != "true" ] && [ -d "$EXISTING_JOB_DIR" ] && [
         --filter-error-type SandboxBuildFailedError
 else
     echo "Starting new job"
+
+    # Short-term fix: inject model_name into a temp copy of the YAML config so that
+    # we do NOT pass --agent on the CLI. Passing --agent causes Harbor to wipe the
+    # entire agents[] section from the YAML and rebuild from CLI flags only, losing
+    # all YAML agent settings (max_timeout_sec, trajectory_config, kwargs like
+    # proactive_summarization_threshold, etc.). By omitting --agent, Harbor uses the
+    # YAML agents[] and --agent-kwarg values are MERGED into it.
+    # See: harbor/src/harbor/cli/jobs.py lines 715-748
+    # Long-term fix: Harbor PR to merge CLI --agent with YAML instead of replacing.
+    RUNTIME_HARBOR_CONFIG="/tmp/harbor_config_${SLURM_JOB_ID}.yaml"
+    python3 -c "
+import yaml
+
+with open('${HARBOR_CONFIG}') as f:
+    cfg = yaml.safe_load(f)
+
+agent = cfg['agents'][0]
+agent['model_name'] = 'hosted_vllm/${MODEL}'
+
+# Merge model_info and max_tokens: YAML values take priority, CLI defaults fill gaps.
+kwargs = agent.setdefault('kwargs', {})
+
+# Default model_info values (used only if YAML doesn't specify them)
+defaults = {
+    'max_output_tokens': ${EVAL_MAX_OUTPUT_TOKENS:-16384},
+    'max_input_tokens': ${EVAL_MAX_INPUT_TOKENS:-32768},
+    'input_cost_per_token': 0.0,
+    'output_cost_per_token': 0.0,
+}
+yaml_model_info = kwargs.get('model_info', {})
+# Fill in any missing keys from defaults
+for k, v in defaults.items():
+    yaml_model_info.setdefault(k, v)
+kwargs['model_info'] = yaml_model_info
+
+# max_tokens defaults to max_output_tokens from the resolved model_info
+kwargs.setdefault('max_tokens', yaml_model_info['max_output_tokens'])
+
+with open('${RUNTIME_HARBOR_CONFIG}', 'w') as f:
+    yaml.dump(cfg, f, default_flow_style=False)
+"
+    echo "[DEBUG] Injected model_name + model_info into runtime config: $RUNTIME_HARBOR_CONFIG"
+
     # Build command as array to handle quoting properly
+    # NOTE: --agent and --model are NOT passed here. Agent name and model come from
+    # the YAML config. model_info and max_tokens are set in the Python config injection
+    # above (YAML values take priority, CLI env var defaults fill gaps).
     HARBOR_CMD=(
         proxied $HARBOR_BIN jobs start
         -p "$DATASET_PATH"
         --n-concurrent "$N_CONCURRENT"
-        --agent "$AGENT_NAME"
-        --model "hosted_vllm/$MODEL"
         --env "daytona"
         --agent-kwarg "api_base=http://localhost:${VLLM_PORT}/v1"
         --agent-kwarg "key=fake_key"
-        --agent-kwarg "max_tokens=${EVAL_MAX_OUTPUT_TOKENS:-16384}"
-        --agent-kwarg "model_info={\"max_output_tokens\":${EVAL_MAX_OUTPUT_TOKENS:-16384},\"max_input_tokens\":${EVAL_MAX_INPUT_TOKENS:-32768},\"input_cost_per_token\":0.0,\"output_cost_per_token\":0.0}"
         --n-attempts "$N_ATTEMPTS"
         --job-name "$RUN_TAG"
         --export-traces
-        --config "$HARBOR_CONFIG"
+        --config "$RUNTIME_HARBOR_CONFIG"
         --jobs-dir "$EVAL_JOBS_DIR"
         --debug
     )

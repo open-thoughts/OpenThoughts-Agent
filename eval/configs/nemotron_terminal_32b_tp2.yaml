@@ -1,0 +1,16 @@
+# Custom baseline config for Nemotron-Terminal-32B with TP2
+# Use with: --baseline-model-config eval/configs/nemotron_terminal_32b_tp2.yaml
+# On H200 141GB, 32B models fit in TP2 with enough headroom.
+
+groups: []
+
+models:
+  "nvidia/Nemotron-Terminal-32B":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--dtype bfloat16 --block-size 16 --enable-chunked-prefill --max-num-partial-prefills 1 --enable-prefix-caching"
+
+patterns: []

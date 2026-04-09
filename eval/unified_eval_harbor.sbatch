@@ -581,7 +581,9 @@ export HARBOR_VERSION
 if [ -n "$DB_JOB_ID" ]; then
     # v4 flow: listener already created a Pending entry — transition to Started
     echo "Updating Pending job $DB_JOB_ID → Started (run_tag=$RUN_TAG)"
-    proxied $PYTHON_BIN - <<'PY'
+    _db_fallback_marker="/tmp/.db_fallback_$$"
+    rm -f "$_db_fallback_marker"
+    proxied $PYTHON_BIN - <<'PY' || true
 import os, sys, json
 from database.unified_db.utils import update_job_status_to_started
 
@@ -608,11 +610,15 @@ result = update_job_status_to_started(
 if not result.get("success"):
     print(f"WARNING: Pending→Started update failed: {result.get('error')}", file=sys.stderr)
     print("Will create a new Started entry as fallback.", file=sys.stderr)
-    sys.exit(1)
+    # Signal fallback needed via marker file (can't use exit code due to set -e)
+    import pathlib
+    pathlib.Path(f"/tmp/.db_fallback_{os.getpid()}").parent  # ensure /tmp exists
+    open(f"/tmp/.db_fallback_{os.environ.get('SLURM_JOB_ID', os.getpid())}", "w").close()
 else:
     print(f"DB job {run_tag} → Started")
 PY
-    _db_update_rc=$?
+    _db_update_rc=0
+    [ -f "/tmp/.db_fallback_${SLURM_JOB_ID}" ] && _db_update_rc=1 && rm -f "/tmp/.db_fallback_${SLURM_JOB_ID}"
 else
     _db_update_rc=1  # No DB_JOB_ID — force fallback
 fi
@@ -772,8 +778,8 @@ else
         --env "daytona"
         --agent-kwarg "api_base=http://localhost:${VLLM_PORT}/v1"
         --agent-kwarg "key=fake_key"
-        --agent-kwarg "max_tokens=16384"
-        --agent-kwarg "model_info={\"max_output_tokens\":16384,\"max_input_tokens\":32768,\"input_cost_per_token\":0.0,\"output_cost_per_token\":0.0}"
+        --agent-kwarg "max_tokens=${EVAL_MAX_OUTPUT_TOKENS:-16384}"
+        --agent-kwarg "model_info={\"max_output_tokens\":${EVAL_MAX_OUTPUT_TOKENS:-16384},\"max_input_tokens\":${EVAL_MAX_INPUT_TOKENS:-32768},\"input_cost_per_token\":0.0,\"output_cost_per_token\":0.0}"
         --n-attempts "$N_ATTEMPTS"
         --job-name "$RUN_TAG"
         --export-traces

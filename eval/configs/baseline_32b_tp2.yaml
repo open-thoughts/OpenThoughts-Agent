@@ -1,0 +1,39 @@
+# 32B models with TP2 (for H200 141GB, fits comfortably)
+# Use with: --baseline-model-config eval/configs/baseline_32b_tp2.yaml
+
+groups: []
+
+models:
+  "laion/rl__nemotron-bash_bf16_terminus-2_32b":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--dtype bfloat16 --block-size 16 --enable-chunked-prefill --max-num-partial-prefills 1 --enable-prefix-caching"
+
+  "laion/rl__r2egym_deepswe_fp8_terminus-2_32b":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--dtype bfloat16 --block-size 16 --enable-chunked-prefill --max-num-partial-prefills 1 --enable-prefix-caching"
+
+  "laion/rl__64GPU_base_32b__nl2bash-tasks-cleaned-oracle__syh-r2eg-askl-glm_4__40-0-49":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--dtype bfloat16 --block-size 16 --enable-chunked-prefill --max-num-partial-prefills 1 --enable-prefix-caching"
+
+  "laion/rl__nemotron-bash_fp8_terminus-2_32b":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--dtype bfloat16 --block-size 16 --enable-chunked-prefill --max-num-partial-prefills 1 --enable-prefix-caching"
+
+patterns: []

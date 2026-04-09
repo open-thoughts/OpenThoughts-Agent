@@ -9,7 +9,7 @@ orchestrator:
   quiet: false
   plain_output: true
   retry:
-    max_retries: 3
+    max_retries: 10
     exclude_exceptions:
       - AgentTimeoutError
       - AgentEnvironmentTimeoutError
@@ -36,6 +36,7 @@ agents:
       enable_pane_logging: false
       collect_rollout_details: false
       collect_engine_metrics: false
+      proactive_summarization_threshold: 2048
       metrics_endpoint: https://replace-with-vllm-host/metrics
       metrics_timeout_sec: 10
       model_info:

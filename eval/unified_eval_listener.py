@@ -866,6 +866,7 @@ PRESETS: Dict[str, Dict] = {
         "vllm_max_retries": 10,
         "enable_thinking": True,
         "config_yaml": "dcagent_eval_config_no_override.yaml",
+        "auto_snapshot": True,
     },
     "v2": {
         "datasets": ["DCAgent/dev_set_v2"],
@@ -1093,6 +1094,8 @@ class ListenerConfig:
     timeout_aware: bool = False
     # Config YAML for harbor (overrides vs no-overrides)
     config_yaml: str = "dcagent_eval_config.yaml"
+    # Max output tokens override (None = use sbatch default 16384)
+    max_output_tokens: Optional[int] = None
     # Model blacklist
     blacklist_file: Optional[str] = None
     blacklisted_models: Set[str] = field(default_factory=set)
@@ -2005,6 +2008,7 @@ class SbatchParams:
     upload_username: str = ""
     timeout_multiplier: float = DEFAULT_TIMEOUT_MULTIPLIER  # v3 Enhancement 5
     config_yaml: str = "dcagent_eval_config.yaml"
+    max_output_tokens: Optional[int] = None  # None = use sbatch default (16384)
     auto_snapshot: Optional[bool] = None  # None = use YAML default
 
     def to_env(self) -> Dict[str, str]:
@@ -2030,8 +2034,11 @@ class SbatchParams:
         if self.timeout_multiplier != DEFAULT_TIMEOUT_MULTIPLIER:
             env["EVAL_TIMEOUT_MULTIPLIER"] = str(self.timeout_multiplier)
         # Pass config YAML (no-override for tb2/swebench)
-        if self.config_yaml != "dcagent_eval_config.yaml":
+        if self.config_yaml and self.config_yaml != "dcagent_eval_config.yaml":
             env["EVAL_CONFIG_YAML"] = self.config_yaml
+        # Max output tokens override
+        if self.max_output_tokens is not None:
+            env["EVAL_MAX_OUTPUT_TOKENS"] = str(self.max_output_tokens)
         # Daytona auto_snapshot override (None = use YAML default)
         if self.auto_snapshot is not None:
             env["EVAL_AUTO_SNAPSHOT"] = "true" if self.auto_snapshot else "false"
@@ -2750,6 +2757,7 @@ class EvalListener:
             upload_username=self.config.upload_username,
             timeout_multiplier=self.config.timeout_multiplier,
             config_yaml=self.config.config_yaml,
+            max_output_tokens=self.config.max_output_tokens,
             auto_snapshot=self.config.auto_snapshot,
         )
 
@@ -3010,6 +3018,7 @@ class EvalListener:
             dp_size=self.config.dp_size,
             timeout_multiplier=self.config.timeout_multiplier,
             config_yaml=self.config.config_yaml,
+            max_output_tokens=self.config.max_output_tokens,
             auto_snapshot=self.config.auto_snapshot,
         )
         log(f"Sbatch params: {sbatch_params}")
@@ -3320,6 +3329,18 @@ Examples:
         "--harbor-config",
         help="Path to Harbor YAML config (parsed for timeout_multiplier, "
              "resource overrides; passed as EVAL_HARBOR_CONFIG to sbatch)",
+    )
+    parser.add_argument(
+        "--config-yaml",
+        help="Override Harbor eval config YAML filename (e.g. 'ablation_interleaved_true_16k.yaml'). "
+             "Overrides preset default. Resolved from eval/configs/ on the compute node.",
+    )
+    parser.add_argument(
+        "--max-output-tokens",
+        type=int,
+        default=None,
+        help="Override max output tokens for LLM calls (default: 16384). "
+             "Sets both max_tokens and model_info.max_output_tokens in the agent.",
     )
 
     # Pre-download model weights
@@ -3646,8 +3667,8 @@ def build_config(args: argparse.Namespace) -> ListenerConfig:
     if auto_snapshot is None:
         auto_snapshot = preset_config.get("auto_snapshot")
 
-    # Config YAML: Preset > Default
-    config_yaml = preset_config.get("config_yaml", "dcagent_eval_config.yaml")
+    # Config YAML: CLI > Preset > Default
+    config_yaml = args.config_yaml or preset_config.get("config_yaml", "dcagent_eval_config.yaml")
 
     # Harbor config (parse eval-relevant fields for config-aware dedup)
     harbor_config = args.harbor_config or preset_config.get("harbor_config")
@@ -3713,6 +3734,7 @@ def build_config(args: argparse.Namespace) -> ListenerConfig:
         timeout_multiplier=timeout_multiplier,
         timeout_aware=timeout_aware,
         config_yaml=config_yaml,
+        max_output_tokens=args.max_output_tokens,
         auto_snapshot=auto_snapshot,
         blacklist_file=blacklist_file,
         blacklisted_models=blacklisted_models,

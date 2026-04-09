@@ -2015,7 +2015,8 @@ def register_sandbox_job(
     stats: Optional[Dict[str, Any]] = None,
     forced_update: bool = True,
     hf_traces_link: Optional[str] = None,
-    job_status: Optional[str] = None
+    job_status: Optional[str] = None,
+    is_overlong: bool = False,
 ) -> Dict[str, Any]:
     """
     Register a sandbox job with minimal auto-filling.
@@ -2055,7 +2056,8 @@ def register_sandbox_job(
             "benchmark_id": benchmark_id,
             "n_rep_eval": n_rep_eval,
             "hf_traces_link": hf_traces_link,
-            "job_status": job_status
+            "job_status": job_status,
+            "is_overlong": is_overlong,
         }
 
         # Include job_id if provided (preserves local ID from result.json)
@@ -3447,6 +3449,7 @@ def upload_job_and_trial_records(
     register_benchmark: bool = False,
     hf_dataset_url: Optional[str] = None,
     forced_update: bool = False,
+    is_overlong: bool = False,
 ) -> Dict[str, Any]:
     """
     Upload job and trial records to database (with optional HF dataset URL for trials).
@@ -3858,7 +3861,7 @@ def upload_job_and_trial_records(
         job_metadata["hf_traces_link"] = hf_dataset_url
         job_metadata["job_status"] = "Finished"
         
-        job_record = register_sandbox_job(**job_metadata, forced_update=forced_update)
+        job_record = register_sandbox_job(**job_metadata, forced_update=forced_update, is_overlong=is_overlong)
         
         if not job_record.get("success"):
             raise Exception(f"Job registration failed: {job_record.get('error')}")
@@ -4141,6 +4144,7 @@ def upload_traces_to_hf(
             verbose=verbose,
             success_filter=success_filter,
             include_verifier_output=include_verifier_output,
+            export_subagents=export_subagents,
         )
         logger.info(f"Extracted {len(dataset)} conversation rows from trials")
     except Exception as e:
@@ -4301,6 +4305,7 @@ def upload_eval_results(
     hf_verbose: bool = False,
     hf_export_subagents: bool = False,
     forced_update: bool = False,
+    is_overlong: bool = False,
 ) -> Dict[str, Any]:
     """
     Upload evaluation results from a job directory to HuggingFace and database.
@@ -4434,6 +4439,7 @@ def upload_eval_results(
             register_benchmark=register_benchmark,
             hf_dataset_url=hf_dataset_url,  # Will be None if HF upload failed
             forced_update=forced_update,
+            is_overlong=is_overlong,
         )
 
         # Add HF-related information to result

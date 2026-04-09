@@ -1,0 +1,41 @@
+# Cluster configuration for Jupiter (JSC GH200 ARM nodes)
+# Used by unified_eval_listener_v6.py --cluster-config eval/clusters/jupiter.yaml
+
+cluster_name: jupiter
+
+# SLURM
+slurm_partition: booster
+slurm_account: "reformo"
+slurm_time: "12:00:00"
+
+# Conda environments: name → prefix directory (passed as OTAGENT_DIR to sbatch)
+conda_envs:
+  otagent: /e/scratch/jureap59/feuer1/miniforge3/envs/otagent
+  otagent2: /e/scratch/jureap59/zhuang1/conda/envs/otagent2
+
+# Paths
+paths:
+  project_root: /e/scratch/jureap59/zhuang1/OpenThoughts-Agent
+  hf_cache: /e/data1/datasets/playground/ot/hf_hub
+  eval_jobs_dir: /e/data1/datasets/playground/mmlaion/shared/zhuang1_eval_jobs
+  eval_logs_dir: eval/logs
+  listener_logs_dir: experiments/listener_logs
+  sbatch_script: eval/unified_eval_harbor.sbatch
+  dp_sbatch_script: eval/unified_eval_harbor_dp.sbatch
+  harbor_src: /e/scratch/jureap59/feuer1/harbor/src
+  datasets_dirs:
+    - /e/data1/datasets/playground/ot/datasets
+    - /e/scratch/jureap59/${USER}/datasets
+  secrets_file: ~/secrets.env
+
+# Proxy (Jupiter compute nodes have no internet)
+proxy:
+  enabled: true
+  login_node: jpbl-s01-02
+  proxychains_bin: /e/scratch/jureap59/feuer1/proxychains-ng-aarch64/bin/proxychains4
+
+# Hardware
+hardware:
+  gpus_per_node: 4
+  arch: aarch64
+  cuda_home: /e/software/default/stages/2026/software/CUDA/13

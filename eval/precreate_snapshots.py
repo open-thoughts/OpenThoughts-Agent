@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 # Ensure harbor is importable
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent
 HARBOR_SRC = REPO_ROOT / "harbor" / "src"
 if str(HARBOR_SRC) not in sys.path:
     sys.path.insert(0, str(HARBOR_SRC))

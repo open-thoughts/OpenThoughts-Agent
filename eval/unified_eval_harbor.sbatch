@@ -457,7 +457,7 @@ VLLM_PID=$!
 
 # Health check loop (use configurable retries)
 MAX_RETRIES=$VLLM_MAX_RETRIES
-RETRY_INTERVAL=100
+RETRY_INTERVAL=15
 for i in $(seq 1 $MAX_RETRIES); do
     if curl -s http://localhost:${VLLM_PORT}/v1/models > /dev/null 2>&1; then
         echo "vLLM server is ready"

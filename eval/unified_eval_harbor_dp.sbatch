@@ -559,7 +559,7 @@ for shard_idx in $(seq 0 $((NUM_SHARDS - 1))); do
             tail -50 "$EVAL_LOGS_DIR/vllm_dp_shard${shard_idx}_${SLURM_JOB_ID}.log" 2>/dev/null || true
             exit 1
         fi
-        sleep 100
+        sleep 15
     done
 done
 
@@ -593,7 +593,7 @@ else
     done
     DATASET_LOCAL_DIR="${DATASET_LOCAL_DIR:-${_DS_DIRS_ARR[0]}/${SAFE_REPO}}"
     DOWNLOAD_LOG=$(mktemp /tmp/download_XXXXXX.log)
-    proxied $PYTHON_BIN "$DCFT/eval/jupiter/snapshot_download.py" "$REPO_ID" --local-dir "$DATASET_LOCAL_DIR" > "$DOWNLOAD_LOG" 2>&1
+    proxied $PYTHON_BIN "$DCFT/eval/snapshot_download.py" "$REPO_ID" --local-dir "$DATASET_LOCAL_DIR" > "$DOWNLOAD_LOG" 2>&1
     DOWNLOAD_EXIT=$?
     cat "$DOWNLOAD_LOG"
     DATASET_PATH=$(grep DATASET_PATH "$DOWNLOAD_LOG" | tail -n 1 | cut -d'=' -f2)

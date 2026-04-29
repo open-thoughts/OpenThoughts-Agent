@@ -1,0 +1,13 @@
+# Example priority file for unified_eval_listener.py.
+#
+# One HuggingFace model id per line. Blank lines and lines starting
+# with '#' are ignored. The listener filters this list against the
+# baseline model config and against already-evaluated jobs in
+# Supabase (use --force-reeval to override the latter).
+#
+# Drop a copy of this file as eval/lists/<your-list>.txt and edit.
+
+# Qwen/Qwen3-32B
+# Qwen/Qwen3-Coder-30B-A3B-Instruct
+# allenai/SERA-32B
+# SWE-bench/SWE-agent-LM-32B

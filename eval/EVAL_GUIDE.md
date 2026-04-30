@@ -22,20 +22,67 @@ catalog in §7.
 ### Conda environments
 
 The listener picks an env per fire via `--conda-env`. Configure each
-mapping in your cluster config's `conda_envs:` block. Typical set:
+mapping in your cluster config's `conda_envs:` block. Two envs are
+load-bearing for evals:
 
 | Env | When |
 |---|---|
-| `otagent` | Default for terminus-2 reg eval, datagen, generic CLI |
-| `otagent-fix` | Has the harbor-fix branch — needed for OOD presets and most installed-agent reproductions |
-| `otagent2` | Axolotl-trained Qwen3 models (transformers ≥ 5.x) |
-| `otagent2-fix` | otagent2 + harbor-fix |
+| `otagent-fix` | Default. transformers 4.x line. Used by terminus-2 reg eval, OOD presets, and swe-agent / openhands text-tools / mini-swe-agent / aider installed-agent fires. |
+| `otagent2-fix` | transformers 5.x line. Used by axolotl-trained Qwen3 finetunes that crash to load on 4.x (`extra_special_tokens` list bug), Qwen3.5 family, and Pattern C scaffolds that need vLLM ≥ 0.17 for `--reasoning-parser-plugin` (Nemotron-Nano, Qwen3-Coder native). |
 
-The harbor-fix branch carries:
-- Daytona connection-pool fix (load-shedding instead of false 401s)
-- swerex `dirs_exist_ok=True` for swe-agent on dev_set_v2/tb2
-- vLLM `eos_token` reading from `tokenizer_config.json`
-- per-trial timeout handling and verifier deadlines
+Recreate both via the slim yaml recipes in [`envs/`](envs/):
+
+```bash
+conda env create -f eval/envs/otagent-fix.yml      # primary
+conda env create -f eval/envs/otagent2-fix.yml     # transformers 5.x line
+```
+
+Pinned versions (as of 2026-04-29):
+
+| Package | otagent-fix | otagent2-fix |
+|---|---|---|
+| python | 3.12 | 3.12 |
+| vllm | 0.13.0 | 0.17.1 |
+| torch | 2.9.0+cu128 | 2.10.0+cu128 |
+| transformers | 4.57.3 | 5.6.0.dev0 |
+| flashinfer-python | 0.5.3 | 0.6.4 |
+| huggingface-hub | 0.36.2 | 1.11.0 |
+| daytona | 0.164.0 | 0.164.0 |
+| harbor (editable) | from harbor-fix checkout | from harbor-fix checkout |
+
+See [`envs/README.md`](envs/README.md) for the verification one-liner
+and notes on when to retest after a version bump.
+
+### harbor-fix — pin the patch stack
+
+Harbor is installed *editable* from a checkout. The eval pipeline
+depends on patches that aren't yet in upstream `main`; pin to:
+
+```bash
+git clone https://github.com/harbor-framework/harbor.git ~/harbor-fix
+git -C ~/harbor-fix checkout penfever/temp-override
+git -C ~/harbor-fix checkout 9980f967     # tip used in the last validated fire
+pip install -e ~/harbor-fix               # inside each conda env
+```
+
+`9980f967` is the Daytona connection-pool fix (PR #1460); the rest of
+`penfever/temp-override` carries:
+
+- Loading-gate semaphore (cap = `n_concurrent * 2`)
+- Treat "Bearer token invalid" as transient
+- `assume_global_snapshot` flag for auto-snapshot pinning
+- Multiplier-aware `max_timeout_sec` ordering
+- Tmux dummy-session PTY + history-limit for swebench/tb2 task images
+- swerex `dirs_exist_ok=True` (mode 12 in §7)
+- ContextLengthExceeded → still run verifier
+- Summarization-timeout default raised (mode 6 in §7)
+- LiteLLM timeouts treated as env failures
+
+If you fire Cat 3 (preferred-harness reproductions), also apply the
+three uncommitted installed-agent patches documented in
+[`envs/README.md`](envs/README.md) (aider provider routing, mini-swe-agent
+api-key list, swe-agent venv PATH + set-u guard). Cat 1/2 fires don't
+need them.
 
 ### Secrets
 

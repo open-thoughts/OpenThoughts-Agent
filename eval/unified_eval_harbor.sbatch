@@ -227,9 +227,11 @@ echo "Python: $($PYTHON_BIN --version)"
 harbor --help >/dev/null
 export RAY_DEDUP_LOGS=0
 
-# Set CUDA_HOME for flashinfer JIT compilation (needs nvcc)
-# The CUDA module provides nvcc at this path on Jupiter GH200 nodes.
-_CUDA_HOME="${EVAL_CUDA_HOME:-/e/software/default/stages/2026/software/CUDA/13}"
+# Set CUDA_HOME for flashinfer JIT compilation (needs nvcc).
+# Set EVAL_CUDA_HOME in your dotenv (see hpc/dotenv/example.env) to point
+# at the CUDA module that ships nvcc on your cluster. If unset, we leave
+# CUDA_HOME alone and trust whatever the conda env / system already has.
+_CUDA_HOME="${EVAL_CUDA_HOME:-}"
 if [ -n "${_CUDA_HOME}" ] && [ -d "${_CUDA_HOME}" ]; then
     export CUDA_HOME="${_CUDA_HOME}"
     export PATH="$CUDA_HOME/bin:$PATH"
@@ -242,11 +244,19 @@ fi
 
 NODE_HOST=$(hostname -s)
 TUNNEL_PORT=7003
-LOGIN_NODE="${EVAL_LOGIN_NODE:-jpbl-s01-02}"
+# EVAL_LOGIN_NODE: hostname of the login node that compute nodes can SSH to
+# for outbound connectivity (Daytona, HF). Required for no-internet clusters
+# that go through proxy.enabled=true in the cluster config; ignored otherwise.
+LOGIN_NODE="${EVAL_LOGIN_NODE:-}"
 PROXYCHAINS_BIN="${EVAL_PROXYCHAINS_BIN:-}"
 TUNNEL_PID=""
 
 setup_proxy() {
+    if [ -z "${LOGIN_NODE}" ]; then
+        echo "[proxy] ERROR: EVAL_LOGIN_NODE not set."
+        echo "[proxy] No-internet clusters must export EVAL_LOGIN_NODE in their dotenv."
+        return 1
+    fi
     echo "[proxy] Setting up SSH tunnel to $LOGIN_NODE..."
 
     if [ -z "${SSH_KEY:-}" ]; then
@@ -1194,7 +1204,7 @@ except Exception as e:
             echo "Result file: ${RESULT_FILE}"
             $PYTHON_BIN -c "
 import json
-BENIGN = {'AgentTimeoutError', 'ContextLengthExceededError', 'SummarizationTimeout', 'SummarizationTimeoutError'}
+BENIGN = {'AgentTimeoutError', 'BadRequestError', 'ContextLengthExceededError', 'SummarizationTimeout', 'SummarizationTimeoutError'}
 with open('$RESULT_FILE', 'r') as f:
     data = json.load(f)
 if 'stats' in data and 'evals' in data['stats']:

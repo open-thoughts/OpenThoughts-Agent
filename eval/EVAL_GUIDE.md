@@ -325,9 +325,10 @@ only when the scaffold needs the JSON-after-think shape.
 ### Pattern A footgun: `--enforce-eager` × 32B + retries
 
 Eager mode adds ~5–14 min to vLLM startup. Default
-`MAX_RETRIES=10` × 60s = 10 min — sometimes the harness gives up
-before `Application startup complete`. For Pattern A 32B fires, pass
-`--vllm-max-retries 30` on the listener.
+`MAX_RETRIES=10` × 100 s = ~17 min — usually enough, but on a slow
+node the harness can still give up before `Application startup
+complete`. For Pattern A 32B fires, pass `--vllm-max-retries 30`
+(~50 min headroom) on the listener.
 
 ---
 
@@ -521,8 +522,9 @@ mitigation.
     Pending DB row with no result. *Refire* with `--force-reeval` only
     when silent-skipped (unconditional refire creates duplicates).
 29. **OpenSWE-32B paper sampling crashes terminus-2** — `rep_penalty
-    1.2` etc. in `override-generation-config` causes 75–77% STOE on
-    OOD. *Drop* the entire override block for OOD fires.
+    1.2` etc. in `override-generation-config` causes 75–77% STOE
+    (stuck-on-exception) on OOD. *Drop* the entire override block for
+    OOD fires.
 30. **Stuck tail trial** — last 1–2 trials hang for hours past job-end
     threshold. *Cancel* + push partial results via
     `manual_db_eval_push.py`.

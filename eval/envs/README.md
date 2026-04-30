@@ -51,10 +51,10 @@ The patches the eval listener relies on, beyond what's in upstream
 
 ### Three uncommitted installed-agent patches
 
-The MBZ working checkout carries three small in-tree patches on top
-of `9980f967` that the upstream branch hasn't accepted yet. If your
-fire is Cat 3 (preferred-harness reproduction — see EVAL_GUIDE §2),
-apply these locally:
+The maintainer's working checkout carries three small in-tree patches
+on top of `9980f967` that the upstream branch hasn't accepted yet. If
+your fire is Cat 3 (preferred-harness reproduction — see EVAL_GUIDE
+§2), apply these locally:
 
 1. **`src/harbor/agents/installed/aider.py`** — propagate
    `OPENAI_API_BASE` so aider/litellm can reach a local vLLM, and

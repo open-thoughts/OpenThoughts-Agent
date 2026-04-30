@@ -13,7 +13,7 @@
 #     byte-identical system prompts across trials).
 #   - Dropped `trust_remote_code: true` from the group — only needed per-model
 #     for custom-code archs; set it explicitly there.
-#   - Default `tensor_parallel_size: 2` for 32B (matches MBZ listener default).
+#   - Default `tensor_parallel_size: 2` for 32B (matches the listener default).
 #
 # Format (unchanged):
 #   models:      Per-model overrides (exact HF name -> config).
@@ -190,10 +190,9 @@ models:
     trust_remote_code: true
     extra_args: "--enable-prefix-caching"
 
-  # Allen AI SERA-32B (SWE-bench model) — 2026-04-22 paper-parity update per
-  # SERA_CONFIG_PARITY.md §5: adopt SERA's own vLLM flags (enforce-eager,
-  # disable-cascade-attn, seed 42), drop prefix-caching + reasoning_parser.
-  # TP kept at 2 (not paper's 4) to fit MBZ concurrency budget.
+  # Allen AI SERA-32B (SWE-bench model) — Pattern A. Paper-parity vLLM flags
+  # (enforce-eager, disable-cascade-attn, seed 42); no prefix-caching or
+  # reasoning_parser. TP=2 (not paper's TP=4) to fit a single-node serving slot.
   "allenai/SERA-32B":
     tensor_parallel_size: 2
     max_model_len: 32768
@@ -237,9 +236,9 @@ models:
     extra_args: "--enable-prefix-caching"
 
   # Lite-Coder/LiteCoder-Terminal-30b-a3b-sft — 30B MoE (3B active), SFT for
-  # terminus scaffold. Do NOT add tool_call_parser or reasoning_parser —
-  # 2026-04-22 A/B confirmed hermes+qwen3 breaks terminus-2 (0% acc on
-  # 442278-442280); Option B (no parsers) gets 23-32% on 442275-442277.
+  # terminus scaffold. Pattern D — do NOT add tool_call_parser or
+  # reasoning_parser; both hijack the JSON the terminus-2 agent parses
+  # client-side (verified A/B: hermes+qwen3 → 0% acc; no parsers → 23–32%).
   "Lite-Coder/LiteCoder-Terminal-30b-a3b-sft":
     tensor_parallel_size: 2
     max_model_len: 32768
@@ -274,10 +273,10 @@ models:
     tool_call_parser: hermes
     reasoning_parser: qwen3
 
-  # Sera-4.5A-Full-T1-v3-axolotl Qwen3-8B finetunes — axolotl-retrained variants.
-  # 2026-04-22 probe 2: mirror SERA-8B paper-parity flags (enforce-eager,
-  # disable-cascade-attn, seed 42, drop reasoning_parser/prefix-caching) to test
-  # whether serving flags rescue the markdown-output-vs-hermes-parser mismatch.
+  # Sera-4.5A-Full-T1-v3-axolotl Qwen3-8B finetunes — axolotl-retrained
+  # variants. Pattern A serving flags (enforce-eager, disable-cascade-attn,
+  # seed 42; no reasoning_parser, no prefix-caching) to mirror SERA-8B
+  # paper-parity behavior on the markdown-output / hermes-parser interaction.
   "laion/Sera-4.5A-Full-T1-v3-316-axolotl__Qwen3-8B":
     tensor_parallel_size: 1
     max_model_len: 32768
@@ -294,10 +293,8 @@ models:
     tool_call_parser: hermes
     extra_args: "--enforce-eager --disable-cascade-attn --seed 42"
 
-  # Sera-4.6-Lite-T2-v4-axolotl Qwen3-8B finetunes — Pattern B (hermes + qwen3 reasoning).
-  # 2026-04-23 second probe: Ben reported tokenizer fix upstream; refire both patterns
-  # on otagent-fix after clearing HF cache to pull the new tokenizer_config.
-  # (Pass 1 of this probe used Pattern A; current write is Pattern B for pass 2.)
+  # Sera-4.6-Lite-T2-v4-axolotl Qwen3-8B finetunes — Pattern B (hermes
+  # tool-call parser + qwen3 reasoning parser + prefix-caching).
   "laion/Sera-4.6-Lite-T2-v4-316-axolotl__Qwen3-8B":
     trust_remote_code: true
     tool_call_parser: hermes
@@ -315,9 +312,10 @@ models:
   "laion/CoderForge-Preview-v2-10000__Qwen3-8B":
     tool_call_parser: hermes
 
-  # CoderForge-Preview-v3-axolotl Qwen3-8B finetunes — 2026-04-23 probe on openhands
-  # native tools. Pattern B (hermes + qwen3 reasoning + prefix-caching) to handle
-  # potential <think> blocks in output (safer default for Qwen3 finetunes).
+  # CoderForge-Preview-v3-axolotl Qwen3-8B finetunes — Pattern B (hermes
+  # tool-call parser + qwen3 reasoning parser + prefix-caching). Handles the
+  # `<think>` blocks emitted by Qwen3 finetunes when run under openhands
+  # native-tool scaffolds.
   "laion/CoderForge-Preview-v3-316-axolotl__Qwen3-8B":
     trust_remote_code: true
     tool_call_parser: hermes

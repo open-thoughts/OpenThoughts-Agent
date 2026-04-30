@@ -37,6 +37,34 @@ if str(_db_path) not in sys.path:
 DEFAULT_JOBS_DIR = _repo_root / "jobs"
 
 
+def _preset_dataset_prefixes():
+    """Run-tag prefixes derived from the listener's PRESETS dict.
+
+    Run dirs are named ``<safe-dataset>_<safe-model>_<date>_<time>`` where the
+    safe-dataset name is the last path segment of the HF dataset id with
+    ``-`` -> ``_``. Reading PRESETS keeps this list in sync as new presets
+    are added (instead of a hardcoded list that drifts).
+    """
+    try:
+        from eval.unified_eval_listener import PRESETS
+    except Exception:  # listener importable in any env that ships the repo
+        return []
+
+    seen = []
+    for cfg in PRESETS.values():
+        # PRESETS uses 'datasets' (plural list); fall back to 'dataset' for safety.
+        datasets = cfg.get("datasets") or ([cfg["dataset"]] if cfg.get("dataset") else [])
+        for ds in datasets:
+            short = ds.split("/", 1)[-1] if "/" in ds else ds
+            short = short.replace("-", "_")
+            if short and short not in seen:
+                seen.append(short)
+    return seen
+
+
+_PRESET_PREFIXES = _preset_dataset_prefixes()
+
+
 def parse_iso(ts_str):
     if not ts_str:
         return None
@@ -129,21 +157,24 @@ def detect_overlong_jobs(jobs_dir, min_elapsed_h=20, benchmark_filter=None):
                 except (json.JSONDecodeError, OSError):
                     pass
 
-        # Fallback: infer from dir name
+        # Fallback: infer from dir name. The prefix list comes from the
+        # listener's PRESETS dict, so any new preset auto-stays-in-sync.
+        # Match longest first so e.g. "swebench_verified_random_100_folders"
+        # wins over a shorter conflicting prefix.
+        prefixes_long_first = sorted(_PRESET_PREFIXES, key=len, reverse=True)
         if not benchmark:
             dirname = entry.name
-            for prefix in ["swebench_verified_random_100_folders", "terminal_bench_2",
-                           "dev_set_v2", "bfcl"]:
+            for prefix in prefixes_long_first:
                 if dirname.startswith(prefix):
                     benchmark = prefix
                     break
 
         if not model:
             dirname = entry.name
-            for prefix in ["swebench_verified_random_100_folders_", "terminal_bench_2_",
-                           "dev_set_v2_", "bfcl_"]:
-                if dirname.startswith(prefix):
-                    rest = dirname[len(prefix):]
+            for prefix in prefixes_long_first:
+                token = prefix + "_"
+                if dirname.startswith(token):
+                    rest = dirname[len(token):]
                     parts = rest.rsplit("_", 2)
                     if len(parts) >= 3 and len(parts[-1]) == 6 and len(parts[-2]) == 8:
                         model = "_".join(parts[:-2])

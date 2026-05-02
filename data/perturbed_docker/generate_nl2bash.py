@@ -19,7 +19,7 @@ from data.perturbed_docker.utils import generate_dockerfiles_with_perturbations
 def generate_nl2bash_instructions(limit: int, offset: int) -> list[str]:
     ds = load_dataset("westenfelder/NL2SH-ALFA", split="train")
     end = min(len(ds), offset + max(0, limit))
-    return [ds[i]["nl"].strip() for i in range(offset, end)]
+    return [x.strip() for x in ds.select(range(offset, end))["nl"]]
 
 
 def main() -> None:

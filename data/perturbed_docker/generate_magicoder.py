@@ -24,7 +24,7 @@ def main() -> None:
         upsampled_dataset_dir, "DCAgent/perturbed-docker-exp-magicoder-tasks-12"
     )
     # hf_dataset = run_dataset_to_traces(output_dir, model_name="gpt-5-nano-2025-08-07", agent_name="terminus-2", n_concurrent=256, agent_kwargs={"max_episodes": 8})
-    # upload_traces_to_hf(hf_dataset, "DCAgent/perturbed-docker-exp-freelancer-traces", "SFT")
+    # upload_traces_to_hf(hf_dataset, "DCAgent/perturbed-docker-exp-magicoder-traces", "SFT")
 
 
 if __name__ == "__main__":

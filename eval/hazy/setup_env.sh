@@ -11,10 +11,12 @@
 #
 set -euo pipefail
 
-EVAL_ROOT="/data/home/macs/eval"
-VENV_DIR="$EVAL_ROOT/venv"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+# Eval artifacts root. Default: <repo>/eval. Override with HARBOR_EVAL_ROOT to
+# put venv/jobs/logs/cache outside the repo on a different cluster.
+EVAL_ROOT="${HARBOR_EVAL_ROOT:-$REPO_ROOT/eval}"
+VENV_DIR="$EVAL_ROOT/venv"
 LOCK_FILE="$SCRIPT_DIR/requirements.lock.txt"
 
 if [ ! -f "$LOCK_FILE" ]; then

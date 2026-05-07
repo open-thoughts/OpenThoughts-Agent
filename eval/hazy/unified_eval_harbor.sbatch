@@ -33,11 +33,14 @@ TIMESTAMP=$(date +'%Y%m%d_%H%M%S')
 # Paths
 # ==============================================================================
 
-EVAL_ROOT="/data/home/macs/eval"
-VENV_DIR="$EVAL_ROOT/venv"
 OT_AGENT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 REPO_ROOT="$(cd "$OT_AGENT_DIR/../.." && pwd)"
 SCRIPT_DIR="$OT_AGENT_DIR/eval/hazy"
+# Eval artifacts root. Default: <repo>/eval (per setup_env.sh). Override with
+# HARBOR_EVAL_ROOT to put venv/jobs/logs/cache outside the repo on a different
+# cluster.
+EVAL_ROOT="${HARBOR_EVAL_ROOT:-$REPO_ROOT/eval}"
+VENV_DIR="$EVAL_ROOT/venv"
 
 if [ ! -f "$VENV_DIR/bin/python" ]; then
     echo "ERROR: Eval venv not found at $VENV_DIR. Run eval/hazy/setup_env.sh"
@@ -53,8 +56,8 @@ VLLM_CONFIG="${EVAL_VLLM_CONFIG:?ERROR: EVAL_VLLM_CONFIG not set}"
 # ==============================================================================
 
 unset PYTHONPATH
-export HF_HOME="/data/home/macs/.cache/huggingface"
-export HF_HUB_CACHE="/data/home/macs/.cache/huggingface/hub"
+export HF_HOME="${HARBOR_HF_HOME:-/data/home/macs/.cache/huggingface}"
+export HF_HUB_CACHE="${HARBOR_HF_HUB_CACHE:-/data/home/macs/.cache/huggingface/hub}"
 export VLLM_CONFIG_ROOT="$EVAL_ROOT/cache/vllm"
 export TRITON_CACHE_DIR="/tmp/triton_cache_${USER}"
 export FLASHINFER_WORKSPACE_BASE="/tmp/flashinfer_cache_${USER}"

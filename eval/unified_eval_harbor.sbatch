@@ -827,6 +827,28 @@ echo "[DEBUG] DAYTONA_API_KEY=${DAYTONA_API_KEY:0:20}..."
 EXISTING_JOB_DIR="${EVAL_JOBS_DIR}/${RUN_TAG}"
 if [ "${EVAL_FORCE_FRESH:-false}" != "true" ] && [ -d "$EXISTING_JOB_DIR" ] && [ -f "$EXISTING_JOB_DIR/config.json" ]; then
     echo "Found existing job dir, resuming: $EXISTING_JOB_DIR"
+    # Patch stale api_base port from prior SLURM run → current vLLM port. The
+    # vLLM port formula is JID-derived (10000 + SLURM_JOB_ID%50000), so every
+    # resume has a different port than the saved config.json. Without this
+    # patch, terminus agents call the OLD port → "Connect call failed" → all
+    # trials fail. (Confirmed empirically on JID 428153, 2026-05-07.)
+    #
+    # We must patch BOTH the job-level config.json AND every per-trial
+    # config.json. Harbor's resume code (harbor/job.py:_init_remaining_trial_configs)
+    # compares per-trial TrialConfig equality (excluding trial_name) to subtract
+    # finished trials from the run queue. Without per-trial patches, every
+    # existing trial's saved api_base mismatches the freshly generated config →
+    # __eq__ fails → harbor logs "Existing trial X not found in generated configs;
+    # skipping" → all n_attempts × n_tasks trials get re-run from scratch.
+    # (Confirmed empirically on JID 428210, 2026-05-08.)
+    echo "Patching api_base port in config.json: -> localhost:${VLLM_PORT}"
+    sed -i.bak-port "s|\"api_base\": \"http://localhost:[0-9]\+/|\"api_base\": \"http://localhost:${VLLM_PORT}/|g" "$EXISTING_JOB_DIR/config.json"
+    PATCHED_TRIAL_COUNT=$(find "$EXISTING_JOB_DIR" -mindepth 2 -maxdepth 2 -name config.json -print 2>/dev/null | wc -l)
+    if [ "$PATCHED_TRIAL_COUNT" -gt 0 ]; then
+        echo "Patching api_base port in $PATCHED_TRIAL_COUNT per-trial config.json files: -> localhost:${VLLM_PORT}"
+        find "$EXISTING_JOB_DIR" -mindepth 2 -maxdepth 2 -name config.json -print0 2>/dev/null | \
+            xargs -0 -r sed -i.bak-port "s|\"api_base\": \"http://localhost:[0-9]\+/|\"api_base\": \"http://localhost:${VLLM_PORT}/|g"
+    fi
     proxied $HARBOR_BIN jobs resume \
         -p "$EXISTING_JOB_DIR" \
         --filter-error-type EnvironmentStartTimeoutError \

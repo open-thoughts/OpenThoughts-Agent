@@ -1,0 +1,7 @@
+# Example model priority list for the eval listener.
+# One HuggingFace model name per line. Lines starting with # are comments.
+# Usage: --priority-file eval/lists/example_models.txt
+#
+# DCAgent/a1-ghactions
+# DCAgent/a1-magicoder
+# myorg/my-finetuned-model

@@ -24,6 +24,51 @@ REPO_DIR = Path(__file__).resolve().parent.parent
 LOGS_DIR = REPO_DIR / "eval" / "logs"
 EXTRA_LOG_DIRS: list[Path] = []
 DEFAULT_JOBS_DIR = REPO_DIR / "jobs"
+CLUSTERS_DIR = REPO_DIR / "eval" / "clusters"
+
+
+def _read_cluster_jobs_dir(yaml_path: Path) -> Path | None:
+    """Pull paths.eval_jobs_dir from a cluster YAML, expanding $VARS and ~."""
+    try:
+        import yaml
+    except ImportError:
+        return None
+    try:
+        with open(yaml_path) as f:
+            cfg = yaml.safe_load(f) or {}
+    except Exception:
+        return None
+    raw = (cfg.get("paths") or {}).get("eval_jobs_dir")
+    if not isinstance(raw, str):
+        return None
+    return Path(os.path.expandvars(os.path.expanduser(raw)))
+
+
+def resolve_jobs_dir(cli_jobs_dir: Path | None,
+                     cluster_config: Path | None) -> Path:
+    """Resolve the eval jobs dir. Precedence:
+
+      1. --jobs-dir CLI flag (explicit override)
+      2. $EVAL_JOBS_DIR env var
+      3. --cluster-config YAML's paths.eval_jobs_dir
+      4. Auto-scan eval/clusters/*.yaml; pick first whose eval_jobs_dir exists
+      5. DEFAULT_JOBS_DIR (legacy fallback)
+    """
+    if cli_jobs_dir is not None:
+        return cli_jobs_dir
+    env_dir = os.environ.get("EVAL_JOBS_DIR")
+    if env_dir:
+        return Path(env_dir)
+    if cluster_config is not None:
+        p = _read_cluster_jobs_dir(cluster_config)
+        if p is not None:
+            return p
+    if CLUSTERS_DIR.is_dir():
+        for yml in sorted(CLUSTERS_DIR.glob("*.yaml")):
+            p = _read_cluster_jobs_dir(yml)
+            if p is not None and p.is_dir():
+                return p
+    return DEFAULT_JOBS_DIR
 
 # Benchmark ordering for display. Core benchmarks render first in the listed
 # order, then OOD benchmarks in the listed order, then anything else
@@ -95,6 +140,9 @@ def parse_eval_log(jid, job_name, all_log_dirs=None, max_lines=2000):
     is_dp = job_name.startswith("eval_dp_") or job_name.startswith("res_dp_")
     model = bench = run_tag = None
     num_shards = 0
+    n_concurrent = None
+    timeout_mult = None
+    is_resume_log = False  # True if sbatch entered resume code path (line ~829)
     for log in candidates:
         if not log.exists():
             continue
@@ -108,17 +156,39 @@ def parse_eval_log(jid, job_name, all_log_dirs=None, max_lines=2000):
                     bench = line.strip()[9:]
                 elif line.startswith("Run tag: "):
                     run_tag = line.strip()[9:]
+                elif line.startswith("N concurrent: "):
+                    try:
+                        n_concurrent = int(line.strip()[14:])
+                    except ValueError:
+                        pass
+                elif line.startswith("Timeout multiplier: "):
+                    try:
+                        timeout_mult = float(line.strip()[20:])
+                    except ValueError:
+                        pass
                 elif "total shards)" in line:
                     try:
                         num_shards = int(line.split("total shards")[0].split(",")[-1].strip())
                     except (ValueError, IndexError):
                         pass
+                # Resume detection: sbatch prints both lines together (sbatch:829-836)
+                # when entering resume mode. Either line is a sufficient signal.
+                # Job-name-based detection (`res_` prefix) misses jobs submitted
+                # via the orchestrator, which uses sbatch's default --job-name "data".
+                elif (line.startswith("Found existing job dir, resuming:")
+                      or line.startswith("Patching api_base port in config.json")):
+                    is_resume_log = True
                 # Early exit once every expected field is found.
                 # Non-DP jobs never emit "total shards", so don't wait on num_shards.
-                if model and bench and run_tag and (num_shards > 0 or not is_dp):
+                # Don't early-exit on is_resume_log — resume signal appears later
+                # in the log (after dataset locate phase) than the header fields.
+                if (model and bench and run_tag
+                        and n_concurrent is not None and timeout_mult is not None
+                        and (num_shards > 0 or not is_dp)
+                        and is_resume_log):
                     break
         break
-    return model, bench, run_tag, num_shards
+    return model, bench, run_tag, num_shards, n_concurrent, timeout_mult, is_resume_log
 
 
 VALID_ERROR_TYPES = {
@@ -250,7 +320,7 @@ def collect_job_data(jobs_dir):
 
     def process_one(job):
         jid, name, state, start_time = job
-        model, bench, run_tag, num_shards = parse_eval_log(jid, name, all_log_dirs)
+        model, bench, run_tag, num_shards, n_concurrent, timeout_mult, is_resume_log = parse_eval_log(jid, name, all_log_dirs)
         completed, total, invalid_errors, finished, n_on_disk, accuracy, agent = get_progress(run_tag, num_shards, jobs_dir)
 
         if finished:
@@ -264,7 +334,13 @@ def collect_job_data(jobs_dir):
         m_short = model.split("/")[-1] if model and "/" in model else (model or "?")
         b_short = bench.split("/")[-1] if bench and "/" in bench else (bench or "?")
 
-        is_resume = name.startswith("res_")
+        # Resume detection covers two paths:
+        #   1) Job-name prefix `res_` — set when listener creates a sbatch with
+        #      explicit --job-name (older flow).
+        #   2) Slurm-log content match — set when sbatch enters its resume code
+        #      path regardless of job name. The orchestrator submits with the
+        #      default --job-name "data", so name-based detection alone misses it.
+        is_resume = name.startswith("res_") or is_resume_log
         tags = []
         if is_resume:
             tags.append("RES")
@@ -301,6 +377,8 @@ def collect_job_data(jobs_dir):
             "tags": tags,
             "progress_pct": progress_pct,
             "is_resume": is_resume,
+            "n_concurrent": n_concurrent,
+            "timeout_mult": timeout_mult,
         }
 
     max_workers = min(32, max(4, len(running_raw)))
@@ -382,7 +460,7 @@ def print_default(running_data, pending, sort_key="progress"):
 
         print(f"\nRUNNING ({len(running_data)}):")
 
-        header = f"  {'JID':>8s}  {'Progress':>10s}  {'On Disk':>8s}  {'Acc':>6s}  {'Errors':>6s}  {'Status':>6s}  {'Elapsed':>8s}  {'Agent':<14s}  Model"
+        header = f"  {'JID':>8s}  {'Progress':>10s}  {'On Disk':>8s}  {'Acc':>6s}  {'Errors':>6s}  {'Conc':>4s}  {'Tmout':>5s}  {'Status':>6s}  {'Elapsed':>8s}  {'Agent':<14s}  Model"
         sep = "  " + "-" * (len(header) - 2)
 
         current_category = None
@@ -417,8 +495,10 @@ def print_default(running_data, pending, sort_key="progress"):
                 on_disk = f"{j['n_on_disk']}/{j['total']}" if j["n_on_disk"] is not None and j["total"] else "-"
                 acc = f"{j['accuracy']:.1%}" if j["accuracy"] is not None else "-"
                 errors = str(j["n_invalid_errors"]) if j["n_invalid_errors"] is not None else "-"
+                conc = str(j["n_concurrent"]) if j["n_concurrent"] is not None else "-"
+                tmout = f"{j['timeout_mult']:g}x" if j["timeout_mult"] is not None else "-"
                 tag_str = f" [{', '.join(j['tags'])}]" if j["tags"] else ""
-                print(f"  {j['jid']:>8s}  {progress:>10s}  {on_disk:>8s}  {acc:>6s}  {errors:>6s}  {j['status']:>6s}  {j['elapsed']:>8s}  {j['agent']:<14s}  {j['model']}{tag_str}")
+                print(f"  {j['jid']:>8s}  {progress:>10s}  {on_disk:>8s}  {acc:>6s}  {errors:>6s}  {conc:>4s}  {tmout:>5s}  {j['status']:>6s}  {j['elapsed']:>8s}  {j['agent']:<14s}  {j['model']}{tag_str}")
 
     if pending:
         reasons = get_pending_reasons()
@@ -571,6 +651,8 @@ def run_live_dashboard(jobs_dir, interval, sort_key="progress", compact=False,
             table.add_column("Disk", width=8, justify="right")
             table.add_column("Acc", width=6, justify="right")
             table.add_column("Err", width=4, justify="right")
+            table.add_column("Conc", width=4, justify="right")
+            table.add_column("Tmout", width=5, justify="right")
             table.add_column("Status", width=6, justify="right")
             table.add_column("Elapsed", width=6, justify="right")
             table.add_column("Agent", width=14, no_wrap=True)
@@ -584,6 +666,8 @@ def run_live_dashboard(jobs_dir, interval, sort_key="progress", compact=False,
                 acc = f"{j['accuracy']:.1%}" if j["accuracy"] is not None else "-"
                 errors = str(j["n_invalid_errors"]) if j["n_invalid_errors"] is not None else "-"
                 error_style = "red bold" if (j["n_invalid_errors"] or 0) > 10 else ""
+                conc = str(j["n_concurrent"]) if j["n_concurrent"] is not None else "-"
+                tmout = f"{j['timeout_mult']:g}x" if j["timeout_mult"] is not None else "-"
                 tag_str = f" [{', '.join(j['tags'])}]" if j["tags"] else ""
                 model_display = j["model_full"]
 
@@ -597,6 +681,8 @@ def run_live_dashboard(jobs_dir, interval, sort_key="progress", compact=False,
                     Text(on_disk, style=style),
                     Text(acc, style="cyan" if j["accuracy"] is not None else style),
                     Text(errors, style=error_style or style),
+                    Text(conc, style=style),
+                    Text(tmout, style=style),
                     Text("resume" if skey == "active_res" else j["status"], style=style),
                     Text(j["elapsed"], style=style),
                     Text(j["agent"], style=style),
@@ -701,8 +787,15 @@ examples:
         help="In --live mode, show one benchmark per page, rotating each refresh",
     )
     parser.add_argument(
-        "--jobs-dir", type=Path, default=DEFAULT_JOBS_DIR,
-        help=f"Path to eval jobs directory (default: {DEFAULT_JOBS_DIR})",
+        "--jobs-dir", type=Path, default=None,
+        help=("Path to eval jobs directory. If omitted, resolves from "
+              "$EVAL_JOBS_DIR, then --cluster-config, then auto-detects "
+              f"from eval/clusters/*.yaml, then falls back to {DEFAULT_JOBS_DIR}"),
+    )
+    parser.add_argument(
+        "--cluster-config", type=Path, default=None,
+        help="Cluster config YAML to read paths.eval_jobs_dir from "
+             "(e.g. eval/clusters/jupiter.yaml)",
     )
     parser.add_argument(
         "--logs-dir", type=Path, default=LOGS_DIR,
@@ -716,13 +809,15 @@ def main():
     global LOGS_DIR
     LOGS_DIR = args.logs_dir
 
+    jobs_dir = resolve_jobs_dir(args.jobs_dir, args.cluster_config)
+
     if args.live:
         interval = max(3, args.interval)
-        run_live_dashboard(args.jobs_dir, interval, sort_key=args.sort,
+        run_live_dashboard(jobs_dir, interval, sort_key=args.sort,
                            compact=args.compact, benchmark_filter=args.benchmark,
                            page_mode=args.page)
     else:
-        running_data, pending = collect_job_data(args.jobs_dir)
+        running_data, pending = collect_job_data(jobs_dir)
         if args.benchmark:
             running_data = [j for j in running_data
                            if args.benchmark.lower() in j["bench"].lower()]

@@ -123,6 +123,14 @@ def build_listener_argv(
         "--once",
         "--force-reeval",
     ]
+    # Pass --resume-error-threshold only when explicitly set, so we don't shadow
+    # the listener's own default. Setting this to -1 promotes DONE dirs (with
+    # infra_errors=0) into DONE_WITH_ERRORS classification, which is the only
+    # way to resume a dir that has n_completed == n_total but is genuinely
+    # stuck-at-full (finished_at=None). See RESUME_RUNBOOK.md "Resuming
+    # stuck-at-full DONE dirs" for rationale.
+    if args.resume_error_threshold is not None:
+        cmd += ["--resume-error-threshold", str(args.resume_error_threshold)]
     if args.enable_thinking:
         cmd.append("--enable-thinking")
     return cmd
@@ -217,6 +225,15 @@ def main() -> int:
                          "inspector's slurm-log-based --max-total-fires filter). Default: 1, "
                          "meaning the listener will also refuse to resume a dir whose meta.env "
                          "shows >= 1 prior resume completed. Bump if you raised --max-total-fires."))
+    p.add_argument("--resume-error-threshold", type=int, default=None,
+                   help=("Listener-side --resume-error-threshold passthrough. When omitted, the "
+                         "listener uses its own default (10). Pass -1 to enable resuming "
+                         "stuck-at-full DONE dirs (n_completed==n_total, finished_at=None, "
+                         "infra_errors below normal threshold) — the listener's resume scanner "
+                         "skips DONE dirs unless infra_errors > threshold, so threshold=-1 makes "
+                         "any infra_errors >= 0 promote the dir to DONE_WITH_ERRORS classification "
+                         "and become resume-eligible. Combined with the per-trial G12 sed patch, "
+                         "harbor will only run the actual missing trials and then finalize+upload."))
 
     p.add_argument("--python", default="/e/scratch/jureap59/zhuang1/conda/envs/otagent-fix/bin/python",
                    help="Python interpreter to invoke listener with.")

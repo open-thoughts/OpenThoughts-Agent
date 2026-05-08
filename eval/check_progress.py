@@ -318,6 +318,33 @@ def collect_job_data(jobs_dir):
     # Resolve log dirs once — stat-checking EXTRA_LOG_DIRS per-job wastes syscalls.
     all_log_dirs = [LOGS_DIR] + [d for d in EXTRA_LOG_DIRS if d.exists()]
 
+    # Build run_tag → [JIDs] index across all slurm log dirs once. Used to
+    # surface the prior fire's JID for resume jobs (so the user can see what
+    # this resume continues from). A run dir gets one log per fire (original +
+    # each resume); we sort numerically so the highest JID < current is the
+    # immediate predecessor.
+    fire_index: dict[str, list[str]] = {}
+    for log_dir in all_log_dirs:
+        if not log_dir.is_dir():
+            continue
+        for f in log_dir.glob("data_*.out"):
+            try:
+                fjid = f.stem.split("_", 1)[1]
+            except IndexError:
+                continue
+            try:
+                with open(f, "r", errors="replace") as fh:
+                    for i, line in enumerate(fh):
+                        if i > 200:
+                            break
+                        if line.startswith("Run tag: "):
+                            rt = line[len("Run tag: "):].strip()
+                            if rt:
+                                fire_index.setdefault(rt, []).append(fjid)
+                            break
+            except (OSError, IOError):
+                continue
+
     def process_one(job):
         jid, name, state, start_time = job
         model, bench, run_tag, num_shards, n_concurrent, timeout_mult, is_resume_log = parse_eval_log(jid, name, all_log_dirs)
@@ -341,9 +368,24 @@ def collect_job_data(jobs_dir):
         #      path regardless of job name. The orchestrator submits with the
         #      default --job-name "data", so name-based detection alone misses it.
         is_resume = name.startswith("res_") or is_resume_log
+        prior_jid = None
+        if is_resume and run_tag:
+            # Find the most-recent prior fire for this run_tag (highest JID
+            # numerically less than the current one). Falls back gracefully if
+            # the prior fire's slurm log was rotated/deleted (rmlogs).
+            try:
+                cur_int = int(jid)
+                priors = sorted(
+                    (int(j) for j in fire_index.get(run_tag, []) if j.isdigit() and int(j) < cur_int),
+                    reverse=True,
+                )
+                if priors:
+                    prior_jid = str(priors[0])
+            except (ValueError, TypeError):
+                pass
         tags = []
         if is_resume:
-            tags.append("RES")
+            tags.append(f"RES <- {prior_jid}" if prior_jid else "RES")
         if num_shards > 1:
             tags.append(f"{num_shards}x DP")
 

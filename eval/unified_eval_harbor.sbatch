@@ -1308,7 +1308,7 @@ run_dir = os.environ["RUN_DIR"]
 run_tag = os.environ["RUN_TAG"]
 username = os.environ.get("UPLOAD_USERNAME", os.environ.get("USER", "jupiter"))
 error_mode = os.environ.get("UPLOAD_MODE", "skip_on_error")
-hf_repo_id = sanitize_hf_repo_id(f"DCAgent2/{run_tag}")
+hf_repo_id = sanitize_hf_repo_id(f"DCAgent3/{run_tag}")
 hf_token = os.environ["HF_TOKEN"]
 
 print(f"[uploader] upload_eval_results(path={run_dir!r}, username={username!r}, "

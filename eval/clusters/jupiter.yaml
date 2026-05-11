@@ -1,0 +1,59 @@
+# Jupiter (JSC GH200) cluster configuration for the eval listener.
+#
+#   python eval/unified_eval_listener.py --cluster-config eval/clusters/jupiter.yaml ...
+#
+# Sourced by scratch user zhuang1. Other users on Jupiter should copy this
+# file and patch the user-scoped paths (project_root, eval_jobs_dir,
+# conda_envs, harbor_src).
+
+# NOTE: cluster_name controls which dotenv the sbatch auto-sources at runtime
+# (`hpc/dotenv/${CLUSTER_NAME}.env`). Use `jupiter_eval` (not `jupiter`) so the
+# sbatch picks up `hpc/dotenv/jupiter_eval.env` instead of the existing
+# `jupiter.env`, which is the SFT/RL launcher dotenv and points DCFT at the
+# old `OpenThoughts-Agent` checkout.
+cluster_name: jupiter_eval
+
+# --- SLURM defaults --------------------------------------------------------
+# jureap59 account suspended; route through reformo.
+slurm_partition: booster
+slurm_account: reformo
+slurm_time: "12:00:00"      # reformo wallclock cap
+
+# --- Conda environments ----------------------------------------------------
+# Prefix paths (the dir containing bin/python). Both envs are created from
+# eval/envs/{otagent-fix,otagent2-fix}.yml on this cluster.
+conda_envs:
+  otagent-fix: /e/scratch/jureap59/zhuang1/conda/envs/otagent-fix
+  otagent2-fix: /e/scratch/jureap59/zhuang1/conda/envs/otagent2-fix
+  # Pre-existing env kept as fallback (older harbor pin):
+  otagent2: /e/scratch/jureap59/zhuang1/conda/envs/otagent2
+
+# --- Paths -----------------------------------------------------------------
+paths:
+  project_root: /e/scratch/jureap59/zhuang1/OpenThoughts-Agent-Latest
+  hf_cache: /e/data1/datasets/playground/ot/hf_hub
+  eval_jobs_dir: /e/data1/datasets/playground/mmlaion/shared/zhuang1_eval_jobs
+  eval_logs_dir: eval/logs
+  listener_logs_dir: experiments/listener_logs
+  sbatch_script: eval/unified_eval_harbor.sbatch
+  dp_sbatch_script: eval/unified_eval_harbor_dp.sbatch
+  harbor_src: /e/scratch/jureap59/zhuang1/harbor-fix/src
+  datasets_dirs:
+    - /e/data1/datasets/playground/ot/hf_hub
+  secrets_file: ~/secrets.env
+
+# --- Proxy / no-internet support ------------------------------------------
+# Compute nodes have no internet; sbatch SSH-tunnels HF/Daytona traffic
+# through the login node and routes via proxychains4.
+proxy:
+  enabled: true
+  login_node: jpbl-s01-02
+  proxychains_bin: /e/scratch/jureap59/feuer1/proxychains-ng-aarch64/bin/proxychains4
+
+# --- Hardware --------------------------------------------------------------
+hardware:
+  gpus_per_node: 4            # GH200
+  cpus_per_node: 72
+  mem_per_node_mb: 480000     # ~480 GB LPDDR5X aggregate
+  arch: aarch64
+  cuda_home: /usr/local/cuda-13

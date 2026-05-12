@@ -712,7 +712,16 @@ python scripts/database/manual_db_eval_push.py \
 - `--forced-update` — overwrite existing DB rows (default: skip if row
   exists).
 - `--skip-hf` — DB-only (skip the HuggingFace traces upload).
-- `--hf-repo DCAgent2/<run_tag>-traces` — explicit override.
+- `--hf-repo DCAgent3/<run_tag>-traces` — explicit override.
+
+> **HF trace upload destination is `DCAgent3`.** `DCAgent` and `DCAgent2` are
+> the previous orgs — both have hit their public-storage cap (HF returns 403
+> on new uploads), so new traces go to `DCAgent3`. The two older orgs still
+> host source benchmark datasets (e.g. `DCAgent2/terminal_bench_2`,
+> `DCAgent/dev_set_v2`) — those are read-only and unchanged. If you see a
+> sbatch fail at upload with `403 Forbidden` on a `DCAgent2/` path, the run
+> was launched from a pre-migration sbatch checkout; re-upload via
+> `batch_upload_eval.py` to land on `DCAgent3`.
 
 **Watch out**: `agent_info.model_info.name` in `result.json` is the
 vLLM-served numeric id (e.g. `1774950145766573`), not the HF model

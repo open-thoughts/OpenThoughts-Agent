@@ -115,7 +115,7 @@ def get_job_info(job_dir):
                     td = json.load(open(tr))
                     source = td.get("source", "")
                     if source:
-                        for pfx in ["DCAgent2_", "DCAgent_"]:
+                        for pfx in ["DCAgent3_", "DCAgent2_", "DCAgent_"]:
                             if source.startswith(pfx):
                                 source = source[len(pfx):]
                                 break

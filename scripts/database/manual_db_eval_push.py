@@ -15,7 +15,7 @@ Usage (from OpenThoughts-Agent/):
     # With explicit HuggingFace repo
     python scripts/database/manual_db_eval_push.py \\
         --job-dir trace_jobs/my-eval-job \\
-        --hf-repo DCAgent2/my-eval-traces
+        --hf-repo DCAgent3/my-eval-traces
 
     # Skip HF upload (database only)
     python scripts/database/manual_db_eval_push.py \\
@@ -84,7 +84,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--hf-repo",
         default=None,
-        help="HuggingFace repo ID (e.g., DCAgent2/my-traces). Default: auto-derived from job name.",
+        help="HuggingFace repo ID (e.g., DCAgent3/my-traces). Default: auto-derived from job name.",
     )
     parser.add_argument(
         "--hf-private",
@@ -207,7 +207,7 @@ def derive_benchmark_name(job_dir: Path) -> str:
     return derive_benchmark_from_job_dir(job_dir)
 
 
-def derive_hf_repo_id(job_name: str, org: str = "DCAgent2") -> str:
+def derive_hf_repo_id(job_name: str, org: str = "DCAgent3") -> str:
     """Derive HuggingFace repo ID from job name.
 
     Note: Sanitization happens in launch_utils.sync_eval_to_database().

@@ -13,7 +13,8 @@ catalog in §7.
 5. [Yaml flip-restore workflow (Cat 4)](#5-yaml-flip-restore-workflow-cat-4)
 6. [Monitoring + result extraction](#6-monitoring--result-extraction)
 7. [Failure modes catalog](#7-failure-modes-catalog)
-8. [Recovery scripts](#8-recovery-scripts)
+8. [Resume after walltime](#8-resume-after-walltime)
+9. [Recovery scripts](#9-recovery-scripts)
 
 ---
 
@@ -441,7 +442,7 @@ mitigation.
    checksum does not match`. *Delete* the cache, refire.
 4. **24h SLURM wall before upload** — long jobs with many
    `AgentTimeoutError` trials burn walltime before Harbor's upload
-   step. *Use* `upload_overlong_jobs.py` (see §8).
+   step. *Use* `upload_overlong_jobs.py` (see §9).
 5. **Bearer token invalid / Daytona load-shedding** — sustained sandbox
    creation > ~10/s triggers fake 401s. *Drop* concurrent fires;
    stagger with `--stagger-delay 2 --chain-batch-size 2`. The
@@ -531,29 +532,171 @@ mitigation.
 
 ---
 
-## 8. Recovery scripts
+## 8. Resume after walltime
+
+When a SLURM job hits its wallclock cap before harbor finishes the dataset,
+the run dir is left at partial coverage with `finished_at=None`. Most
+clusters can recover the missing trials without re-running the whole job
+through the **resume tooling**:
+
+- `eval/check_resume_needed.py` — inspector. Reads disk + squeue, classifies
+  every run dir, prints a status table.
+- `eval/resume_chunked.py` — orchestrator. Fires N-at-a-time resume listener
+  invocations from a priority file.
+
+Both reuse internals from `eval/unified_eval_listener.py` so classification
+and infra-error definitions never drift.
+
+> **Read the bug catalogue first.** Out-of-the-box `harbor jobs resume`
+> re-runs the entire dataset due to a per-trial config mismatch (G12), and
+> can leave the DB row stuck at Pending (G13). Both fixes are committed in
+> this repo. The full cross-cluster catalogue + verification checklist
+> lives at [`eval/docs/RESUME_HANDOFF.md`](docs/RESUME_HANDOFF.md). Apply
+> the harbor-fix patches from `eval/envs/README.md` before relying on
+> resume — without them you'll waste compute or hit 9-10h tail retry loops.
+
+### Inspect first
+
+```bash
+python eval/check_resume_needed.py \
+  --jobs-dir $EVAL_JOBS_DIR \
+  --needs-resume-only
+```
+
+The output table classifies every run dir:
+
+| Status | Meaning | Resume? |
+|---|---|---|
+| `INCOMPLETE` | `n_completed < n_total`, `finished_at=None` | Yes — standard walltime case |
+| `DONE_WITH_ERRORS` | All trials done, infra errors > threshold | Yes |
+| `PARTIAL` | `n_completed < n_total`, `finished_at` set, infra > threshold | Yes |
+| `EARLY_KILL` | No `result.json`, `n_total=0` | Yes |
+| `DONE` | All trials done, infra ≤ threshold | No (by default — see override) |
+| `IN_FLIGHT` | Currently in squeue, or active map | No (wait) |
+| `AT_RESUME_LIMIT` | `n_fires ≥ --max-total-fires` | No — hand to upload (§9) |
+| `REJECTED` | `.no-resume` marker present | No (hidden by default) |
+
+Stuck-at-full runs — full coverage on disk but no `finished_at`, classify as
+`DONE` and get hidden by default. To resume them anyway, pass
+`--resume-error-threshold -1` to the orchestrator. This promotes
+`infra_errors=0` dirs from `DONE` to `DONE_WITH_ERRORS` so they become
+eligible.
+
+### Fire the resume
+
+```bash
+# Build a one-per-line priority file:
+cat > /tmp/resume.txt <<EOF
+<org>/<model_A>
+<org>/<model_B>
+EOF
+
+python eval/resume_chunked.py \
+  --priority-file /tmp/resume.txt \
+  --preset tb2 --org eval \
+  --jobs-dir $EVAL_JOBS_DIR \
+  --tag-prefix r_$(date -u +%H%M%S) \
+  --tp-size 2 --dp-size 2 --timeout-multiplier 16.0 \
+  --conda-env otagent-fix \
+  --chunk-size 6 --sleep-between 0
+# Add --resume-error-threshold -1 for stuck-at-full DONE dirs.
+```
+
+One listener invocation = one sizing config (one preset, one TP/DP combo,
+one conda env). Mixed sizes / presets → fire multiple invocations in
+parallel, one per (preset × size) combo.
+
+### Pre-walltime cancel
+
+Daytona sandboxes run remotely. When SLURM SIGTERM hits at walltime, harbor
+on the compute node dies but sandboxes keep writing back to the run dir on
+shared FS for 30-60 minutes. Observed: 267-task dir went 267 → 352 trial
+dirs after walltime; `n_completed` overshot `n_total`; the inspector
+silently skips dirs with `n_completed > n_total`.
+
+**Mitigation**: cancel before walltime hits.
+
+```bash
+# Cancel jobs at ≤15 min TIME_LEFT (~11h45m+ elapsed on a 12h cap):
+squeue -u $USER --format='%.10i %.10M %.10L' --noheader \
+  | awk '$3 ~ /^0:[0-3][0-9]:/ { print $1 }' | xargs -r scancel
+```
+
+Then wait ~60s and run the inspector. After a *walltime-killed* dir, wait
+~60min instead for zombies to settle.
+
+### Verify each resume
+
+For every new JID, confirm:
+
+```bash
+# RUNNING within 30s
+squeue -j <new_jid> --format='%.10i %.10T'
+
+# G12 check — per-trial sed patch ran
+grep "Patching api_base port in [0-9]+ per-trial" eval/logs/<log>_<new_jid>.out
+
+# G12 check — zero "skipping" warnings
+grep -c "not found in generated configs; skipping" eval/logs/<log>_<new_jid>.out
+# expect: 0
+
+# Harbor scheduled only the in-flight trials, not the whole dataset
+grep -c "^Starting trial" eval/logs/<log>_<new_jid>.out
+# expect: matches in_flight count from inspector pre-resume
+
+# G13 check — DB row flipped to Started
+python -c "from database.unified_db.utils import get_sandbox_job_by_name; \
+  print(get_sandbox_job_by_name('<run_tag>')['job_status'])"
+# expect: "Started"
+```
+
+If any check fails, see [`eval/docs/RESUME_HANDOFF.md`](docs/RESUME_HANDOFF.md)
+§Bug G12 / §Bug G13 for the root cause and the corresponding source patches.
+
+### Fire-cap
+
+Default `--max-total-fires=2` (one original + one resume). Beyond that the
+inspector marks the dir `AT_RESUME_LIMIT` — upload it as-is via §9 rather
+than firing again. Daytona auth tokens have a 24h validity window in most
+org configs, so a third fire usually starts failing in the auth-degradation
+window anyway.
+
+---
+
+## 9. Recovery scripts
+
+When resume isn't applicable (auto-upload failed, hit fire cap, or the run
+just needs to be pushed as-is), use one of the upload helpers.
 
 ### When to use which
 
 ```
                     +----------------------------------+
-                    | Did the SLURM job hit TIMEOUT    |
-                    | (24h walltime) before upload?    |
+                    | Has the run dir been resumed     |
+                    | to satisfactory coverage         |
+                    | (or is it AT_RESUME_LIMIT)?      |
                     +----------------+-----------------+
                                      |
                           yes        |       no
-                  +------------------+------------------+
-                  |                                     |
-         upload_overlong_jobs.py            Did Harbor's auto-upload
-         (scans jobs/, identifies            fail (e.g. numeric model_id,
-          overlong runs, batch                missing result.json)?
-          uploads partial results)                       |
-                                              yes       |       no
-                                       +----------------+--------+
-                                       |                         |
-                              manual_db_eval_push.py     no action — auto-upload
-                              --job-dir jobs/<run_tag>   succeeded; verify in
-                              --forced-update --verbose  Supabase
+                  +------------------+----------------+
+                  |                                   |
+        Did SLURM hit TIMEOUT                  Run §8 resume first
+        (24h walltime) before upload?
+                  |
+       yes        |       no
+       +----------+---------+
+       |                    |
+upload_overlong       Did Harbor's auto-upload
+_jobs.py              fail (numeric model_id,
+                      missing result.json)?
+                             |
+                  yes        |       no
+                  +----------+---------+
+                  |                    |
+        manual_db_eval_push.py    no action — verify
+        (single job)              in Supabase
+        batch_upload_eval.py
+        (multiple jobs)
 ```
 
 ### `manual_db_eval_push.py` — single-job recovery
@@ -595,12 +738,48 @@ Walks `$EVAL_JOBS_DIR`, picks runs whose latest `trial.log` mtime is
 older than the threshold (= TIMEOUT-killed), pushes their partial
 results to Supabase + HuggingFace as `status=overlong`.
 
+### `batch_upload_eval.py` — multi-job upload
+
+Cluster-agnostic batch helper for pushing many run dirs to Supabase + HF
+in one invocation. Reads `HF_TOKEN` / `SUPABASE_*` from the environment;
+no hardcoded paths — `--jobs-dir` defaults to `./jobs` and accepts any
+location. Useful when an in-flight batch of evals all complete and you
+want a single upload pass instead of N `manual_db_eval_push` calls.
+
+```bash
+source ~/.local/eval.env
+
+# Upload explicit run dirs
+python scripts/database/batch_upload_eval.py \
+  $EVAL_JOBS_DIR/<run_tag_A> \
+  $EVAL_JOBS_DIR/<run_tag_B>
+
+# Auto-detect overlong (TIMEOUT-killed) runs under a jobs dir
+python scripts/database/batch_upload_eval.py \
+  --auto-detect-overlong --jobs-dir $EVAL_JOBS_DIR
+
+# Parallel upload with N workers
+python scripts/database/batch_upload_eval.py -p 8 $EVAL_JOBS_DIR/swebench_*
+
+# Dry-run / DB-only / forced overwrite
+python scripts/database/batch_upload_eval.py --dry-run $EVAL_JOBS_DIR/<run_tag>
+python scripts/database/batch_upload_eval.py --skip-hf $EVAL_JOBS_DIR/<run_tag>
+python scripts/database/batch_upload_eval.py --force $EVAL_JOBS_DIR/<run_tag>
+```
+
+Same `model_id` numeric-id pitfall applies as for `manual_db_eval_push.py`
+— verify the model name in Supabase post-upload if the run used a vLLM
+endpoint.
+
 ---
 
 ## See also
 
 - `docs/PREFERRED_HARNESS_REPRODUCTION.md` — per-model recipe lookup
   with reproduction numbers.
+- `docs/RESUME_HANDOFF.md` — cross-cluster bug catalogue (G10/G12/G13 +
+  harbor #1617 + Bug #2) referenced from §8. Read before relying on
+  resume on a new cluster.
 - `clusters/example.yaml`, `hpc/dotenv/example.env` — populate these
   for your cluster before any fire.
 - `python eval/unified_eval_listener.py --help` — full CLI surface.

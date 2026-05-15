@@ -118,16 +118,24 @@ mkdir -p "{experiments_dir}/ray_logs"
 # experiments directory for debugging after the job terminates.
 cleanup_ray_logs() {
   echo "Preserving Ray logs to {experiments_dir}/ray_logs/"
-  # Find and copy Ray session directories from /tmp on head node
+
+  # --- Head node logs ---
   if [[ -d /tmp/ray ]]; then
     rsync -a --ignore-errors /tmp/ray/ "{experiments_dir}/ray_logs/" 2>/dev/null || true
   fi
-  # Also try common Ray log locations
   for ray_dir in /tmp/ray_logs /tmp/ray_tmp; do
     if [[ -d "$ray_dir" ]]; then
       rsync -a --ignore-errors "$ray_dir/" "{experiments_dir}/ray_logs/$(basename $ray_dir)/" 2>/dev/null || true
     fi
   done
+
+  # --- Worker node logs (clusters with intra-node SSH, e.g. Jupiter) ---
+  local WORKER_LOG_SCRIPT="$WORKDIR/scripts/ray/collect_worker_ray_logs.sh"
+  if [[ -f "$WORKER_LOG_SCRIPT" ]]; then
+    source "$WORKER_LOG_SCRIPT"
+    collect_worker_ray_logs "{experiments_dir}/ray_logs"
+  fi
+
   echo "Ray log preservation complete"
 }
 trap cleanup_ray_logs EXIT

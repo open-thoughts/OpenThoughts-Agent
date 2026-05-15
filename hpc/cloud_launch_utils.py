@@ -12,6 +12,7 @@ This module provides common components for cloud launchers including:
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 import threading
@@ -54,8 +55,14 @@ def _ensure_sky_api_server(timeout: int = 30) -> None:
         pass
 
     print("[cloud] SkyPilot API server not running — starting it via 'sky api start'...")
+    sky_bin = shutil.which("sky")
+    if sky_bin is None:
+        raise RuntimeError(
+            "SkyPilot CLI ('sky') not found on PATH. "
+            "Install it with: pip install 'skypilot[all]'"
+        )
     result = subprocess.run(
-        [sys.executable, "-m", "sky", "api", "start"],
+        [sky_bin, "api", "start"],
         capture_output=True, text=True, timeout=timeout,
     )
     if result.returncode != 0:

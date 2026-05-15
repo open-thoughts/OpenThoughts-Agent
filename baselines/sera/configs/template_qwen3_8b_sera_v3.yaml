@@ -1,0 +1,63 @@
+# Mirror of SERA's axolotl_qwen3_8b.yaml, parameterized for Jupiter SFT on v3 data.
+# Filled at render time via sed-substitution of __SIZE__.
+
+base_model: Qwen/Qwen3-8B
+deepspeed: /e/scratch/jureap59/feuer1/code/axolotl/deepspeed_configs/zero3_bf16.json
+
+load_in_8bit: false
+load_in_4bit: false
+
+# plugins disabled 2026-04-22: CCE + bf16 + flash-attn on aarch64/torch2.9 caused
+# gradient explosion (grad_norm 9.8e+11) and loss -> 0 within first 3-7 steps.
+# plugins:
+#   - axolotl.integrations.cut_cross_entropy.CutCrossEntropyPlugin
+
+chat_template: chatml
+datasets:
+  - path: laion/Sera-4.5A-Full-T1-v3-__SIZE__
+    data_files:
+      - sera-4.5a-full-t1_v3___SIZE__.jsonl
+    type: chat_template
+    field_messages: messages
+    ds_type: json
+    message_field_training: train
+
+dataset_prepared_path: /e/data1/datasets/playground/ot-baf/axolotl_dataset_cache/sera-v3-__SIZE__
+output_dir: /e/data1/datasets/playground/ot-baf/checkpoints/sera-v3-__SIZE__-axolotl__Qwen3-8B
+
+sequence_len: 32768
+
+wandb_project:
+wandb_entity:
+wandb_watch:
+wandb_name: sera-v3-__SIZE__-axolotl__Qwen3-8B
+wandb_log_model:
+
+gradient_accumulation_steps: 8
+micro_batch_size: 1
+num_epochs: 3
+optimizer: adamw_torch
+lr_scheduler: cosine
+learning_rate: 1e-5
+adam_beta1: 0.9
+adam_beta2: 0.95
+
+bf16: auto
+tf32: false
+
+gradient_checkpointing: true
+activation_offloading: true
+resume_from_checkpoint:
+logging_steps: 1
+flash_attention: true
+
+loss_watchdog_threshold: 5.0
+loss_watchdog_patience: 3
+
+warmup_ratio: 0.1875
+evals_per_epoch: 0
+save_strategy: epoch
+
+weight_decay: 0.01
+max_grad_norm: 1.0
+special_tokens:

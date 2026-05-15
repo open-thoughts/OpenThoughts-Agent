@@ -106,6 +106,9 @@ JOB_NAME_IGNORE_KEYS: list[str] = [
     "sandbox_memory_gb",
     "sandbox_disk_gb",
     "sandbox_gpu",
+    # Model/training infrastructure toggles
+    "attn",
+    "use_cce",
     # Noisy toggles that shouldn't impact identity
     "overwrite_output_dir",
     "enable_task_gen",
@@ -147,6 +150,7 @@ JOB_NAME_IGNORE_KEYS: list[str] = [
     "consolidate_workdir",
     "consolidate_commit_message",
     "dependency",
+    "reservation",
     # RL environment toggles
     "rl_use_conda",
     "rl_conda_env",

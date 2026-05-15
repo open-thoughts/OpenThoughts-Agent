@@ -329,6 +329,46 @@ def resolve_n_concurrent(
     return default
 
 
+def resolve_n_attempts(
+    cli_value: Any = None,
+    harbor_config: Any = None,
+    default: int = 1,
+) -> int:
+    """Resolve attempts-per-task from CLI override, Harbor config, or default.
+
+    Mirrors ``resolve_n_concurrent``. ``n_attempts`` lives at the top level of
+    the Harbor YAML (not under ``orchestrator``).
+
+    Precedence (highest wins):
+      1. ``cli_value``  (--trace_n_attempts on the command line)
+      2. ``harbor_config``  (top-level ``n_attempts`` in the Harbor YAML)
+      3. ``default``  (1)
+    """
+    if cli_value is not None:
+        try:
+            val = int(cli_value)
+            if val > 0:
+                return val
+        except (TypeError, ValueError):
+            pass
+
+    yaml_val = None
+    if isinstance(harbor_config, dict):
+        yaml_val = harbor_config.get("n_attempts")
+    elif harbor_config is not None:
+        yaml_val = getattr(harbor_config, "n_attempts", None)
+
+    if yaml_val is not None:
+        try:
+            val = int(yaml_val)
+            if val > 0:
+                return val
+        except (TypeError, ValueError):
+            pass
+
+    return default
+
+
 __all__ = [
     "looks_like_file_path",
     "resolve_paths_in_dict",
@@ -340,5 +380,6 @@ __all__ = [
     "coerce_str_bool_none",
     "coerce_numeric_cli_values",
     "resolve_n_concurrent",
+    "resolve_n_attempts",
     "run_harbor_cli",
 ]

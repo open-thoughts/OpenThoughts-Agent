@@ -53,10 +53,15 @@ def build_training_parameters_link(hub_model_id: Optional[str]) -> Optional[str]
 
 
 def ensure_deepspeed_config(base_config: dict, exp_args: dict) -> dict:
-    """Ensure DeepSpeed settings exist."""
-    default_ds = LlamaFactoryArgs.__dataclass_fields__["deepspeed"].default
-    if not base_config.get("deepspeed"):
-        base_config["deepspeed"] = exp_args.get("deepspeed", default_ds) or default_ds
+    """Pass through DeepSpeed config if explicitly set in YAML or CLI.
+
+    Does NOT inject a default — if neither the YAML nor CLI specifies
+    deepspeed, the job uses FSDP via accelerate instead.
+    """
+    # CLI override takes priority
+    if exp_args.get("deepspeed"):
+        base_config["deepspeed"] = exp_args["deepspeed"]
+    # Otherwise, keep whatever the base YAML had (including None/absent)
     return base_config
 
 
@@ -85,11 +90,13 @@ def maybe_compute_gradient_accumulation(base_config: dict, exp_args: dict) -> di
     tensor_model_parallel_size = coerce_positive_int(base_config.get("tensor_model_parallel_size"), 1)
     pipeline_model_parallel_size = coerce_positive_int(base_config.get("pipeline_model_parallel_size"), 1)
     expert_model_parallel_size = coerce_positive_int(base_config.get("expert_model_parallel_size"), 1)
+    sequence_parallel_size = coerce_positive_int(base_config.get("sequence_parallel_size"), 1)
 
     model_parallel_world_size = (
         tensor_model_parallel_size
         * pipeline_model_parallel_size
         * expert_model_parallel_size
+        * sequence_parallel_size
     )
 
     if total_gpu_count % model_parallel_world_size != 0:
@@ -123,6 +130,102 @@ def maybe_compute_gradient_accumulation(base_config: dict, exp_args: dict) -> di
     return base_config
 
 
+def prebuild_arrow_cache(base_config: dict, train_config_path: str = "") -> None:
+    """Pre-build HF datasets arrow cache AND LlamaFactory tokenization cache.
+
+    When training on multi-node no-internet clusters (Jupiter, Leonardo), all
+    ranks race to build the arrow cache simultaneously on shared NFS, causing
+    ``FileNotFoundError`` when one rank reads a partially-written ``.arrow``
+    file from another, or NCCL heartbeat timeouts when fast ranks enter
+    collectives while slow ranks are still tokenizing.
+
+    This runs LlamaFactory's actual data pipeline (single process, CPU-only)
+    on the login node before SLURM submission.  The resulting ``.map()`` cache
+    files will be found by all compute ranks, skipping tokenization entirely.
+    """
+    dataset_path = base_config.get("dataset", "")
+    cache_dir = base_config.get("datasets_cache_dir", "")
+
+    if not dataset_path or not cache_dir:
+        return
+
+    # Only pre-build for local/resolved paths
+    dataset_paths = [p.strip() for p in dataset_path.split(",") if p.strip()]
+    local_paths = [p for p in dataset_paths if os.path.isdir(p)]
+
+    if not local_paths:
+        return
+
+    if not train_config_path:
+        print("[arrow-cache] No train_config_path provided, skipping pre-build.")
+        return
+
+    print(f"[arrow-cache] Pre-building tokenization cache via LlamaFactory pipeline...")
+    os.makedirs(cache_dir, exist_ok=True)
+
+    try:
+        # Force CPU-only and single-process
+        prev_cuda = os.environ.get("CUDA_VISIBLE_DEVICES")
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        # Prevent distributed init
+        prev_world = os.environ.get("WORLD_SIZE")
+        os.environ.pop("WORLD_SIZE", None)
+        os.environ.pop("RANK", None)
+        os.environ.pop("LOCAL_RANK", None)
+
+        # Run LlamaFactory's data loading with the actual training config.
+        # This uses the real template, tokenizer, and preprocessing — the
+        # exact same .map() calls that training will use — so the cache
+        # fingerprints match and compute nodes skip tokenization.
+        import subprocess, sys
+        result = subprocess.run(
+            [
+                sys.executable, "-c",
+                "import os; os.environ['CUDA_VISIBLE_DEVICES']=''; "
+                "from llamafactory.hparams import get_train_args; "
+                "from llamafactory.data.loader import get_dataset; "
+                "from transformers import AutoTokenizer; "
+                f"model_args, data_args, training_args, finetuning_args, gen_args = "
+                f"get_train_args(['--config', '{train_config_path}']); "
+                "tokenizer = AutoTokenizer.from_pretrained("
+                "  model_args.model_name_or_path, trust_remote_code=True); "
+                "ds = get_dataset(model_args, data_args, training_args, "
+                "  stage='sft', tokenizer=tokenizer, processor=None); "
+                "print(f'Cache built: {len(ds[\"train_dataset\"])} examples')"
+            ],
+            capture_output=True, text=True, timeout=600,
+            env={**os.environ, "CUDA_VISIBLE_DEVICES": ""},
+        )
+        if result.returncode == 0:
+            print(f"[arrow-cache] {result.stdout.strip()}")
+        else:
+            # Common failure: bf16 validation on CPU. Fall back to raw cache only.
+            stderr_short = result.stderr.strip().split("\n")[-3:]
+            print(f"[arrow-cache] LlamaFactory pipeline failed (non-fatal):")
+            for line in stderr_short:
+                print(f"[arrow-cache]   {line}")
+            print("[arrow-cache] Falling back to raw dataset cache only.")
+
+            from datasets import load_dataset
+            for ds_path in local_paths:
+                ds_name = os.path.basename(ds_path)[:50]
+                print(f"[arrow-cache]   Loading raw: {ds_name}...")
+                load_dataset(ds_path, cache_dir=cache_dir)
+            print("[arrow-cache] Raw cache built.")
+
+        # Restore env
+        if prev_cuda is not None:
+            os.environ["CUDA_VISIBLE_DEVICES"] = prev_cuda
+        else:
+            os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+        if prev_world is not None:
+            os.environ["WORLD_SIZE"] = prev_world
+
+    except Exception as exc:
+        print(f"[arrow-cache] WARNING: Pre-build failed ({exc}). "
+              "Training may work but tokenization will race on compute nodes.")
+
+
 def apply_data_argument_overrides(base_config: dict, exp_args: dict) -> None:
     tool_call_tag = exp_args.get("tool_call_tag")
     if tool_call_tag:
@@ -133,6 +236,47 @@ def apply_data_argument_overrides(base_config: dict, exp_args: dict) -> None:
             tag_value = exp_args[tag]
             if tag_value is not None:
                 base_config[tag] = tag_value
+
+
+# Models that require a dedicated conda environment with transformers v5+
+# and specialized kernels (e.g., flash-linear-attention for Gated DeltaNet).
+_MODELS_REQUIRING_SPECIAL_ENV = {
+    "qwen3.5": "sft-qwen35",
+    "qwen3_5": "sft-qwen35",
+}
+
+
+def _get_sft_conda_activate(hpc, exp_args: dict) -> str:
+    """Determine the conda activation command for SFT jobs.
+
+    Priority:
+    1. --conda_env CLI override (via resolve_conda_activate)
+    2. Model-specific env from _MODELS_REQUIRING_SPECIAL_ENV
+    3. Default HPC conda_activate
+    """
+    from hpc.launch_utils import resolve_conda_activate
+
+    # 1. Explicit CLI override takes priority
+    if exp_args.get("conda_env"):
+        return resolve_conda_activate(hpc, exp_args)
+
+    # 2. Model-specific auto-detection
+    model_name = str(exp_args.get("model_name_or_path") or exp_args.get("_original_model_name_or_path") or "").lower()
+
+    for pattern, env_name in _MODELS_REQUIRING_SPECIAL_ENV.items():
+        if pattern in model_name:
+            print(f"[conda] Model '{model_name}' requires special env '{env_name}'")
+            if hpc.conda_activate and "conda.sh" in hpc.conda_activate:
+                conda_sh = hpc.conda_activate.split("&&")[0].strip()
+                return f"{conda_sh} && conda activate {env_name}"
+            conda_prefix = os.environ.get("CONDA_PREFIX", "")
+            if conda_prefix:
+                import re
+                base = re.sub(r"/envs/[^/]+$", "", conda_prefix)
+                return f"source {base}/etc/profile.d/conda.sh && conda activate {env_name}"
+            return f"conda activate {env_name}"
+
+    return hpc.conda_activate or "# No conda activation configured"
 
 
 def maybe_apply_cluster_specific_env_overrides(exp_args: dict, hpc) -> dict:
@@ -167,9 +311,23 @@ def configure_sft_reporting(base_config: dict, exp_args: dict, model_path: str) 
     Returns:
         Updated base_config with reporting settings
     """
-    # Default: push on internet nodes, don't push on no-internet nodes
-    default_push = exp_args.get("internet_node", False)
-    push_to_hub = parse_bool_with_default(exp_args.get("push_to_hub"), default_push)
+    # Default: push only if cluster has direct internet. SSH tunnels/proxychains
+    # on no-internet clusters (Jupiter, Leonardo) often can't reach HF Hub API
+    # during trainer init, causing ConnectionError crashes.
+    # Only enable push_to_hub on no-internet clusters if explicitly set via CLI.
+    has_direct_internet = exp_args.get("internet_node", False)
+    default_push = has_direct_internet
+    cli_push = exp_args.get("push_to_hub")
+    yaml_push = base_config.get("push_to_hub")
+    if cli_push is not None:
+        # Explicit CLI flag always wins
+        push_to_hub = parse_bool_with_default(cli_push, default_push)
+    elif has_direct_internet and yaml_push is not None:
+        # On internet nodes, respect the YAML config
+        push_to_hub = parse_bool_with_default(yaml_push, default_push)
+    else:
+        # On no-internet nodes, default to False regardless of YAML
+        push_to_hub = default_push
 
     if exp_args.get("internet_node"):
         base_config["report_to"] = "wandb"
@@ -178,16 +336,19 @@ def configure_sft_reporting(base_config: dict, exp_args: dict, model_path: str) 
         base_config.pop("report_to", None)
         base_config["push_to_hub"] = push_to_hub
         base_config["model_name_or_path"] = model_path
-        base_config["datasets_cache_dir"] = os.environ.get("HF_HUB_CACHE", "")
+        # Use a dedicated arrow cache dir alongside HF_HUB_CACHE (not inside it) to avoid
+        # datasets>=4.7.0 cache resolution bugs while keeping arrow caches off /tmp.
+        _hf_cache = os.environ.get("HF_HUB_CACHE", "")
+        base_config["datasets_cache_dir"] = os.path.join(os.path.dirname(_hf_cache), "arrow_cache") if _hf_cache else ""
     return base_config
 
 
 # Templates that use LLaMA-Factory's ReasoningTemplate and need thinking preprocessing.
 # Other templates (e.g. qwen3_nothink, qwen2_5, chatml) do NOT use ReasoningTemplate.
-_REASONING_TEMPLATES = {"qwen3"}
+_REASONING_TEMPLATES = {"qwen3", "qwen3_5"}
 
 # Mapping from ReasoningTemplate names to their non-thinking counterparts.
-_NOTHINK_TEMPLATE_MAP = {"qwen3": "qwen3_nothink"}
+_NOTHINK_TEMPLATE_MAP = {"qwen3": "qwen3_nothink", "qwen3_5": "qwen3_5_nothink"}
 
 # Threshold: if fewer than this fraction of assistant messages contain real
 # <think> content, automatically switch to the _nothink template variant.
@@ -414,6 +575,8 @@ def maybe_preprocess_thinking(
     new_dataset_path = new_paths[0] if new_paths else artifacts.dataset_path
     # Force the config to use the local preprocessed paths (even on internet
     # nodes where LlamaFactory would otherwise load from HF Hub directly).
+    # The cache_dir bug with datasets>=4.7.0 is fixed in LlamaFactory's
+    # loader.py (skip cache_dir for local directory paths).
     base_config["dataset"] = ",".join(new_paths)
     base_config["dataset_dir"] = "ONLINE"
 
@@ -870,11 +1033,9 @@ def construct_sft_sbatch_script(exp_args: dict, hpc) -> str:
         cuda_setup = """# CUDA path detection (handled by Python runner)
 # Additional CUDA setup can be done in SFTJobRunner._setup_environment()"""
 
-    srun_prefix = f"srun --nodes={num_nodes}"
-    # Generate srun command based on launcher
+    srun_prefix = f"srun --nodes={num_nodes} --ntasks-per-node=1"
     # Use --nodes and --ntasks-per-node=1 to ensure one process per node for multi-node training
     # Each node then launches its own accelerate processes for local GPUs
-    srun_base = "srun --nodes=$SLURM_JOB_NUM_NODES --ntasks-per-node=1"
     if hpc.needs_ssh_tunnel:
         # JSC clusters use proxychains4 for internet access
         srun_prefix += " $PROXY_CMD"
@@ -882,7 +1043,12 @@ def construct_sft_sbatch_script(exp_args: dict, hpc) -> str:
     #     print(f"Using Apptainer image: {os.environ['IMAGE']}")
     #     srun_prefix += f' apptainer exec --nv {os.environ["IMAGE"]}'
 
-    cmd = f'python -m hpc.sft_launch_utils --config "{config_path}"'
+    # The srun child processes need the conda environment re-activated because
+    # srun launches a non-interactive shell that doesn't inherit the batch step's
+    # conda activation.  Prepend the conda activate so every node uses the right
+    # Python (critical for sft-qwen35 which needs transformers >= 5.3.0).
+    conda_activate = _get_sft_conda_activate(hpc, exp_args)
+    cmd = f'{conda_activate} && python -m hpc.sft_launch_utils --config "{config_path}"'
     srun_command = f"{srun_prefix} bash -c '{cmd}'"
     substitutions = {
         "time_limit": exp_args.get("time_limit") or "24:00:00",
@@ -892,7 +1058,7 @@ def construct_sft_sbatch_script(exp_args: dict, hpc) -> str:
         "job_name": job_name,
         "sbatch_extra_directives": "\n".join(sbatch_directives),
         "module_commands": hpc.get_module_commands(),
-        "conda_activate": hpc.conda_activate or "# No conda activation configured",
+        "conda_activate": _get_sft_conda_activate(hpc, exp_args),
         "cluster_env_file": hpc.dotenv_filename,
         "cuda_setup": cuda_setup,
         "nccl_exports": hpc.get_nccl_exports(),

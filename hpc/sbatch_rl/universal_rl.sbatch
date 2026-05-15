@@ -75,10 +75,11 @@ if [ -n "$DAYTONA_API_KEY_OVERRIDE" ]; then
   export DAYTONA_API_KEY="$DAYTONA_API_KEY_OVERRIDE"
 fi
 
-# --- Daytona target (tells Harbor this is an RL job) ---
-if [ "{harbor_env}" = "daytona" ]; then
-  export DAYTONA_TARGET="RL"
-fi
+# --- Daytona target ---
+# Intentionally NOT setting DAYTONA_TARGET. Harbor's daytona.py treats unset
+# DAYTONA_TARGET as "no region" — snapshot names omit the region segment and
+# region_id is left None when creating snapshots. This must stay aligned with
+# prebuild_daytona_snapshots() in hpc/rl_launch_utils.py, which is also region-less.
 
 # --- RL Environment Activation ---
 # The RL environment is separate from datagen due to dependency conflicts.
@@ -95,6 +96,13 @@ fi
 # --- CUDA path detection (Perlmutter and similar) ---
 {cuda_setup}
 
+# --- Ensure CUDA_HOME/PATH survive conda activation ---
+# Module loads set CUDA_HOME but conda activation can reset PATH.
+# Re-export to ensure vLLM and DeepSpeed find the right CUDA.
+if [ -n "${CUDA_HOME:-}" ]; then
+  export PATH="$CUDA_HOME/bin:$PATH"
+fi
+
 # --- NCCL/Networking settings (cluster-specific) ---
 {nccl_exports}
 
@@ -103,6 +111,7 @@ export PYTHONFAULTHANDLER=1
 export TORCH_SHOW_CPP_STACKTRACES=1
 export CUDA_LAUNCH_BLOCKING=0
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
+export TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=1800
 export OMP_NUM_THREADS=1
 export PYTHONPATH="$WORKDIR:${PYTHONPATH:-}"
 
@@ -139,16 +148,24 @@ mkdir -p "{experiments_dir}/ray_logs"
 # experiments directory for debugging after the job terminates.
 cleanup_ray_logs() {
   echo "Preserving Ray logs to {experiments_dir}/ray_logs/"
-  # Find and copy Ray session directories from /tmp on head node
+
+  # --- Head node logs ---
   if [[ -d /tmp/ray ]]; then
     rsync -a --ignore-errors /tmp/ray/ "{experiments_dir}/ray_logs/" 2>/dev/null || true
   fi
-  # Also try common Ray log locations
   for ray_dir in /tmp/ray_logs /tmp/ray_tmp; do
     if [[ -d "$ray_dir" ]]; then
       rsync -a --ignore-errors "$ray_dir/" "{experiments_dir}/ray_logs/$(basename $ray_dir)/" 2>/dev/null || true
     fi
   done
+
+  # --- Worker node logs (clusters with intra-node SSH, e.g. Jupiter) ---
+  local WORKER_LOG_SCRIPT="$WORKDIR/scripts/ray/collect_worker_ray_logs.sh"
+  if [[ -f "$WORKER_LOG_SCRIPT" ]]; then
+    source "$WORKER_LOG_SCRIPT"
+    collect_worker_ray_logs "{experiments_dir}/ray_logs"
+  fi
+
   echo "Ray log preservation complete"
 }
 trap cleanup_ray_logs EXIT

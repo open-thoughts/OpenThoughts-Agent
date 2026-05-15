@@ -1,0 +1,8 @@
+DCAgent/staqc-sandboxes-traces-terminus-2_Qwen3-32B
+laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_num-train-epochs_4.0_Qwen3-32B
+laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_num-train-epochs_4.0_Qwen3-32B
+laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_num-train-epochs_4.0_Qwen3-32B
+laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_num-train-epochs_6.0_Qwen3-32B
+laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_num-train-epochs_8-0_Qwen3-32B
+laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_warmup-ratio_0-01_Qwen3-32B
+laion/Qwen3-32B-R2EGYM-256-3epochs

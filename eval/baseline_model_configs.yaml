@@ -1,0 +1,64 @@
+# Baseline model vLLM serving configs
+# Maps HF model names (where base_model_id=None in DB) to their vLLM serving params.
+# Used by unified_eval_listener.py to pass model-specific overrides to the eval script.
+#
+# These params are passed as env vars (EVAL_VLLM_*) to the PBS/sbatch script.
+# The script uses them to override its defaults (via eval/build_vllm_cmd.sh).
+#
+# Note: tensor_parallel_size is intentionally omitted for most models.
+# The eval script will default to the node's GPU count (e.g. TP=4 on Polaris A100-40GB).
+# Only set it here if a model requires a specific TP size.
+#
+# Pattern configs (under "patterns") are matched when no exact model name is found.
+# Each pattern entry has a "match" regex and the same config fields as a model entry.
+
+models:
+  "NovaSky-AI/SA-SWE-32B":
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    extra_args: "--dtype bfloat16 --block-size 16 --enable-chunked-prefill --max-num-partial-prefills 1 --enable-prefix-caching"
+
+  "Qwen/Qwen2.5-Coder-32B-Instruct":
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--dtype bfloat16 --block-size 16 --enable-chunked-prefill --max-num-partial-prefills 1 --enable-prefix-caching"
+
+  "R2E-Gym/R2EGym-32B-Agent":
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--dtype bfloat16 --block-size 16 --enable-chunked-prefill --max-num-partial-prefills 1 --enable-prefix-caching"
+
+  "SWE-Swiss/SWE-Swiss-32B":
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--dtype bfloat16 --block-size 16 --enable-chunked-prefill --max-num-partial-prefills 1 --enable-prefix-caching"
+
+  "Skywork/Skywork-SWE-32B":
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--dtype bfloat16 --block-size 16 --enable-chunked-prefill --max-num-partial-prefills 1 --enable-prefix-caching"
+
+  "allenai/SERA-32B":
+    max_model_len: 32768
+    swap_space: 12
+    tool_call_parser: hermes
+    extra_args: "--dtype bfloat16 --block-size 16 --enable-chunked-prefill --max-num-partial-prefills 1 --enable-prefix-caching"
+
+# Pattern-based configs: matched by regex when no exact model name is found.
+# Checked in order; first match wins.
+patterns:
+  - match: "131k|-lc$"
+    max_model_len: 131072
+    swap_space: 12
+    extra_args: "--hf-overrides '{\"rope_scaling\":{\"rope_type\":\"yarn\",\"factor\":4.0,\"original_max_position_embeddings\":32768}}'"

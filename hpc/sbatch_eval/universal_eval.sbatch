@@ -40,7 +40,27 @@ rm -rf /tmp/podman-* 2>/dev/null || true
 # --- Module loading (cluster-specific, substituted by launcher) ---
 {module_commands}
 
-# --- Environment setup ---
+# --- Conda activation (cluster-specific, substituted by launcher) ---
+# Must run before WORKDIR detection so DCFT is available from the dotenv.
+{conda_activate}
+
+# --- Source environment files (sets DCFT, SCRATCH, etc.) ---
+# Try common DCFT locations so the dotenv can be sourced even before DCFT is set.
+for _try_dcft in "${DCFT:-}" "${DCFT_PRIVATE:-}" "$PWD"; do
+  if [ -n "$_try_dcft" ] && [ -f "$_try_dcft/hpc/dotenv/{cluster_env_file}" ]; then
+    source "$_try_dcft/hpc/dotenv/{cluster_env_file}"
+    break
+  fi
+done
+if [ -n "${DC_AGENT_SECRET_ENV:-}" ] && [ -f "$DC_AGENT_SECRET_ENV" ]; then
+  source "$DC_AGENT_SECRET_ENV"
+fi
+if [ -n "${DCFT_ACTIVATE_ENV:-}" ]; then
+  eval "$DCFT_ACTIVATE_ENV"
+fi
+
+# --- Environment setup (WORKDIR) ---
+# Now DCFT should be set from the dotenv sourced above.
 if [ -n "${DCFT_PRIVATE:-}" ]; then
   WORKDIR="$DCFT_PRIVATE"
 elif [ -n "${DCFT:-}" ]; then
@@ -52,20 +72,6 @@ cd "$WORKDIR"
 
 if [ -z "${DCFT:-}" ]; then
   export DCFT="$WORKDIR"
-fi
-
-# --- Conda activation (cluster-specific, substituted by launcher) ---
-{conda_activate}
-
-# --- Source environment files ---
-if [ -n "${DCFT:-}" ] && [ -f "$DCFT/hpc/dotenv/{cluster_env_file}" ]; then
-  source "$DCFT/hpc/dotenv/{cluster_env_file}"
-fi
-if [ -n "${DC_AGENT_SECRET_ENV:-}" ] && [ -f "$DC_AGENT_SECRET_ENV" ]; then
-  source "$DC_AGENT_SECRET_ENV"
-fi
-if [ -n "${DCFT_ACTIVATE_ENV:-}" ]; then
-  eval "$DCFT_ACTIVATE_ENV"
 fi
 
 # --- Daytona API key override (from --daytona_api_key CLI argument) ---

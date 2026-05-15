@@ -1449,11 +1449,22 @@ def ensure_output_dir_in_dockerfile(dockerfile: Path) -> None:
     if any(directive in line for line in content):
         return
 
-    insert_idx = 0
+    insert_idx = None
     for idx, line in enumerate(content):
-        if line.strip().upper().startswith("WORKDIR"):
+        s = line.strip().upper()
+        if s.startswith("WORKDIR"):
             insert_idx = idx + 1
             break
+    if insert_idx is None:
+        # No WORKDIR — insert after the FIRST FROM directive.
+        for idx, line in enumerate(content):
+            if line.strip().upper().startswith("FROM"):
+                insert_idx = idx + 1
+                break
+    if insert_idx is None:
+        # No FROM either (truly malformed Dockerfile) — skip insertion;
+        # the build will fail later on its own.
+        return
 
     content.insert(insert_idx, directive)
     dockerfile.write_text("\n".join(content) + "\n")

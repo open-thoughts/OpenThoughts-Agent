@@ -1,0 +1,52 @@
+# vLLM serving config for OpenHands-trained models (e.g. laion/CoderForge-*-axolotl__Qwen3-8B).
+#
+# CoderForge training data comes from OpenHands traces — tool calls are
+# encoded as OpenHands XML, not Hermes JSON:
+#   <tool_call>
+#     <function=str_replace_editor>
+#       <parameter=command>view</parameter>
+#       <parameter=path>/testbed</parameter>
+#     </function>
+#   </tool_call>
+# vLLM's `tool_call_parser: hermes` fails to parse this (expects JSON inside
+# <tool_call> tags) → returns tool_calls=None → OpenHands receives empty
+# response → trial collapses → 0% pass rate.
+#
+# This config DISABLES vLLM's server-side tool-call parsing and reasoning
+# extraction, so the raw <tool_call>...</tool_call> XML stays in the
+# assistant message's `content` field. OpenHands' CodeActAgent parses the
+# XML from content itself.
+#
+# Do NOT use this config for Hermes-format models — use the sibling
+# qwen3_8b_vllm_serve_32k_4xGH200.yaml instead.
+engine:
+  type: vllm_local
+  model: Qwen/Qwen3-8B
+  max_output_tokens: 16384
+  healthcheck_interval: 300
+  vllm_local: {}
+backend:
+  type: ray
+  wait_for_endpoint: true
+vllm_server:
+  model_path: Qwen/Qwen3-8B
+  num_replicas: 4
+  tensor_parallel_size: 1
+  pipeline_parallel_size: 1
+  data_parallel_size: 1
+  time_limit: '11:59:00'
+  max_model_len: 32768
+  max_num_seqs: 32
+  gpu_memory_utilization: 0.9
+  swap_space: 12
+  enable_expert_parallel: false
+  enable_auto_tool_choice: false
+  extra_args:
+  - --dtype
+  - bfloat16
+  - --block-size
+  - '16'
+  - --enable-chunked-prefill
+  - --max-num-partial-prefills
+  - '1'
+  - --enable-prefix-caching

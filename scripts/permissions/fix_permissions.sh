@@ -27,6 +27,22 @@ fi
 
 echo "Fixing permissions for: $TARGET_DIR"
 
+# Ensure all ancestor directories up to / are traversable (o+x).
+# Without this, other users can't reach the target even if it's 755.
+echo "  [0/5] Ensuring parent directories are traversable (o+x)..."
+_dir="$TARGET_DIR"
+while [[ "$_dir" != "/" ]]; do
+    _dir="$(dirname "$_dir")"
+    # Only fix dirs owned by us — don't touch system dirs
+    if [[ -O "$_dir" ]]; then
+        _perms=$(stat -c '%a' "$_dir" 2>/dev/null || stat -f '%Lp' "$_dir" 2>/dev/null)
+        if [[ $(( 0$_perms & 0005 )) -eq 0 ]]; then
+            echo "    Setting $_dir to 755 (was $_perms)"
+            chmod 755 "$_dir"
+        fi
+    fi
+done
+
 echo "  [1/5] Setting directories to 755 (rwxr-xr-x)..."
 find "$TARGET_DIR" -type d -exec chmod 755 {} +
 

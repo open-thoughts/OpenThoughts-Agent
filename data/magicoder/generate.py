@@ -6,6 +6,7 @@ Generate Magicoder-Evol-Instruct-110K dataset in sandboxes style.
 from __future__ import annotations
 import argparse
 from datasets import load_dataset
+from data.gcs_cache import gcs_cache
 from data.commons import generate_tasks_from_questions, upload_tasks_to_hf, upload_traces_to_hf
 from scripts.harbor.run_and_export_traces import run_dataset_to_traces
 
@@ -93,6 +94,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-upload", action="store_true",
                    help="Skip the upload step (generate only)")
     return p.parse_args()
+
+
+@gcs_cache()
+def generate_magicoder_instructions(limit: int, offset: int) -> list[str]:
+    datasets, _ = extract_dataset_components(limit=limit, offset=offset)
+    return [instruction for instruction, _, _, _, _ in datasets]
 
 
 def main() -> None:

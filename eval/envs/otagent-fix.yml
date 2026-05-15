@@ -1,0 +1,57 @@
+# otagent-fix — primary eval conda env (transformers 4.x line)
+#
+# Use for: terminus-2 reg eval, OOD presets, all installed-agent
+# preferred-harness reproductions whose models load on transformers
+# 4.x. This is the default --conda-env for the listener.
+#
+# Recreate:
+#   conda env create -f eval/envs/otagent-fix.yml
+#   conda activate otagent-fix
+#   # Editable harbor (pin matters — see eval/envs/README.md):
+#   git clone https://github.com/harbor-framework/harbor.git ~/harbor-fix
+#   git -C ~/harbor-fix checkout penfever/temp-override   # @ 9980f967 or newer
+#   pip install -e ~/harbor-fix
+#   # Apply the three installed-agent patches documented in eval/envs/README.md.
+#
+# This file pins only the eval-load-bearing deps. A full
+# `conda env export` is intentionally NOT shipped — build pins are
+# platform-specific and stale fast.
+
+name: otagent-fix
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      # Inference / runtime — versions matter for agent behavior
+      - vllm==0.13.0
+      - torch==2.9.0
+      - transformers==4.57.3
+      - accelerate==1.12.0
+      - flashinfer-python==0.5.3
+      - triton==3.5.0
+      - numpy==2.2.6
+
+      # Agent-side LLM clients
+      - openai==2.28.0
+      - anthropic==0.71.0
+
+      # Sandbox runtime
+      - daytona==0.164.0
+
+      # HF
+      - huggingface-hub==0.36.2
+
+      # Database / supabase (eval upload)
+      - supabase
+      - python-dotenv
+      - pyyaml
+
+      # Listener helpers
+      - rich
+      - psutil
+
+      # Harbor itself is installed editable from a checkout — see header.
+      # `pip install -e <harbor-fix-checkout>` after creating this env.

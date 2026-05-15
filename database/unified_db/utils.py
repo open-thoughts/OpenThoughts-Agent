@@ -1953,10 +1953,27 @@ def get_sandbox_job_by_id(job_id: str) -> Optional[Dict[str, Any]]:
 
 
 def get_sandbox_job_by_name(job_name: str) -> Optional[Dict[str, Any]]:
-    """Retrieve a sandbox job from the database by name."""
+    """Retrieve a sandbox job from the database by name.
+
+    When v6 resume reuses a run_tag, multiple rows may share the same job_name
+    (the original Started/Finished row plus the new Pending row created by the
+    resume listener). Without explicit ordering, Postgres returns rows in
+    physical-insertion order, which means callers like
+    update_job_status_to_started() may see the stale Started row first and
+    short-circuit "already_started", leaving the actual Pending row never
+    flipped to Started. Order by submitted_at desc to always return the most
+    recent row.
+    """
     try:
         client = get_supabase_client()
-        response = client.table('sandbox_jobs').select('*').eq('job_name', job_name).execute()
+        response = (
+            client.table('sandbox_jobs')
+            .select('*')
+            .eq('job_name', job_name)
+            .order('submitted_at', desc=True)
+            .limit(1)
+            .execute()
+        )
 
         if not response.data:
             return None
@@ -2673,10 +2690,14 @@ def _assert_job_finished(job_dir: Path) -> None:
     result = json.loads(result_path.read_text())
 
     if not result.get("finished_at"):
-        raise ValueError(
-            f"Job at {job_dir} is not finished. "
-            f"The 'finished_at' field is missing or null. "
-            f"Please wait for the job to complete before uploading results."
+        # Auto-set finished_at to now for timed-out or interrupted jobs
+        from datetime import datetime, timezone
+        now_str = datetime.now(timezone.utc).isoformat()
+        result["finished_at"] = now_str
+        result_path.write_text(json.dumps(result, indent=2))
+        logger.warning(
+            f"Job at {job_dir} had no finished_at — auto-set to {now_str}. "
+            f"This typically means the job timed out or was interrupted."
         )
 
     logger.info(f"Job {job_dir.name} is finished at {result['finished_at']}")
@@ -2718,34 +2739,42 @@ def _extract_job_metadata(
         package_version = first_trial_result.get("agent_info", {}).get("version")
     
     # Extract metrics from the nested structure
-    metrics = None
+    metrics_list = []
     if "stats" in result and "evals" in result["stats"]:
         # Get the first (and likely only) evaluation key
         evals = result["stats"]["evals"]
         if evals:
-            # Get the first evaluation entry
             eval_key = list(evals.keys())[0]
             eval_data = evals[eval_key]
-            
-            # Extract metrics array
+
+            # Extract metrics array (list of dicts, each with various metric keys)
             metrics_array = eval_data.get("metrics", [])
-            
-            # If metrics exist, extract the mean value
+
             if metrics_array and len(metrics_array) > 0:
-                # metrics is an array of dicts with 'mean' key
-                metrics = {
-                    "accuracy": metrics_array[0].get("mean"),
-                }
+                # New format (Harbor >= 0.1.40): list of dicts with named keys
+                # e.g. [{"mean_drop_ei_reward": 0.03, ...}, {"accuracy_drop_ei_reward": 0.03, ...}]
+                for metric_dict in metrics_array:
+                    if isinstance(metric_dict, dict):
+                        # Check for new-style named metrics
+                        for key in ("mean_drop_ei_reward", "accuracy_drop_ei_reward"):
+                            if key in metric_dict:
+                                metrics_list.append({"name": key, "value": metric_dict[key]})
+                        # Legacy format: {"mean": X}
+                        if "mean" in metric_dict and not any(m["name"] == "accuracy" for m in metrics_list):
+                            metrics_list.append({"name": "accuracy", "value": metric_dict["mean"]})
+
+                # If we found accuracy_drop_ei_reward, also add it as "accuracy" for backwards compat
+                accuracy_metric = next((m for m in metrics_list if m["name"] == "accuracy_drop_ei_reward"), None)
+                if accuracy_metric and not any(m["name"] == "accuracy" for m in metrics_list):
+                    metrics_list.append({"name": "accuracy", "value": accuracy_metric["value"]})
     
-    metrics_list = []
-    if metrics:
-        for key, value in metrics.items():
-            metrics_list.append({"name": key, "value": value})
-    
+
+    # job_name can be None in Harbor result.json — fall back to config or dir name
+    job_name = config.get("job_name") or result.get("job_name") or job_dir.name
 
     job_metadata = {
         "job_id": result["id"],  # Preserve local job ID from result.json
-        "job_name": config["job_name"],
+        "job_name": job_name,
         "username": username,
         "agent_id": str(agent_id),
         "model_id": str(model_id),
@@ -2837,7 +2866,13 @@ def _extract_trial_metadata(
     # Extract reward - check verifier_result first, then top-level result
     reward = None
     if verifier_result is not None:
-        reward = verifier_result.get("reward")
+        # New format: verifier_result.rewards.reward (Harbor >= 0.1.40)
+        rewards_dict = verifier_result.get("rewards")
+        if isinstance(rewards_dict, dict):
+            reward = rewards_dict.get("reward")
+        # Legacy format: verifier_result.reward
+        if reward is None:
+            reward = verifier_result.get("reward")
     if reward is None:
         reward = result.get("reward")
 
@@ -2867,8 +2902,12 @@ def _extract_trial_metadata(
         "agent_setup_ended_at": _parse_datetime((result.get("agent_setup") or {}).get("finished_at")),
         "agent_execution_started_at": _parse_datetime((agent_execution or {}).get("started_at")),
         "agent_execution_ended_at": _parse_datetime((agent_execution or {}).get("finished_at")),
-        "verifier_started_at": _parse_datetime((verifier_result or {}).get("started_at")),
-        "verifier_ended_at": _parse_datetime((verifier_result or {}).get("finished_at")),
+        "verifier_started_at": _parse_datetime(
+            (verifier_result or {}).get("started_at") or (result.get("verifier") or {}).get("started_at")
+        ),
+        "verifier_ended_at": _parse_datetime(
+            (verifier_result or {}).get("finished_at") or (result.get("verifier") or {}).get("finished_at")
+        ),
     }
 
     return trial_metadata
@@ -3504,10 +3543,70 @@ def upload_job_and_trial_records(
     # Step 3: Auto-detect and lookup foreign keys
     logger.info("Step 3: Auto-detecting and looking up foreign keys")
 
-    # Get list of trial directories
-    trial_dirs = [d for d in job_dir.iterdir() if d.is_dir()]
+    # Get list of trial directories, filtering out incomplete ones (missing result.json)
+    all_subdirs = [d for d in job_dir.iterdir() if d.is_dir()]
+    trial_dirs = []
+    removed_incomplete = 0
+    for d in all_subdirs:
+        if (d / "result.json").exists():
+            trial_dirs.append(d)
+        elif (d / "agent").exists():
+            # Has agent data but no result — incomplete trial from timeout/crash
+            import shutil
+            shutil.rmtree(d)
+            removed_incomplete += 1
+    if removed_incomplete:
+        logger.warning(f"Removed {removed_incomplete} incomplete trial(s) (had agent/ but no result.json)")
     if not trial_dirs:
-        raise ValueError(f"No trial directories found in {job_dir}")
+        raise ValueError(f"No complete trial directories found in {job_dir}")
+
+    # Quality gate: block upload if score is too low or trial count is incomplete
+    _n_expected = job_result.get("n_total_trials", 0)
+    _n_complete = len(trial_dirs)
+    _stats = job_result.get("stats", {})
+    _evals = _stats.get("evals", {})
+    _accuracy = None
+    for _eval_data in _evals.values():
+        for _m in _eval_data.get("metrics", []):
+            if "mean_drop_ei_reward" in _m:
+                _accuracy = _m["mean_drop_ei_reward"]
+                break
+            if "accuracy" in _m:
+                _accuracy = _m["accuracy"]
+                break
+        if _accuracy is not None:
+            break
+
+    _force = os.environ.get("EVAL_UPLOAD_FORCE", "").lower() in ("1", "true", "yes")
+
+    if _accuracy is not None and _accuracy < 0.01:
+        msg = (
+            f"Upload blocked: accuracy {_accuracy:.4f} is below 1% threshold. "
+            f"This likely indicates a broken eval (all trials errored). "
+            f"Use --force to override."
+        )
+        if _force:
+            logger.warning(f"FORCED: {msg}")
+        else:
+            raise ValueError(msg)
+
+    if _n_expected > 0 and _n_complete < _n_expected:
+        _completion_pct = _n_complete / _n_expected * 100
+        if _completion_pct < 50:
+            msg = (
+                f"Upload blocked: only {_n_complete}/{_n_expected} trials complete "
+                f"({_completion_pct:.0f}%). Eval is too incomplete to register. "
+                f"Use --force to override."
+            )
+            if _force:
+                logger.warning(f"FORCED: {msg}")
+            else:
+                raise ValueError(msg)
+        else:
+            logger.warning(
+                f"Partial eval: {_n_complete}/{_n_expected} trials complete "
+                f"({_completion_pct:.0f}%). Proceeding with upload."
+            )
 
     # Read first trial to auto-detect metadata
     first_trial_result = json.loads((trial_dirs[0] / "result.json").read_text())
@@ -3689,6 +3788,44 @@ def upload_job_and_trial_records(
                 existing_job_id = line.split("=", 1)[1].strip()
                 logger.info(f"Found existing job ID in meta.env: {existing_job_id}")
                 break
+
+    # Also check eval_jobs/<run_tag>/meta.env as fallback (trace_jobs won't have meta.env)
+    if not existing_job_id:
+        # Try to find meta.env in sibling eval_jobs dir
+        eval_jobs_meta = job_dir.parent.parent / "eval_jobs" / job_dir.name / "meta.env"
+        if not eval_jobs_meta.exists():
+            # Try common eval_jobs locations
+            for parent in [Path("/leonardo_work/AIFAC_5C0_290/bfeuer00/eval_jobs"),
+                           Path("/e/data1/datasets/playground/ot/eval_jobs")]:
+                candidate = parent / job_dir.name / "meta.env"
+                if candidate.exists():
+                    eval_jobs_meta = candidate
+                    break
+        if eval_jobs_meta.exists():
+            for line in eval_jobs_meta.read_text().splitlines():
+                if line.startswith("DB_JOB_ID="):
+                    val = line.split("=", 1)[1].strip()
+                    if val:
+                        existing_job_id = val
+                        logger.info(f"Found existing job ID in eval_jobs meta.env: {existing_job_id}")
+                    break
+
+    # Last resort: look up by model_id + benchmark_id to find sbatch-created "Started" job
+    if not existing_job_id:
+        try:
+            client = get_supabase_client()
+            resp = client.table('sandbox_jobs').select('id,job_status').eq(
+                'model_id', str(model_id)
+            ).eq(
+                'benchmark_id', str(benchmark_id)
+            ).eq(
+                'job_status', 'Started'
+            ).order('created_at', desc=True).limit(1).execute()
+            if resp.data:
+                existing_job_id = resp.data[0]['id']
+                logger.info(f"Found existing 'Started' job by model+benchmark lookup: {existing_job_id}")
+        except Exception as e:
+            logger.warning(f"Failed to look up existing job by model+benchmark: {e}")
 
     # Extract job metadata for both update and create scenarios
     job_metadata = _extract_job_metadata(
@@ -3915,6 +4052,7 @@ def upload_traces_to_hf(
     success_filter: Optional[str] = None,
     verbose: bool = False,
     include_verifier_output: bool = True,
+    export_subagents: bool = False,
 ) -> str:
     """
     Upload job trial execution traces to HuggingFace Hub as a conversation dataset.
@@ -4178,6 +4316,7 @@ def upload_eval_results(
     hf_episodes: str = "last",
     hf_success_filter: Optional[str] = None,
     hf_verbose: bool = False,
+    hf_export_subagents: bool = False,
     forced_update: bool = False,
 ) -> Dict[str, Any]:
     """
@@ -4265,6 +4404,7 @@ def upload_eval_results(
                 episodes=hf_episodes,
                 success_filter=hf_success_filter,
                 verbose=hf_verbose,
+                export_subagents=hf_export_subagents,
             )
             logger.info(f"HuggingFace upload successful: {hf_dataset_url}")
 
@@ -4435,4 +4575,303 @@ def register_base_model(
 
     except Exception as e:
         logger.error(f"Failed to register base model {base_model_name}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# ==================== PENDING JOB STATUS UTILITIES ====================
+
+JOB_STATUS_PENDING = "Pending"
+JOB_STATUS_STARTED = "Started"
+JOB_STATUS_FINISHED = "Finished"
+
+
+def get_job_by_model_benchmark(model_id: str, benchmark_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get the most recent job for a given model and benchmark.
+
+    Args:
+        model_id: UUID of the model
+        benchmark_id: UUID of the benchmark
+
+    Returns:
+        Job dict if found, None otherwise
+    """
+    try:
+        client = get_supabase_client()
+        response = (
+            client.table('sandbox_jobs')
+            .select('*')
+            .eq('model_id', model_id)
+            .eq('benchmark_id', benchmark_id)
+            .order('created_at', desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        if not response.data:
+            return None
+
+        return clean_sandbox_job_metadata(response.data[0])
+    except Exception as e:
+        logger.error(f"Error getting job for model={model_id}, benchmark={benchmark_id}: {e}")
+        return None
+
+
+def create_job_entry_pending(
+    job_name: str,
+    model_hf: str,
+    benchmark_hf: str,
+    agent_name: str,
+    slurm_job_id: str,
+    username: Optional[str] = None,
+    config: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Create a job entry with status="Pending" at SLURM submit time.
+
+    This is called by the listener immediately after sbatch returns successfully.
+    It creates a minimal job entry to prevent duplicate submissions while the job
+    waits in the SLURM queue.
+
+    Args:
+        job_name: Unique job name (RUN_TAG)
+        model_hf: HuggingFace model name
+        benchmark_hf: HuggingFace dataset/benchmark repo
+        agent_name: Name of the agent (e.g., "terminus-2")
+        slurm_job_id: SLURM job ID from sbatch output
+        username: Username for the job
+        config: Optional config dict
+
+    Returns:
+        {"success": bool, "job": dict, "error": str}
+    """
+    try:
+        logger.info(f"Creating pending job entry: {job_name}")
+
+        # Resolve model
+        model = get_model_by_name(model_hf)
+        if not model:
+            return {"success": False, "error": f"Model not found: {model_hf}"}
+        model_id = model['id']
+
+        # Resolve benchmark (extract repo name from HF format)
+        benchmark_name = benchmark_hf.split("/")[-1] if "/" in benchmark_hf else benchmark_hf
+        benchmark = get_benchmark_by_name(benchmark_name)
+        if not benchmark:
+            return {"success": False, "error": f"Benchmark not found: {benchmark_name}"}
+        benchmark_id = benchmark['id']
+
+        # Check for existing job (any status) - prevent duplicates
+        existing = get_job_by_model_benchmark(model_id, benchmark_id)
+        if existing:
+            status = existing.get('job_status')
+            if status == JOB_STATUS_FINISHED:
+                return {"success": False, "error": f"Job already finished", "job": existing}
+            if status in (JOB_STATUS_PENDING, JOB_STATUS_STARTED):
+                return {"success": True, "job": existing, "exists": True}
+
+        # Resolve or create agent
+        agent_res = register_agent(name=agent_name)
+        if not agent_res.get('success'):
+            return {"success": False, "error": f"Failed to register agent: {agent_res.get('error')}"}
+        agent_id = agent_res['agent']['id']
+
+        # Build minimal job entry for Pending status
+        now = datetime.now(timezone.utc)
+        # Get harbor package version to satisfy sandbox_job_version_check constraint
+        try:
+            import harbor
+            harbor_version = harbor.__version__
+        except Exception:
+            harbor_version = "unknown"
+
+        job_data = {
+            "job_name": job_name,
+            "username": username or "listener",
+            "agent_id": agent_id,
+            "model_id": model_id,
+            "benchmark_id": benchmark_id,
+            "job_status": JOB_STATUS_PENDING,
+            "submitted_at": now.isoformat(),
+            "slurm_job_id": slurm_job_id,
+            "created_at": now.isoformat(),
+            "package_version": harbor_version,
+            # These are set to None/minimal for Pending, updated when job starts
+            "config": config or {},
+            "n_trials": 0,
+            "n_rep_eval": 0,
+        }
+
+        # Create the job
+        result = create_sandbox_job(job_data)
+        logger.info(f"Created pending job entry: {job_name} (id={result.get('id')})")
+        return {"success": True, "job": result}
+
+    except Exception as e:
+        logger.error(f"Failed to create pending job entry {job_name}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def update_job_status_to_started(
+    job_name: str,
+    n_trials: int,
+    n_rep_eval: int,
+    config: Dict[str, Any],
+    harbor_package_version: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Update a Pending job to Started status when sbatch actually runs.
+
+    This is called by the sbatch script when it starts executing.
+    It updates the job entry with full details now that we know them.
+
+    Args:
+        job_name: Job name (RUN_TAG) to find the job
+        n_trials: Number of concurrent trials (n_concurrent)
+        n_rep_eval: Number of attempts per task (n_attempts)
+        config: Full config dict
+        harbor_package_version: Harbor package version
+
+    Returns:
+        {"success": bool, "job": dict, "error": str}
+    """
+    try:
+        logger.info(f"Updating job to Started: {job_name}")
+
+        # Look up job by name
+        existing = get_sandbox_job_by_name(job_name)
+        if not existing:
+            return {"success": False, "error": f"Job not found: {job_name}"}
+
+        job_id = existing['id']
+        current_status = existing.get('job_status')
+
+        # Validate state transition
+        if current_status == JOB_STATUS_FINISHED:
+            return {"success": False, "error": f"Job already finished, cannot restart"}
+        if current_status == JOB_STATUS_STARTED:
+            # Already started, just return success (idempotent)
+            logger.info(f"Job {job_name} already in Started status")
+            return {"success": True, "job": existing, "already_started": True}
+
+        # Update to Started
+        now = datetime.now(timezone.utc)
+        update_data = {
+            "job_status": JOB_STATUS_STARTED,
+            "started_at": now.isoformat(),
+            "n_trials": n_trials,
+            "n_rep_eval": n_rep_eval,
+            "config": config,
+            "package_version": harbor_package_version,
+        }
+
+        result = update_sandbox_job(job_id, update_data)
+        logger.info(f"Updated job to Started: {job_name}")
+        return {"success": True, "job": result}
+
+    except Exception as e:
+        logger.error(f"Failed to update job to Started {job_name}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def create_job_entry_started(
+    model_hf_name: str,
+    benchmark_hf_name: str,
+    job_name: str,
+    username: str,
+    slurm_job_id: str,
+    harbor_package_version: Optional[str],
+    agent_name: str,
+    config: Dict[str, Any],
+    n_trials: int,
+    n_rep_eval: int
+) -> Dict[str, Any]:
+    """
+    Create a job entry with status="Started" directly.
+
+    This is the original behavior - creates a fully populated job entry
+    when the sbatch script starts running. Use this for backward compatibility
+    or when the listener doesn't create a Pending entry first.
+
+    Args:
+        model_hf_name: HuggingFace model name
+        benchmark_hf_name: HuggingFace dataset/benchmark repo
+        job_name: Unique job name (RUN_TAG)
+        username: Username for the job
+        slurm_job_id: SLURM job ID
+        harbor_package_version: Harbor package version
+        agent_name: Name of the agent
+        config: Config dict
+        n_trials: Number of concurrent trials
+        n_rep_eval: Number of attempts per task
+
+    Returns:
+        {"success": bool, "job": dict, "error": str}
+    """
+    try:
+        logger.info(f"Creating started job entry: {job_name}")
+
+        # First, check if a Pending entry exists and upgrade it
+        existing = get_sandbox_job_by_name(job_name)
+        if existing:
+            status = existing.get('job_status')
+            if status == JOB_STATUS_PENDING:
+                # Upgrade Pending -> Started
+                return update_job_status_to_started(
+                    job_name=job_name,
+                    n_trials=n_trials,
+                    n_rep_eval=n_rep_eval,
+                    config=config,
+                    harbor_package_version=harbor_package_version
+                )
+            elif status == JOB_STATUS_STARTED:
+                logger.info(f"Job {job_name} already Started")
+                return {"success": True, "job": existing, "exists": True}
+            elif status == JOB_STATUS_FINISHED:
+                return {"success": False, "error": "Job already finished"}
+
+        # Resolve model
+        model = get_model_by_name(model_hf_name)
+        if not model:
+            return {"success": False, "error": f"Model not found: {model_hf_name}"}
+        model_id = model['id']
+
+        # Resolve benchmark
+        benchmark_name = benchmark_hf_name.split("/")[-1] if "/" in benchmark_hf_name else benchmark_hf_name
+        benchmark = get_benchmark_by_name(benchmark_name)
+        if not benchmark:
+            return {"success": False, "error": f"Benchmark not found: {benchmark_name}"}
+        benchmark_id = benchmark['id']
+
+        # Resolve or create agent
+        agent_res = register_agent(name=agent_name)
+        if not agent_res.get('success'):
+            return {"success": False, "error": f"Failed to register agent: {agent_res.get('error')}"}
+        agent_id = agent_res['agent']['id']
+
+        # Build full job entry
+        now = datetime.now(timezone.utc)
+        job_data = {
+            "job_name": job_name,
+            "username": username,
+            "agent_id": agent_id,
+            "model_id": model_id,
+            "benchmark_id": benchmark_id,
+            "job_status": JOB_STATUS_STARTED,
+            "started_at": now.isoformat(),
+            "submitted_at": now.isoformat(),
+            "slurm_job_id": slurm_job_id,
+            "created_at": now.isoformat(),
+            "config": config,
+            "n_trials": n_trials,
+            "n_rep_eval": n_rep_eval,
+            "package_version": harbor_package_version,
+        }
+
+        result = create_sandbox_job(job_data)
+        logger.info(f"Created started job entry: {job_name} (id={result.get('id')})")
+        return {"success": True, "job": result}
+
+    except Exception as e:
+        logger.error(f"Failed to create started job entry {job_name}: {e}")
         return {"success": False, "error": str(e)}

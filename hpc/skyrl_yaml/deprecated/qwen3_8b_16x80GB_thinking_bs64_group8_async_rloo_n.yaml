@@ -128,7 +128,6 @@ terminal_bench:
     #   RewardFileNotFoundError, RewardFileEmptyError, VerifierOutputParseError
     # We add ContextLengthExceededError since summarization is disabled
     exclude_exceptions:
-      - AgentTimeoutError
       - VerifierTimeoutError
       - RewardFileNotFoundError
       - RewardFileEmptyError
@@ -177,6 +176,9 @@ terminal_bench:
     # Default treatment for unclassified exceptions ("mask" or "zero")
     # Use "zero" to be conservative - treat unknown errors as agent failures
     default_error_treatment: zero
+    passthrough_exceptions:
+      - AgentTimeoutError
+      - ContextLengthExceededError
 
   # Model info for Harbor's hosted_vllm validation (token limits and costs)
   model_info:

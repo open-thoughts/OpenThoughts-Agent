@@ -1,0 +1,48 @@
+# GLM-5-AWQ - AWQ 4-bit quantized (586B params, ~300GB weights)
+# https://huggingface.co/QuantTrio/GLM-5-AWQ
+#
+# 131K context variant, single node
+#
+# Hardware: 1 node × 8x H200 141GB = 8 GPUs (~1.1TB total)
+#   - AWQ 4-bit weights (~300GB) + 131K KV cache fits comfortably
+#   - TP=8 within node, no PP needed
+#
+engine:
+  type: vllm_local
+  model: QuantTrio/GLM-5-AWQ
+  max_output_tokens: 16384
+  healthcheck_interval: 300
+  request_params:
+    temperature: 0.7
+    top_p: 0.95
+  vllm_local: {}
+backend:
+  type: ray
+  wait_for_endpoint: true
+  ray_cgraph_max_inflight_executions: 16
+  healthcheck_max_attempts: 160
+  healthcheck_retry_delay: 15
+vllm_server:
+  model_path: QuantTrio/GLM-5-AWQ
+  num_replicas: 1
+  tensor_parallel_size: 8
+  pipeline_parallel_size: 1
+  data_parallel_size: 1
+  time_limit: '48:00:00'
+  max_model_len: 131072
+  max_num_seqs: 32
+  gpu_memory_utilization: 0.93
+  enable_expert_parallel: true
+  enable_auto_tool_choice: true
+  tool_call_parser: glm47
+  reasoning_parser: glm45
+  trust_remote_code: true
+  extra_args:
+  # MTP speculative decoding (1 draft token — low overhead, ~30% speedup)
+  - --speculative-config
+  - '{"method":"mtp","num_speculative_tokens":1}'
+  # Prefill/caching optimizations
+  - --enable-chunked-prefill
+  - --enable-prefix-caching
+  - --max-num-batched-tokens
+  - '16384'

@@ -29,15 +29,14 @@ from hpc.launch_utils import get_daytona_api_key_override
 def prebuild_daytona_snapshots(
     resolved_train_data: List[str],
     max_new_snapshots: int = 10,
-    max_org_snapshots: int = 40,
+    max_org_snapshots: int = 60,
     build_region: str = "us",
-    target_region: str = "RL",
+    target_region: str = "",
     build_timeout: float = 600.0,
 ) -> None:
-    """Pre-build Daytona snapshots for RL region from the login node.
+    """Pre-build Daytona snapshots from the login node.
 
-    The RL region lacks build runners, so snapshots must be built using the
-    ``us`` region's build infrastructure and registered for the RL region.
+    Snapshots must be built using a region with build runners (default ``us``).
     This function:
     1. Discovers task directories from resolved train_data paths
     2. Analyzes unique Dockerfile environments
@@ -48,7 +47,10 @@ def prebuild_daytona_snapshots(
         max_new_snapshots: Max unique snapshots allowed per launch (safety gate).
         max_org_snapshots: Max total snapshots allowed in the org.
         build_region: Region with build runners (used to init Daytona client).
-        target_region: Region where snapshots should be registered.
+        target_region: Region where snapshots should be registered. Empty string
+            (default) omits region from the snapshot name and from the
+            ``region_id`` arg, which mirrors Harbor's behaviour when
+            ``DAYTONA_TARGET`` is unset and is the regionless build path.
         build_timeout: Timeout in seconds for each snapshot build.
     """
     from scripts.harbor.count_snapshots_from_tasks import (
@@ -113,7 +115,10 @@ def prebuild_daytona_snapshots(
     built = 0
     skipped = 0
     for hash_val, env_dir in hash_to_env_dir.items():
-        snapshot_name = f"harbor__{hash_val}__{target_region}__snapshot"
+        if target_region:
+            snapshot_name = f"harbor__{hash_val}__{target_region}__snapshot"
+        else:
+            snapshot_name = f"harbor__{hash_val}__snapshot"
         # Check if snapshot already exists and is usable
         try:
             snap = daytona.snapshot.get(snapshot_name)
@@ -140,12 +145,14 @@ def prebuild_daytona_snapshots(
             continue
 
         print(f"  {snapshot_name}: building from {dockerfile_path} ...")
+        create_kwargs = {
+            "name": snapshot_name,
+            "image": Image.from_dockerfile(str(dockerfile_path)),
+        }
+        if target_region:
+            create_kwargs["region_id"] = target_region
         daytona.snapshot.create(
-            CreateSnapshotParams(
-                name=snapshot_name,
-                image=Image.from_dockerfile(str(dockerfile_path)),
-                region_id=target_region,
-            ),
+            CreateSnapshotParams(**create_kwargs),
             on_logs=print,
             timeout=build_timeout,
         )
@@ -586,6 +593,9 @@ class RLJobConfig:
 
     proxychains_binary: Optional[str] = None
 
+    # Ray object store size in GB (default: 40)
+    ray_object_store_gb: float = 40.0
+
     # Post-training trace upload settings
     trace_upload_enabled: bool = False
     trace_upload_repo_org: str = "DCAgent"
@@ -626,6 +636,7 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> str:
         resolve_job_and_paths,
         substitute_template,
         build_sbatch_directives,
+        resolve_conda_activate,
     )
     from hpc.rl_config_utils import parse_rl_config, build_skyrl_hydra_args, extract_terminal_bench_agent_env
 
@@ -754,6 +765,7 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> str:
         pinggy_token=exp_args.get("pinggy_token"),
         agent_name=agent_name,
         harbor_env=harbor_env,
+        ray_object_store_gb=float(exp_args.get("ray_object_store_gb", 40.0)),
     )
 
     # Populate trace upload settings from parsed terminal_bench config
@@ -808,7 +820,7 @@ fi"""
         "job_name": job_name,
         "sbatch_extra_directives": "\n".join(sbatch_directives),
         "module_commands": hpc.get_module_commands(),
-        "conda_activate": hpc.conda_activate or "# No conda activation configured",
+        "conda_activate": resolve_conda_activate(hpc, exp_args),
         "cluster_env_file": hpc.dotenv_filename,
         "cuda_setup": cuda_setup,
         "nccl_exports": hpc.get_nccl_exports(),
@@ -1160,7 +1172,7 @@ class RLJobRunner:
             srun_export_env=hpc.get_srun_export_env(),
             ray_env_vars=hpc.get_ray_env_vars(),
             memory_per_node=ray_memory,
-            object_store_memory=DEFAULT_OBJECT_STORE_MEMORY_BYTES,
+            object_store_memory=int(self.config.ray_object_store_gb * 1024 * 1024 * 1024),
             disable_cpu_bind=getattr(hpc, "disable_cpu_bind", False),
             gpu_bind=getattr(hpc, "gpu_bind", "none"),
             proxychains_binary=getattr(hpc, "proxychains_binary", None),

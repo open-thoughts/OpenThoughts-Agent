@@ -27,6 +27,7 @@ from hpc.launch_utils import (
     set_or_pop,
     resolve_job_and_paths,
     substitute_template,
+    resolve_conda_activate,
 )
 from hpc.harbor_utils import (
     get_harbor_env_from_config,
@@ -35,7 +36,7 @@ from hpc.harbor_utils import (
     resolve_harbor_config_path,
 )
 from hpc.hf_utils import resolve_dataset_path, derive_default_hf_repo_id, sanitize_hf_repo_id
-from hpc.cli_utils import resolve_n_concurrent
+from hpc.cli_utils import resolve_n_attempts, resolve_n_concurrent
 
 # Backward compatibility aliases
 _normalize_cli_args = normalize_cli_args
@@ -305,6 +306,7 @@ def launch_datagen_job_v2(exp_args: dict, hpc) -> None:
             gpus_per_node=gpus_per_node,
             cpus_per_node=cpus_per_node,
             vllm_server_config=vllm_server_config,
+            ray_object_store_gb=float(exp_args.get("ray_object_store_gb", 40.0)),
         )
 
         # Write task config JSON
@@ -329,7 +331,7 @@ def launch_datagen_job_v2(exp_args: dict, hpc) -> None:
             "job_name": f"{job_name}_tasks",
             "sbatch_extra_directives": "\n".join(sbatch_directives),
             "module_commands": hpc.get_module_commands(),
-            "conda_activate": hpc.conda_activate or "# No conda activation configured",
+            "conda_activate": resolve_conda_activate(hpc, exp_args),
             "cluster_env_file": cluster_env_file,
             "config_path": str(task_config_path),
             "email_address": os.environ.get("EMAIL_ADDRESS", ""),
@@ -483,7 +485,7 @@ def launch_datagen_job_v2(exp_args: dict, hpc) -> None:
                 agent=trace_agent_name or "",
                 trace_env=exp_args.get("trace_env") or get_harbor_env_from_config(harbor_config_resolved),
                 n_concurrent=resolve_n_concurrent(exp_args.get("trace_n_concurrent"), harbor_config_data),
-                n_attempts=int(exp_args.get("trace_n_attempts") or 1),
+                n_attempts=resolve_n_attempts(exp_args.get("trace_n_attempts"), harbor_config_data),
                 agent_kwargs=agent_kwargs,
                 num_nodes=int(exp_args.get("num_nodes") or 1),
                 gpus_per_node=gpus_per_node,
@@ -498,6 +500,7 @@ def launch_datagen_job_v2(exp_args: dict, hpc) -> None:
                 chunk_size=chunk_size if is_chunked else None,
                 chunk_index=chunk_idx,
                 num_chunks=num_chunks if is_chunked else None,
+                ray_object_store_gb=float(exp_args.get("ray_object_store_gb", 40.0)),
             )
 
             trace_config_path = exp_paths.configs / f"{chunk_job_name}_tracegen_config.json"
@@ -511,7 +514,7 @@ def launch_datagen_job_v2(exp_args: dict, hpc) -> None:
                 "job_name": chunk_job_name,
                 "sbatch_extra_directives": "\n".join(sbatch_directives),
                 "module_commands": hpc.get_module_commands(),
-                "conda_activate": hpc.conda_activate or "# No conda activation configured",
+                "conda_activate": resolve_conda_activate(hpc, exp_args),
                 "cluster_env_file": cluster_env_file,
                 "config_path": str(trace_config_path),
                 "email_address": os.environ.get("EMAIL_ADDRESS", ""),
@@ -588,6 +591,9 @@ class TaskgenJobConfig:
     num_nodes: int = 1
     gpus_per_node: Optional[int] = None
     cpus_per_node: Optional[int] = None
+
+    # Ray object store size in GB (default: 40)
+    ray_object_store_gb: float = 40.0
 
 
 class TaskgenJobRunner:
@@ -680,7 +686,7 @@ class TaskgenJobRunner:
             srun_export_env=hpc.get_srun_export_env(),
             ray_env_vars=hpc.get_ray_env_vars(),
             memory_per_node=ray_memory,
-            object_store_memory=DEFAULT_OBJECT_STORE_MEMORY_BYTES,
+            object_store_memory=int(self.config.ray_object_store_gb * 1024 * 1024 * 1024),
             disable_cpu_bind=getattr(hpc, "disable_cpu_bind", False),
             gpu_bind=getattr(hpc, "gpu_bind", "none"),
             proxychains_binary=self._proxychains_binary or None,
@@ -830,6 +836,9 @@ class TracegenJobConfig:
     # Pinggy tunnel settings (for cloud backends that can't reach local vLLM)
     pinggy_persistent_url: Optional[str] = None
     pinggy_token: Optional[str] = None
+
+    # Ray object store size in GB (default: 40)
+    ray_object_store_gb: float = 40.0
 
     # Chunking settings (for splitting large task sets across parallel jobs)
     chunk_size: Optional[int] = None
@@ -1111,7 +1120,7 @@ class TracegenJobRunner:
             srun_export_env=hpc.get_srun_export_env(),
             ray_env_vars=hpc.get_ray_env_vars(),
             memory_per_node=ray_memory,
-            object_store_memory=DEFAULT_OBJECT_STORE_MEMORY_BYTES,
+            object_store_memory=int(self.config.ray_object_store_gb * 1024 * 1024 * 1024),
             disable_cpu_bind=getattr(hpc, "disable_cpu_bind", False),
             gpu_bind=getattr(hpc, "gpu_bind", "none"),
             proxychains_binary=self._proxychains_binary or None,

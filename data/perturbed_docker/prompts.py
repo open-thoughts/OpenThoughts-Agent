@@ -23,7 +23,7 @@ Task:
 {instruction}
 
 Constraints:
-- Base image must be ubuntu:24.04.
+- Base image must be ubuntu:24.04 (ensure FROM instruction comes first in Dockerfiles).
 - Use non-interactive apt commands (apt-get update/install -y, no upgrade).
 - Never use sudo, add-apt-repository, GUI/X11 deps, or imaginary packages.
 - Only install packages essential to solve the task.
@@ -61,7 +61,7 @@ Motivating tweak patterns (pick different styles across the four variants):
 - Inject a tiny service requirement (like ensuring `redis-server` runs) while keeping the Dockerfile lean and compliant with the guardrails.
 
 Rules:
-- Keep `ubuntu:24.04` base and valid Dockerfile syntax.
+- Keep `ubuntu:24.04` base (as the first instruction in Dockerfiles) and valid Dockerfile syntax.
 - Never add sudo, GUI/X11 deps, or imaginary packages.
 - Minimise noise: every change must have a payoff for genuine debugging friction.
 - Variants must build successfully

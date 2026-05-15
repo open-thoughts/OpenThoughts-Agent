@@ -35,16 +35,18 @@ datagen-cpu = [
     "google-cloud-aiplatform>=1.67.0",
     "google-genai>=0.1.0",
     "accelerate==1.12.0",
+    "trufflehog>=2.2.0",
 ]
 datagen = [
     "ray[default]>=2.50.0",
     "torch-c-dlpack-ext==0.1.4",
     "google-cloud-aiplatform>=1.67.0",
     "google-genai>=0.1.0",
-    "vllm[flashinfer]>=0.11.2,<=0.13.0; platform_system != 'Darwin'",
+    "vllm[flashinfer]>=0.11.2,<=0.16.0; platform_system != 'Darwin'",
     "transformers==4.57.3",
-    "torch==2.9.0; platform_system != 'Darwin'",
+    "torch>=2.9.0,<=2.10.0; platform_system != 'Darwin'",
     "accelerate==1.12.0",
+    "trufflehog>=2.2.0",
 ]
 # ROCm/AMD GPU variant for datagen (e.g., OLCF Frontier with MI250X)
 # Install with:
@@ -121,7 +123,29 @@ rl-rocm = [
 # The RL environment must be set up separately using: ./hpc/setup_rl_env.sh
 # The RL launcher will automatically use the separate environment.
 # See hpc/rl_launch_utils.py for details.
+# SFT for Qwen3.5 models (requires transformers v5+ for hybrid GDN architecture)
+# IMPORTANT: Incompatible with datagen/RL extras (transformers 4.x vs 5.x).
+# Must be installed in a separate environment.
+# Install with:
+#   uv pip install -e ".[sft-qwen35]"
+sft-qwen35 = [
+    "transformers>=5.3.0",
+    "torch>=2.6.0",
+    "accelerate>=1.3.0",
+    "datasets>=2.16.0",
+    "peft>=0.14.0",
+    "trl>=0.8.6",
+    "tokenizers>=0.19.0",
+    "deepspeed>=0.16.0",
+    "flash-attn>=2.7.0; platform_system != 'Darwin'",
+    "torchao>=0.8.0",
+    "liger-kernel>=0.5.0",
+    "trufflehog>=2.2.0",
+]
 # Harbor environment backends
+curator = [
+    "bespokelabs-curator>=0.1.0",
+]
 harbor-docker = [
     "docker>=7.0.0",
 ]

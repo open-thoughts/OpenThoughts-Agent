@@ -86,8 +86,12 @@ def create_supabase_client(use_admin: bool = False) -> Client:
             print("⚠️  Admin access requested but no service role key found")
             print("   Some operations may fail due to RLS policies")
     
-    # Create client (v2 API doesn't use ClientOptions the same way)
-    return create_client(supabase_config.supabase_url, key)
+    # Create client with timeout options
+    options = ClientOptions(
+        postgrest_client_timeout=30,
+        storage_client_timeout=30
+    )
+    return create_client(supabase_config.supabase_url, key, options)
 
 
 def get_default_client() -> Client:

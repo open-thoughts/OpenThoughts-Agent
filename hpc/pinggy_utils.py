@@ -45,13 +45,20 @@ class PinggyConfig:
     health_check_timeout: int = 60  # Seconds to wait for tunnel to be ready
     health_check_interval: int = 2  # Seconds between health checks
     pinggy_host: str = "pro.pinggy.io"  # Pinggy server (pro.pinggy.io or free.pinggy.io)
+    # On no-internet clusters (JSC Jupiter/Jureca/Juwels, Leonardo) the compute
+    # nodes cannot reach pro.pinggy.io directly, so the outbound ssh must be
+    # wrapped with proxychains. Set this to e.g.
+    #   "/path/to/proxychains4 -f /path/to/proxychains.conf"
+    # and it will be prepended to the ssh invocation.
+    proxychains_wrapper: Optional[str] = None
 
     def get_ssh_command(self) -> str:
         """Build the SSH command for the Pinggy tunnel."""
+        ssh_prefix = f"{self.proxychains_wrapper} " if self.proxychains_wrapper else ""
         # Build a robust SSH command with auto-reconnect loop
         return (
             f"while true; do "
-            f"ssh -p 443 "
+            f"{ssh_prefix}ssh -p 443 "
             f"-R0:{self.local_host}:{self.local_port} "
             f"-o StrictHostKeyChecking=no "
             f"-o ServerAliveInterval=30 "

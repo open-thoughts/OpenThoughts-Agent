@@ -163,12 +163,21 @@ def _drop_deprecated_fields(exp_args: dict, base_config: dict) -> None:
 def _merge_launch_overrides(base_config: dict, exp_args: dict) -> dict:
     explicit_cli_keys = set(exp_args.get("_explicit_cli_keys", []))
     exp_args.pop("_explicit_cli_keys", None)
+    preprocessor_owned = set()
 
     llama_fields = {field.name for field in dataclasses.fields(LlamaFactoryArgs)}
     for key, value in exp_args.items():
         if key.startswith("_"):
             continue
         if key == "deepspeed" and key not in explicit_cli_keys:
+            continue
+        # Don't overwrite base config values with None defaults from LlamaFactoryArgs.
+        # Only override if the value was explicitly set on CLI or is non-None.
+        if value is None and key not in explicit_cli_keys and key in base_config:
+            continue
+        # Don't overwrite preprocessor-owned keys (e.g., dataset path set by
+        # prep_for_thinking) unless the user explicitly set them on CLI.
+        if key in preprocessor_owned and key not in explicit_cli_keys:
             continue
         if key in base_config or key in llama_fields:
             print(f"Setting {key} to {value}")
@@ -255,6 +264,18 @@ def _configure_output_and_logging(base_config: dict, exp_args: dict, checkpoints
     os.makedirs(output_dir, exist_ok=True)
     base_config["output_dir"] = output_dir
 
+    # Guard: --overwrite_output_dir + --max_restarts is destructive — each chain
+    # restart wipes the checkpoint dir, so training restarts from scratch every slot.
+    if base_config.get("overwrite_output_dir") and exp_args.get("max_restarts"):
+        max_restarts = int(exp_args["max_restarts"])
+        if max_restarts > 0:
+            raise SystemExit(
+                "\nERROR: --overwrite_output_dir and --max_restarts cannot be used together.\n"
+                "  overwrite_output_dir deletes checkpoints on each restart, so chain restarts\n"
+                "  always train from scratch instead of resuming. Remove --overwrite_output_dir\n"
+                "  to allow checkpoint resumption across chain restarts.\n"
+            )
+
     # Pre-flight check: detect completed or resumable runs in output_dir
     if os.path.isdir(output_dir) and not base_config.get("overwrite_output_dir"):
         completed_files = [f for f in _COMPLETED_MODEL_FILES if os.path.isfile(os.path.join(output_dir, f))]
@@ -285,11 +306,14 @@ def _configure_output_and_logging(base_config: dict, exp_args: dict, checkpoints
     return base_config
 
 def _maybe_assign_tokenized_path(base_config: dict, exp_args: dict, dataset_entries: list[str]) -> None:
-    if base_config.get("tokenized_path") is not None or not should_run_pretokenize(exp_args):
+    if base_config.get("tokenized_path") is not None:
         return
 
     tokenized_dir = exp_args.get("tokenized_dir")
     tokenized_dir = os.path.expandvars(os.environ.get("TOKENIZED_DATASETS_DIR", tokenized_dir))
+    if not tokenized_dir:
+        return
+
     model_name = "_".join(base_config["model_name_or_path"].split("/")[-2:]).replace(".", "-")
 
     def _slugify(entry: str) -> str:
@@ -301,8 +325,27 @@ def _maybe_assign_tokenized_path(base_config: dict, exp_args: dict, dataset_entr
     dataset_name_parts = [_slugify(entry) for entry in dataset_entries] or ["dataset"]
     dataset_name = "-".join(dataset_name_parts)
     tokenized_path = os.path.join(tokenized_dir, "_".join([dataset_name, model_name, "tokenized"]))
-    base_config["tokenized_path"] = tokenized_path
-    exp_args["tokenized_path"] = tokenized_path
+
+    if should_run_pretokenize(exp_args):
+        # Pretokenize mode: always set the path (will be created)
+        base_config["tokenized_path"] = tokenized_path
+        exp_args["tokenized_path"] = tokenized_path
+    elif os.path.isdir(tokenized_path):
+        # Training mode: reuse pre-tokenized data if it exists (our naming convention)
+        print(f"[pretok] Found pre-tokenized dataset at {tokenized_path} — reusing it")
+        base_config["tokenized_path"] = tokenized_path
+        base_config["overwrite_cache"] = False
+        exp_args["tokenized_path"] = tokenized_path
+    elif os.path.isdir(tokenized_dir):
+        # Training mode: check if LlamaFactory saved a tokenized cache under its own
+        # naming convention (hash-based). If any *_tokenized dir exists in TOKENIZED_DATASETS_DIR,
+        # set overwrite_cache=false so LlamaFactory discovers it via its internal lookup.
+        import glob
+        lf_caches = glob.glob(os.path.join(tokenized_dir, "*_tokenized"))
+        if lf_caches:
+            print(f"[pretok] Found {len(lf_caches)} LlamaFactory tokenized cache(s) in {tokenized_dir}")
+            print(f"[pretok] Setting overwrite_cache=false so LlamaFactory reuses them")
+            base_config["overwrite_cache"] = False
 
 
 def _write_train_config(configs_dir: str, job_name: str, base_config: dict) -> str:
@@ -314,14 +357,8 @@ def _write_train_config(configs_dir: str, job_name: str, base_config: dict) -> s
 
 
 def construct_config_yaml(exp_args):
-    # Legacy SFT path - auto-derive job_name if not provided
-    job_setup = resolve_job_and_paths(
-        exp_args,
-        job_type_label="SFT",
-        derive_job_name_fn=derive_default_job_name,
-    )
-    configs_dir = str(job_setup.paths.configs)
-
+    # Load base config first so we can finalize the job name (which may
+    # include the model identifier) BEFORE creating experiment directories.
     train_config_path = exp_args.get("train_config_path")
     checkpoints_dir = exp_args.get("checkpoints_dir")
     models_dir = exp_args.get("models_dir")
@@ -335,7 +372,19 @@ def construct_config_yaml(exp_args):
 
     os.makedirs(checkpoints_dir, exist_ok=True)
     base_config = _load_base_train_config(train_config_path)
+
+    # Finalize job name (may append model identifier) before creating dirs.
+    if not exp_args.get("job_name"):
+        exp_args["job_name"] = derive_default_job_name(exp_args)
     exp_args = _maybe_include_model_in_job_name(base_config, exp_args)
+
+    # Now create experiment directories with the finalized job name.
+    job_setup = resolve_job_and_paths(
+        exp_args,
+        job_type_label="SFT",
+    )
+    configs_dir = str(job_setup.paths.configs)
+    exp_args["logs_dir"] = str(job_setup.paths.logs)
     _drop_deprecated_fields(exp_args, base_config)
     base_config = _merge_launch_overrides(base_config, exp_args)
     base_config = ensure_deepspeed_config(base_config, exp_args)
@@ -378,6 +427,13 @@ def construct_config_yaml(exp_args):
     apply_data_argument_overrides(base_config, exp_args)
 
     train_config_path_out = _write_train_config(configs_dir, exp_args["job_name"], base_config)
+
+    # Pre-build arrow cache on the login node to avoid NFS race condition
+    # when multiple compute nodes try to build it simultaneously.
+    if not exp_args.get("internet_node", True):
+        from hpc.sft_launch_utils import prebuild_arrow_cache
+        prebuild_arrow_cache(base_config, train_config_path=train_config_path_out)
+
     exp_args["output_dir"] = base_config["output_dir"]
     exp_args["dataset"] = base_config["dataset"]
     exp_args["model_name_or_path"] = base_config["model_name_or_path"]
@@ -388,13 +444,17 @@ def submit_job(
     exp_args=None,
     dependency=None,
 ):
-    # Legacy SFT path - auto-derive job_name if not provided
-    job_setup = resolve_job_and_paths(
-        exp_args or {},
-        job_type_label="SFT",
-        derive_job_name_fn=derive_default_job_name,
-    )
-    exp_args["logs_dir"] = str(job_setup.paths.logs)
+    # Reuse existing logs_dir if already set (from earlier resolve_job_and_paths
+    # call in _build_training_artifacts). Calling resolve_job_and_paths again
+    # here would detect the configs we just wrote as a "collision" and create
+    # a spurious _2 directory.
+    if not exp_args.get("logs_dir"):
+        job_setup = resolve_job_and_paths(
+            exp_args or {},
+            job_type_label="SFT",
+            derive_job_name_fn=derive_default_job_name,
+        )
+        exp_args["logs_dir"] = str(job_setup.paths.logs)
 
     base_dependency = _merge_dependencies(exp_args.get("dependency"), dependency)
     current_dependency = base_dependency

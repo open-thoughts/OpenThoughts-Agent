@@ -27,6 +27,7 @@ from hpc.launch_utils import (
     generate_served_model_id,
     hosted_vllm_alias,
     strip_hosted_vllm_alias,
+    resolve_conda_activate,
     resolve_job_and_paths,
     substitute_template,
     derive_datagen_job_name,
@@ -145,7 +146,7 @@ def prepare_eval_configuration(exp_args: dict) -> dict:
     if not model_name and harbor_job.agents:
         model_name = harbor_job.agents[0].model_name
     if not model_name:
-        raise ValueError("Eval jobs require --trace-model (or --datagen-model).")
+        raise ValueError("Eval jobs require --model (or --trace-model / --datagen-model).")
     exp_args["_eval_model_name"] = model_name
     exp_args["trace_model"] = model_name
 
@@ -243,6 +244,7 @@ class EvalJobConfig:
     # vLLM settings (if launching inline)
     needs_vllm: bool = False
     vllm_model_path: Optional[str] = None
+    model_hf_name: Optional[str] = None  # Original HF repo name (before pre-download to local path)
     tensor_parallel_size: int = 1
     pipeline_parallel_size: int = 1
     data_parallel_size: int = 1
@@ -271,6 +273,9 @@ class EvalJobConfig:
     # Pinggy tunnel settings (for cloud backends that can't reach local vLLM)
     pinggy_persistent_url: Optional[str] = None
     pinggy_token: Optional[str] = None
+
+    # Ray object store size in GB (default: 40)
+    ray_object_store_gb: float = 40.0
 
 
 class EvalJobRunner:
@@ -351,11 +356,18 @@ class EvalJobRunner:
 
         from hpc.launch_utils import sync_eval_to_database, upload_traces_to_hf
 
-        # Derive model name (strip hosted_vllm prefix if present)
-        model_name = self.config.model
+        # Derive model name for DB registration.
+        # Prefer the original HF name over local paths or hosted_vllm aliases.
+        model_name = self.config.model_hf_name or self.config.model
         if model_name and model_name.startswith("hosted_vllm/"):
-            # Use original model path for database records
             model_name = self.config.vllm_model_path or model_name
+        # Strip any remaining local snapshot paths back to HF name
+        if model_name and "/snapshots/" in model_name:
+            # /path/hub/models--org--name/snapshots/hash -> org/name
+            import re
+            match = re.search(r"models--(.+?)--(.+?)/snapshots/", model_name)
+            if match:
+                model_name = f"{match.group(1)}/{match.group(2)}"
 
         if self.config.upload_to_database:
             # Full database sync (includes optional HF upload)
@@ -425,7 +437,7 @@ class EvalJobRunner:
             srun_export_env=hpc.get_srun_export_env(),
             ray_env_vars=hpc.get_ray_env_vars(),
             memory_per_node=ray_memory,
-            object_store_memory=DEFAULT_OBJECT_STORE_MEMORY_BYTES,
+            object_store_memory=int(self.config.ray_object_store_gb * 1024 * 1024 * 1024),
             disable_cpu_bind=getattr(hpc, "disable_cpu_bind", False),
             gpu_bind=getattr(hpc, "gpu_bind", "none"),
             proxychains_binary=self._proxychains_binary or None,
@@ -489,11 +501,22 @@ class EvalJobRunner:
                     # (vLLM may bind to a specific IP, not localhost)
                     local_host, local_port = parse_endpoint_host_port(vllm_server.endpoint)
                     print(f"[EvalJobRunner] Starting Pinggy tunnel: {local_host}:{local_port} -> {self.config.pinggy_persistent_url}")
+                    # On no-internet clusters (e.g., JSC Jupiter) the ssh to
+                    # pro.pinggy.io:443 must go through proxychains or it fails
+                    # with "Network is unreachable" and the tunnel never comes up.
+                    proxychains_wrapper = None
+                    pc_bin = getattr(self, "_proxychains_binary", "")
+                    pc_conf = os.environ.get("PROXYCHAINS_CONF_FILE", "") if pc_bin else ""
+                    if pc_bin and pc_conf:
+                        proxychains_wrapper = f"{pc_bin} -f {pc_conf}"
+                    elif pc_bin:
+                        proxychains_wrapper = pc_bin
                     pinggy_cfg = PinggyConfig(
                         persistent_url=self.config.pinggy_persistent_url,
                         token=self.config.pinggy_token,
                         local_port=local_port,
                         local_host=local_host,
+                        proxychains_wrapper=proxychains_wrapper,
                     )
                     pinggy_log = log_dir / f"{self.config.job_name}_pinggy.log"
                     pinggy_tunnel = PinggyTunnel(pinggy_cfg, log_path=pinggy_log)
@@ -619,6 +642,8 @@ def launch_eval_job_v2(exp_args: dict, hpc) -> None:
         dl_result = pre_download_model(eval_model)
         if vllm_cfg and hasattr(vllm_cfg, "model_path"):
             vllm_cfg.model_path = dl_result.local_path
+        # Use local path for vLLM serving, but preserve original HF name for DB registration
+        exp_args["_eval_model_hf_name"] = eval_model  # original HF name for DB
         exp_args["_eval_model_name"] = dl_result.local_path
         exp_args["trace_model"] = dl_result.local_path
         model_name = dl_result.local_path
@@ -664,7 +689,8 @@ def launch_eval_job_v2(exp_args: dict, hpc) -> None:
         gpus_per_node=gpus_per_node,
         cpus_per_node=cpus_per_node,
         needs_vllm=requires_vllm,
-        vllm_model_path=getattr(vllm_cfg, "model_path", None) if vllm_cfg else model_name,
+        vllm_model_path=model_name or (getattr(vllm_cfg, "model_path", None) if vllm_cfg else None),
+        model_hf_name=exp_args.get("_eval_model_hf_name"),
         tensor_parallel_size=tensor_parallel_size,
         pipeline_parallel_size=pipeline_parallel_size,
         data_parallel_size=data_parallel_size,
@@ -690,6 +716,7 @@ def launch_eval_job_v2(exp_args: dict, hpc) -> None:
         # Pinggy tunnel settings
         pinggy_persistent_url=exp_args.get("pinggy_persistent_url"),
         pinggy_token=exp_args.get("pinggy_token"),
+        ray_object_store_gb=float(exp_args.get("ray_object_store_gb", 40.0)),
     )
 
     # Write config JSON
@@ -717,7 +744,7 @@ def launch_eval_job_v2(exp_args: dict, hpc) -> None:
         "job_name": job_name,
         "sbatch_extra_directives": "\n".join(sbatch_directives),
         "module_commands": hpc.get_module_commands(),
-        "conda_activate": hpc.conda_activate or "# No conda activation configured",
+        "conda_activate": resolve_conda_activate(hpc, exp_args),
         "cluster_env_file": cluster_env_file,
         "config_path": str(config_path),
         "email_address": os.environ.get("EMAIL_ADDRESS", ""),

@@ -1,0 +1,73 @@
+### HPC Launch Settings
+global_batch_size: 96
+per_device_train_batch_size: 1
+
+### model
+# REQUIRES: transformers >= 5.3.0 (Qwen3.5 uses a hybrid Gated DeltaNet + Gated Attention architecture
+# not supported in transformers 4.x). Upgrade before use:
+#   pip install "transformers>=5.3.0"
+model_name_or_path: Qwen/Qwen3.5-27B
+trust_remote_code: true
+attn: sdpa
+# NOTE: Liger kernel may not support Qwen3.5's hybrid architecture (Gated DeltaNet layers).
+enable_liger_kernel: false
+optim: adamw_torch_fused
+# Qwen3.5-27B has 262k native context. 131k is within native range, so no YaRN needed.
+# If you want to push beyond 262k, use:
+#   rope_scaling:
+#     rope_type: yarn
+#     factor: 4.0
+#     original_max_position_embeddings: 262144
+
+### sequence parallelism (DeepSpeed ALST / Ulysses)
+# Qwen3.5-27B Gated Attention layers have 24 Q-heads; SP size must divide num_attention_heads.
+# CAUTION: DeepSpeed ALST is designed for pure attention models. The Gated DeltaNet layers
+# (3 out of every 4 layers) are linear/recurrent attention and may not parallelize correctly
+# with Ulysses-style SP. Test thoroughly; if SP causes hangs or incorrect gradients,
+# fall back to SP=1 with a smaller cutoff_len or gradient checkpointing.
+# Valid SP sizes for 24 heads: 1, 2, 3, 4, 6, 8, 12, 24
+sequence_parallel_size: 4
+sequence_parallel_mode: deepspeed-alst
+alst_sequence_backend: deepspeed
+alst_ulysses_degree: 4
+alst_sequence_tiling: true
+alst_memory_optimizations: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+# 27B @ 131k needs SP + CPU offload
+deepspeed: sft/lf_configs/deepspeed/ds_z3_alst_offload.json
+include_mfu: true
+push_to_hub: false
+
+### dataset
+template: qwen3
+cutoff_len: 131072
+overwrite_cache: true
+preprocessing_num_workers: 16
+dataloader_persistent_workers: true
+dataloader_pin_memory: true
+dataloader_num_workers: 4
+pad_to_multiple_of: auto
+
+### output
+logging_steps: 5
+save_strategy: "steps"
+save_steps: 100
+save_total_limit: 1
+load_best_model_at_end: false
+logging_strategy: "steps"
+plot_loss: true
+
+### train
+learning_rate: 4.0e-5
+num_train_epochs: 7.0
+max_grad_norm: 1.0e-4
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+pure_bf16: false
+gradient_checkpointing: true
+ddp_timeout: 180000000

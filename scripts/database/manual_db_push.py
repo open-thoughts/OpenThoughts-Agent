@@ -4,7 +4,13 @@ Manually register a trained model with Supabase.
 
 Usage (from OpenThoughts-Agent/):
     source hpc/dotenv/tacc.env  # or otherwise export the Supabase + WANDB env vars
-    python scripts/database/manual_db_push.py --hf-model-id org/model --wandb-run entity/project/run
+
+    # Single dataset:
+    python scripts/database/manual_db_push.py --hf-model-id org/model --dataset-name DCAgent/my-dataset
+
+    # Multiple datasets (comma-separated → sets dataset_names instead of dataset_id):
+    python scripts/database/manual_db_push.py --hf-model-id org/model \
+        --dataset-name "DCAgent/dataset-a,DCAgent/dataset-b,DCAgent/dataset-c"
 """
 
 import argparse
@@ -12,8 +18,6 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-
-import wandb
 
 # Add repo root to sys.path for imports
 _repo_root = Path(__file__).resolve().parents[2]
@@ -39,13 +43,16 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--wandb-run",
-        default=DEFAULT_WANDB_RUN,
-        help="Weights & Biases run path (entity/project/run_id) (default: %(default)s)",
+        default=None,
+        help="Weights & Biases run path (entity/project/run_id). Optional — timestamps default to now if omitted.",
     )
     parser.add_argument(
         "--dataset-name",
         default=DEFAULT_DATASET_NAME,
-        help="Dataset name used during training (default: %(default)s)",
+        help="Dataset name(s) used during training. For multi-dataset models, "
+        "pass comma-separated names (e.g. 'DCAgent/ds-a,DCAgent/ds-b'). "
+        "Single dataset → sets dataset_id. Multiple → sets dataset_names. "
+        "(default: %(default)s)",
     )
     parser.add_argument(
         "--base-model",
@@ -73,39 +80,54 @@ def _derive_agent_name(dataset_name: str) -> str:
 def main() -> None:
     args = _parse_args()
 
-    # 1. Pull timestamps from W&B
-    api = wandb.Api()
-    run = api.run(args.wandb_run)
+    # 1. Pull timestamps from W&B (if provided), otherwise default to now
+    if args.wandb_run:
+        import wandb
 
-    created = getattr(run, "created_at", None)
-    finished = getattr(run, "finished_at", None) or getattr(run, "stopped_at", None)
-    if finished is None:
-        attrs = getattr(run, "_attrs", {})
-        if isinstance(attrs, dict):
-            finished = attrs.get("finishedAt")
-    if finished is None:
-        finished = getattr(run, "updated_at", None)
+        api = wandb.Api()
+        run = api.run(args.wandb_run)
 
-    if isinstance(created, str):
-        created = datetime.fromisoformat(created.replace("Z", "+00:00"))
-    if isinstance(finished, str):
-        finished = datetime.fromisoformat(finished.replace("Z", "+00:00"))
+        created = getattr(run, "created_at", None)
+        finished = getattr(run, "finished_at", None) or getattr(run, "stopped_at", None)
+        if finished is None:
+            attrs = getattr(run, "_attrs", {})
+            if isinstance(attrs, dict):
+                finished = attrs.get("finishedAt")
+        if finished is None:
+            finished = getattr(run, "updated_at", None)
 
-    if created is None:
-        raise RuntimeError(f"W&B run {args.wandb_run} does not have created_at populated yet")
+        if isinstance(created, str):
+            created = datetime.fromisoformat(created.replace("Z", "+00:00"))
+        if isinstance(finished, str):
+            finished = datetime.fromisoformat(finished.replace("Z", "+00:00"))
 
-    if created.tzinfo is None:
-        created = created.replace(tzinfo=timezone.utc)
-    if finished is not None and finished.tzinfo is None:
-        finished = finished.replace(tzinfo=timezone.utc)
+        if created is None:
+            raise RuntimeError(f"W&B run {args.wandb_run} does not have created_at populated yet")
 
-    if finished is None:
-        finished = datetime.now(timezone.utc)
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        if finished is not None and finished.tzinfo is None:
+            finished = finished.replace(tzinfo=timezone.utc)
 
-    training_start = created.astimezone(timezone.utc).isoformat()
-    training_end = finished.astimezone(timezone.utc).isoformat() if finished else None
+        if finished is None:
+            finished = datetime.now(timezone.utc)
 
-    # 2. Shape the record exactly the way Llama-Factory expects
+        training_start = created.astimezone(timezone.utc).isoformat()
+        training_end = finished.astimezone(timezone.utc).isoformat() if finished else None
+    else:
+        now = datetime.now(timezone.utc)
+        training_start = now.isoformat()
+        training_end = now.isoformat()
+
+    # 2. Detect single vs multi-dataset
+    is_multi = "," in args.dataset_name
+    if is_multi:
+        ds_list = [d.strip() for d in args.dataset_name.split(",") if d.strip()]
+        print(f"Multi-dataset mode: {len(ds_list)} datasets")
+        for ds in ds_list:
+            print(f"  - {ds}")
+
+    # 3. Shape the record
     record = {
         "agent_name": args.agent_name or _derive_agent_name(args.dataset_name),
         "training_start": training_start,
@@ -119,12 +141,12 @@ def main() -> None:
             "config_blob": f"https://huggingface.co/{args.hf_model_id}/blob/main/config.json",
             "hf_repo": args.hf_model_id,
         },
-        "wandb_link": f"https://wandb.ai/{args.wandb_run}",
+        "wandb_link": f"https://wandb.ai/{args.wandb_run}" if args.wandb_run else None,
         "traces_location_s3": os.environ.get("TRACE_S3_PATH"),
         "model_name": args.hf_model_id,
     }
 
-    # 3. Insert / upsert into Supabase
+    # 4. Insert / upsert into Supabase
     result = register_trained_model(record, forced_update=True)
     if result.get("success"):
         model = result["model"]

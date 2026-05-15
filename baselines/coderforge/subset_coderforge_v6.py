@@ -1,0 +1,567 @@
+#!/usr/bin/env python3
+"""Build CoderForge-Preview v6 row-subsets with assistant turns RENDERED into
+think-first + OpenHands-XML tool-call wire format.
+
+Why v6?
+  - v3 (pre-tokenized): model emits pure garbage "888888..." at eval time.
+  - v5 (wrapper tokens stripped, no <think>): grad_norm improved 19->3 but
+    model still emits "0.0.0.0..." garbage on swebench prompts.
+  - Root cause: stock Qwen3-8B assigns ~100% prior to <think> (id 151667) as
+    the first token after <|im_start|>assistant\\n. CF's training data has ZERO
+    <think> blocks -> every assistant turn fights Qwen3's think-first prior
+    -> catastrophic parameter updates -> long-context coherence destroyed.
+
+v6 output format per assistant turn:
+    <think>REASONING</think>
+
+    PROSE
+
+    <function=NAME>
+    <parameter=KEY>VAL</parameter>
+    ...
+    </function>
+
+and tool observations rendered as role:user with <tool_response>...</tool_response>
+wrapping (same convention as Sera v4; maps cleanly onto Qwen3's default chat
+template when interleaved with assistant think-blocks).
+
+Critically v6 does NOT wrap tool calls in <tool_call>...</tool_call> — we use
+the native OpenHands XML format <function=NAME><parameter=K>V</parameter></function>
+because the eval harness (openhands_ctx32k_eval_.yaml) sets
+`disable_tool_calls: true`, which means OpenHands expects XML-parsed function
+calls, not Hermes-style JSON-wrapped ones. v5 kept <tool_call> and that was
+also part of the mismatch.
+
+Source: togethercomputer/CoderForge-Preview/trajectories (split=filtered_reward1,
+224 shards, ~155k rows). Rows have:
+  trajectory_id (str), finish_reason (str), image (str),
+  messages (JSON string), reward (float), tools (JSON string), license (str).
+
+Target repos on HF (laion/), 316 and 1000 only:
+  - laion/CoderForge-Preview-v6-316
+  - laion/CoderForge-Preview-v6-1000
+
+Per-row output format (rendered JSONL, axolotl chat_template:tokenizer_default):
+  {
+    "trajectory_id": str,
+    "reward": float,
+    "source": str,
+    "messages": [{"role": str, "content": str, "train": bool}, ...]
+  }
+"""
+import argparse
+import gc
+import glob
+import json
+import os
+import random
+import xml.sax.saxutils as xml_utils
+from pathlib import Path
+
+import pyarrow.parquet as pq
+from huggingface_hub import HfApi, hf_hub_download
+
+
+SRC_REPO = "togethercomputer/CoderForge-Preview"
+SRC_SPLIT = "trajectories"           # raw messages (not tokenized)
+SRC_SHARD_PATTERN = "filtered_reward1-*-of-*.parquet"
+SOURCE_TAG = f"{SRC_REPO}/{SRC_SPLIT}"
+TARGET_BASE = "laion/CoderForge-Preview-v6"
+SUBSET_SIZES = [316, 1000]
+SEED = 42
+
+DEFAULT_STAGING = Path("/e/data1/datasets/playground/ot-baf/_cf_v6_staging")
+DEFAULT_MAC_STAGING = Path("/Users/benjaminfeuer/Documents/scripts_dataset_build/_cf_v6_staging")
+
+# One filler reasoning fallback when no natural reasoning source is available
+# on an assistant turn.  Qwen3 prefers short, verb-initial think blocks.
+FALLBACK_THINK = "Let me examine the problem and take the next action."
+
+
+# ---------------------------------------------------------------------------
+# Render helpers
+# ---------------------------------------------------------------------------
+
+
+def _render_param_value(val):
+    """Render a single parameter value as plain text (no XML-escape needed — the
+    OpenHands parser reads everything between <parameter=K>...</parameter>
+    verbatim, including angle brackets inside code).
+
+    Non-string scalars become str().  Dict/list values become JSON (sometimes
+    Anthropic/OpenAI tools pass nested structures)."""
+    if val is None:
+        return ""
+    if isinstance(val, bool):
+        return "true" if val else "false"
+    if isinstance(val, (int, float)):
+        return str(val)
+    if isinstance(val, str):
+        return val
+    # dict / list: serialize as JSON (rare but possible)
+    try:
+        return json.dumps(val, ensure_ascii=False)
+    except Exception:
+        return str(val)
+
+
+def _render_function_xml(name, args):
+    """Render a tool_call as OpenHands XML:
+        <function=NAME>
+        <parameter=K>V</parameter>
+        ...
+        </function>
+    """
+    parts = [f"<function={name}>"]
+    if isinstance(args, dict):
+        for k, v in args.items():
+            rendered = _render_param_value(v)
+            parts.append(f"<parameter={k}>{rendered}</parameter>")
+    elif args is not None:
+        # Malformed args — just dump as a single <parameter=args> blob so no data
+        # is lost.  This preserves trajectories that would otherwise be discarded.
+        parts.append(f"<parameter=args>{_render_param_value(args)}</parameter>")
+    parts.append("</function>")
+    return "\n".join(parts)
+
+
+def _wrap_tool_response(text):
+    return "<tool_response>\n" + text + "\n</tool_response>"
+
+
+def _sanitize_reasoning_text(text):
+    """Strip structural wire tokens that might appear inside raw CF content.
+
+    A small fraction of CF trajectories were generated by models that
+    sometimes leaked wire tokens (e.g. `<tool_call>`, `<function=...>`,
+    `</think>`, `<|im_start|>`) into their plain-text content.  We don't
+    want those in the <think> block because they would teach the SFT
+    model to emit stray wrapper tokens at the wrong structural position.
+    """
+    if not isinstance(text, str):
+        return text
+    junk = (
+        "<tool_call>", "</tool_call>",
+        "<tool_response>", "</tool_response>",
+        "<think>", "</think>",
+        "<|im_start|>", "<|im_end|>",
+        "<|endoftext|>",
+    )
+    for tok in junk:
+        text = text.replace(tok, "")
+    return text.strip()
+
+
+def _derive_think_and_prose(content, tool_calls):
+    """Pick a <think> block and brief post-think prose for one assistant turn.
+
+    Returns (think_text, prose_text).
+
+    Strategy:
+      1. If the first tool_call is the synthetic `think` tool, use its
+         `thought` argument as the think block and DROP that tool call from
+         the call list (callers should handle this).
+      2. Else if content is non-empty, use content as the think block
+         (CF's natural assistant content is almost always reasoning — it
+         explains what the model is about to do in plain prose).
+      3. Else fall back to FALLBACK_THINK.
+
+    The returned prose is kept empty unless content already contains an
+    explicit action cue (we don't try to be clever; keeping prose empty
+    mimics Sera's convention).
+    """
+    # Case 1: first tc is `think`
+    if tool_calls:
+        first = tool_calls[0]
+        fname = first.get("function", {}).get("name")
+        if fname == "think":
+            thought = first.get("function", {}).get("arguments", {})
+            if isinstance(thought, dict):
+                thought = thought.get("thought") or ""
+            if isinstance(thought, str) and thought.strip():
+                cleaned = _sanitize_reasoning_text(thought)
+                if cleaned:
+                    return cleaned, ""
+
+    # Case 2: use content
+    if isinstance(content, str) and content.strip():
+        cleaned = _sanitize_reasoning_text(content)
+        if cleaned:
+            return cleaned, ""
+
+    # Case 3: fallback
+    return FALLBACK_THINK, ""
+
+
+def transform_cf_messages(messages):
+    """Apply CF->v6 rendering; returns a flat messages list with keys
+    {role, content, train}.  One input message can produce one output message.
+
+    Output contract per assistant turn:
+      content = f"<think>{REASONING}</think>\n\nPROSE\n\n<function=...>...</function>..."
+    Tool observations -> role:user with <tool_response>...</tool_response>.
+    System/user turns passed through.
+    """
+    out = []
+    for m in messages:
+        role = m.get("role")
+
+        if role == "tool":
+            text = m.get("content") or ""
+            if isinstance(text, list):
+                # defensive: flatten if it ever shows up as list
+                text = "\n".join(
+                    (p.get("text") if isinstance(p, dict) else str(p))
+                    for p in text
+                )
+            out.append({
+                "role": "user",
+                "content": _wrap_tool_response(text),
+                "train": False,
+            })
+            continue
+
+        if role == "assistant":
+            content = m.get("content") or ""
+            if isinstance(content, list):
+                content = "\n".join(
+                    (p.get("text") if isinstance(p, dict) else str(p))
+                    for p in content
+                )
+            tool_calls = m.get("tool_calls") or []
+
+            think_text, prose_text = _derive_think_and_prose(content, tool_calls)
+
+            # If think came from the synthetic `think` tool, skip that call
+            # from rendering (it's reasoning, not an action).
+            effective_tool_calls = tool_calls
+            if tool_calls:
+                fname = tool_calls[0].get("function", {}).get("name")
+                if fname == "think":
+                    effective_tool_calls = tool_calls[1:]
+
+            # Render remaining tool_calls as OpenHands XML
+            xml_actions = []
+            for tc in effective_tool_calls:
+                fn = tc.get("function", {})
+                name = fn.get("name") or "unknown_tool"
+                args = fn.get("arguments")
+                # Arguments may come as JSON string or dict (dataset is usually dict).
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except Exception:
+                        # keep raw string; _render_function_xml falls back gracefully
+                        pass
+                xml_actions.append(_render_function_xml(name, args))
+
+            # Assemble: <think>...</think>\n\n[prose]\n\n[actions]
+            pieces = [f"<think>{think_text}</think>"]
+            if prose_text:
+                pieces.append(prose_text)
+            if xml_actions:
+                pieces.append("\n".join(xml_actions))
+            rendered = "\n\n".join(pieces)
+
+            out.append({"role": "assistant", "content": rendered, "train": True})
+            continue
+
+        if role == "system":
+            content = m.get("content") or ""
+            if isinstance(content, list):
+                content = "\n".join(
+                    (p.get("text") if isinstance(p, dict) else str(p))
+                    for p in content
+                )
+            out.append({"role": "system", "content": content, "train": False})
+            continue
+
+        # user (or anything else) — pass content through, stripping list shape
+        content = m.get("content") or ""
+        if isinstance(content, list):
+            content = "\n".join(
+                (p.get("text") if isinstance(p, dict) else str(p))
+                for p in content
+            )
+        out.append({"role": role or "user", "content": content, "train": False})
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Subset builder
+# ---------------------------------------------------------------------------
+
+
+def count_source_rows(source_dir):
+    total = 0
+    shards = sorted(glob.glob(os.path.join(source_dir, SRC_SHARD_PATTERN)))
+    for p in shards:
+        total += pq.ParquetFile(p).metadata.num_rows
+    return total, shards
+
+
+def write_subsets(shards, staging_dir, sizes, full_size, seed):
+    staging_dir.mkdir(parents=True, exist_ok=True)
+
+    random.seed(seed)
+    idxs = list(range(full_size))
+    random.shuffle(idxs)
+    size_to_idxset = {}
+    for s in sizes:
+        if s > full_size:
+            print(f"[skip] size={s} (only {full_size} rows)", flush=True)
+            continue
+        size_to_idxset[s] = set(idxs[:s])
+
+    size_to_file = {}
+    for s in size_to_idxset:
+        p = staging_dir / f"coderforge-preview_v6_{s}.jsonl"
+        if p.exists():
+            p.unlink()
+        size_to_file[s] = open(p, "w")
+
+    counts = {s: 0 for s in size_to_idxset}
+    n_transformed, n_skipped = 0, 0
+    global_i = 0
+
+    for si, sp in enumerate(shards):
+        print(f"  [shard {si+1}/{len(shards)}] {os.path.basename(sp)}", flush=True)
+        tbl = pq.read_table(
+            sp,
+            columns=["trajectory_id", "reward", "messages"],
+        ).to_pylist()
+        for r in tbl:
+            try:
+                raw_msgs = json.loads(r["messages"])
+                new_msgs = transform_cf_messages(raw_msgs)
+            except Exception as e:
+                n_skipped += 1
+                if n_skipped <= 5:
+                    print(f"  [warn] global_i={global_i}: transform failed: {type(e).__name__}: {e}", flush=True)
+                global_i += 1
+                continue
+            out_row = {
+                "trajectory_id": r.get("trajectory_id"),
+                "reward": r.get("reward"),
+                "source": SOURCE_TAG,
+                "messages": new_msgs,
+            }
+            n_transformed += 1
+            line = json.dumps(out_row, ensure_ascii=False) + "\n"
+
+            for s, idxset in size_to_idxset.items():
+                if global_i in idxset:
+                    size_to_file[s].write(line)
+                    counts[s] += 1
+            global_i += 1
+
+        # quick progress
+        if n_transformed % 5000 == 0 and n_transformed > 0:
+            print(f"  streamed {global_i}/{full_size} (transformed={n_transformed}, skipped={n_skipped})", flush=True)
+        # early-exit once all target subsets are filled — much faster when we
+        # only want 316+1000 out of 155k rows spanning 224 shards.
+        if all(counts[s] >= s for s in size_to_idxset):
+            # verify all buckets full before stopping
+            if all(counts[s] >= s for s in size_to_idxset):
+                print(f"  [early-stop] all buckets full at global_i={global_i}", flush=True)
+                break
+        del tbl
+        gc.collect()
+
+    for f in size_to_file.values():
+        f.close()
+
+    print(f"[write] transformed={n_transformed}  skipped={n_skipped}  global_seen={global_i}", flush=True)
+    for s, n in counts.items():
+        print(f"[write] subset {s}: {n} rows", flush=True)
+
+    return {s: staging_dir / f"coderforge-preview_v6_{s}.jsonl" for s in size_to_idxset}
+
+
+def make_readme(target_repo, size, full_size):
+    return f"""---
+license: apache-2.0
+task_categories:
+  - text-generation
+tags:
+  - sft
+  - agent
+  - swe-bench
+  - axolotl
+  - openhands
+  - xml-tool-calls
+  - think-first
+---
+
+# {target_repo}
+
+Row-subset of [togethercomputer/CoderForge-Preview](https://huggingface.co/datasets/togethercomputer/CoderForge-Preview)
+(`trajectories` split, `filtered_reward1`), rendered into Qwen3-compatible
+think-first OpenHands-XML wire format.
+
+## Why v6?
+
+v3 (pre-tokenized) and v5 (wrapper-stripped, no think-block) both produced
+garbage at eval time (`8888...`, `0.0.0.0...`) despite clean training losses.
+Root cause: stock Qwen3-8B assigns ~100% prior to `<think>` as the first
+token after `<|im_start|>assistant`.  CoderForge's training data had ZERO
+`<think>` blocks, so every assistant turn fought Qwen3's post-training prior,
+driving catastrophic parameter updates that corrupted the model's long-
+context coherence.
+
+v6 injects a `<think>REASONING</think>` block at the start of every assistant
+turn (sourced from the trajectory's natural assistant content or the
+synthetic `think` tool's `thought` argument), followed by OpenHands XML tool
+calls.
+
+## Format (per row)
+
+```json
+{{
+  "trajectory_id": "...",
+  "reward": 1.0,
+  "source": "togethercomputer/CoderForge-Preview/trajectories",
+  "messages": [
+    {{"role": "system",    "content": "...",                    "train": false}},
+    {{"role": "user",      "content": "<uploaded_files>...",    "train": false}},
+    {{"role": "assistant", "content": "<think>reasoning</think>\\n\\n<function=execute_bash>\\n<parameter=command>ls</parameter>\\n</function>", "train": true}},
+    {{"role": "user",      "content": "<tool_response>\\n...\\n</tool_response>", "train": false}},
+    ...
+  ]
+}}
+```
+
+- Assistant turns emit one `<think>...</think>` block, then OpenHands XML:
+  `<function=NAME>\\n<parameter=K>V</parameter>\\n...\\n</function>`.
+- No Hermes-style `<tool_call>...</tool_call>` wrapping — the eval harness
+  (openhands_ctx32k_eval_.yaml) sets `disable_tool_calls: true`, expecting
+  the native OpenHands XML format.
+- Tool observations converted to `role: user` with `<tool_response>...</tool_response>`.
+- `train: bool` per message is the loss mask (axolotl `message_field_training: train`).
+
+**Size**: {size:,} rows (source: {full_size:,} rows).
+
+**Sampling**: deterministic random, seed=42, row-indexed over the global
+concatenation of `filtered_reward1` shards (streaming pass).
+
+## Usage (axolotl)
+
+```yaml
+datasets:
+  - path: {target_repo}
+    data_files:
+      - coderforge-preview_v6_{size}.jsonl
+    type: chat_template
+    field_messages: messages
+    ds_type: json
+    message_field_training: train
+chat_template: tokenizer_default
+```
+"""
+
+
+def push_dataset(api, target_repo, jsonl_path, size, full_size):
+    print(f"[push] creating repo {target_repo}", flush=True)
+    api.create_repo(repo_id=target_repo, repo_type="dataset", exist_ok=True)
+    readme_tmp = jsonl_path.parent / f"README_{size}.md"
+    readme_tmp.write_text(make_readme(target_repo, size, full_size))
+    print(f"[push] uploading {jsonl_path.name} ({jsonl_path.stat().st_size / 1e6:.1f} MB) -> {target_repo}", flush=True)
+    api.upload_file(
+        path_or_fileobj=str(jsonl_path),
+        path_in_repo=jsonl_path.name,
+        repo_id=target_repo,
+        repo_type="dataset",
+    )
+    api.upload_file(
+        path_or_fileobj=str(readme_tmp),
+        path_in_repo="README.md",
+        repo_id=target_repo,
+        repo_type="dataset",
+    )
+    readme_tmp.unlink()
+    print(f"[push]  done {target_repo}", flush=True)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--download-only", action="store_true", help="Download shards and exit")
+    ap.add_argument("--skip-download", action="store_true", help="Shards already local")
+    ap.add_argument("--build-only", action="store_true", help="Write JSONLs, skip uploads")
+    ap.add_argument("--staging", type=Path, default=None,
+                    help="Override staging dir")
+    ap.add_argument("--max-shards", type=int, default=None,
+                    help="Only process the first N shards (fast subset build — "
+                    "since we sample with seed=42, just grabbing more than you need "
+                    "is fine).")
+    args = ap.parse_args()
+
+    token = os.environ["HF_TOKEN"]
+    api = HfApi(token=token)
+
+    # Figure out staging dir (Jupiter vs Mac)
+    if args.staging is not None:
+        staging = args.staging
+    elif Path("/e/data1/datasets/playground/ot-baf").exists():
+        staging = DEFAULT_STAGING
+    else:
+        staging = DEFAULT_MAC_STAGING
+    print(f"[staging] {staging}", flush=True)
+
+    # Source shards.  Downloading all 224 shards for 1000 rows is wasteful; we
+    # only pull `--max-shards` (default: enough to cover the random indices for
+    # our largest subset -> typically ~5 shards since seed=42 gives uniform
+    # coverage, but to be safe we default to downloading all and let
+    # `--max-shards` cap the stream.
+    if not args.skip_download:
+        # download all filtered_reward1 shards (no wildcard in hf_hub_download;
+        # we enumerate by number since we know there are 224)
+        print("[download] filtered_reward1 shards (224 total)", flush=True)
+        shard_count = args.max_shards or 4  # 4 shards ~= ~2800 rows, plenty for 1000-row sample
+        cache_root = None
+        for i in range(shard_count):
+            fname = f"{SRC_SPLIT}/filtered_reward1-{i:05d}-of-00224.parquet"
+            p = hf_hub_download(
+                repo_id=SRC_REPO,
+                repo_type="dataset",
+                filename=fname,
+                token=token,
+                cache_dir=os.environ.get("HF_HUB_CACHE"),
+            )
+            cache_root = os.path.dirname(p)
+            if i == 0:
+                print(f"  cache_root: {cache_root}", flush=True)
+        source_dir = cache_root
+    else:
+        hits = glob.glob(
+            f"{os.environ.get('HF_HUB_CACHE','~/.cache/huggingface/hub')}"
+            f"/datasets--togethercomputer--CoderForge-Preview/snapshots/*/{SRC_SPLIT}"
+        )
+        if not hits:
+            raise SystemExit("--skip-download but no cached source dir found")
+        source_dir = sorted(hits)[-1]
+    print(f"[src] {source_dir}", flush=True)
+
+    if args.download_only:
+        return
+
+    full_size, shards = count_source_rows(source_dir)
+    if args.max_shards:
+        shards = shards[: args.max_shards]
+        full_size = sum(pq.ParquetFile(p).metadata.num_rows for p in shards)
+    print(f"[src] using {len(shards)} shards, {full_size:,} rows", flush=True)
+
+    paths = write_subsets(shards, staging, SUBSET_SIZES, full_size, SEED)
+
+    if args.build_only:
+        print("[build-only] skipping uploads", flush=True)
+        return
+
+    for size in SUBSET_SIZES:
+        if size not in paths:
+            continue
+        push_dataset(api, f"{TARGET_BASE}-{size}", paths[size], size, full_size)
+
+
+if __name__ == "__main__":
+    main()

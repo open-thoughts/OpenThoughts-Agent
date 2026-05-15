@@ -46,7 +46,27 @@ export CONDA_BACKUP_FC="${CONDA_BACKUP_FC:-}"
 # --- Module loading (cluster-specific, substituted by launcher) ---
 {module_commands}
 
-# --- Environment setup ---
+# --- Conda activation (cluster-specific, substituted by launcher) ---
+# Must run before WORKDIR detection so DCFT is available from the dotenv.
+{conda_activate}
+
+# --- Source environment files (sets DCFT, SCRATCH, etc.) ---
+for _try_dcft in "${DCFT:-}" "${DCFT_PRIVATE:-}" "$PWD"; do
+  if [ -n "$_try_dcft" ] && [ -f "$_try_dcft/hpc/dotenv/{cluster_env_file}" ]; then
+    source "$_try_dcft/hpc/dotenv/{cluster_env_file}"
+    break
+  fi
+done
+if [ -n "${DC_AGENT_SECRET_ENV:-}" ] && [ -f "$DC_AGENT_SECRET_ENV" ]; then
+  set -a
+  source "$DC_AGENT_SECRET_ENV"
+  set +a
+fi
+if [ -n "${DCFT_ACTIVATE_ENV:-}" ]; then
+  eval "$DCFT_ACTIVATE_ENV"
+fi
+
+# --- Environment setup (WORKDIR) ---
 if [ -n "${DCFT_PRIVATE:-}" ]; then
   WORKDIR="$DCFT_PRIVATE"
 elif [ -n "${DCFT:-}" ]; then
@@ -58,22 +78,6 @@ cd "$WORKDIR"
 
 if [ -z "${DCFT:-}" ]; then
   export DCFT="$WORKDIR"
-fi
-
-# --- Conda activation (cluster-specific, substituted by launcher) ---
-{conda_activate}
-
-# --- Source environment files ---
-if [ -n "${DCFT:-}" ] && [ -f "$DCFT/hpc/dotenv/{cluster_env_file}" ]; then
-  source "$DCFT/hpc/dotenv/{cluster_env_file}"
-fi
-if [ -n "${DC_AGENT_SECRET_ENV:-}" ] && [ -f "$DC_AGENT_SECRET_ENV" ]; then
-  set -a
-  source "$DC_AGENT_SECRET_ENV"
-  set +a
-fi
-if [ -n "${DCFT_ACTIVATE_ENV:-}" ]; then
-  eval "$DCFT_ACTIVATE_ENV"
 fi
 
 # --- CUDA path detection (Perlmutter and similar) ---
@@ -93,6 +97,8 @@ export PYTHONFAULTHANDLER=1
 export TORCH_SHOW_CPP_STACKTRACES=1
 export CUDA_LAUNCH_BLOCKING=0
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
+# NCCL monitoring is configured via hpc.py env_vars (TORCH_NCCL_ENABLE_MONITORING).
+# Do NOT override here — pre-tokenization now runs separately via --pretokenize.
 export OMP_NUM_THREADS=1
 export PYTHONPATH="$WORKDIR:${PYTHONPATH:-}"
 export DISABLE_VERSION_CHECK=1  # Skip LlamaFactory transformers version check

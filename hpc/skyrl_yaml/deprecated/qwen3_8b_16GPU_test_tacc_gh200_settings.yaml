@@ -1,0 +1,187 @@
+# SkyRL Configuration: Qwen3 8B on 16x80GB GPUs - TEST: TACC GH200 optimized settings
+# Based on: qwen3_8b_16GPU_thinking_bs64_group8_async_rloo_n_noct_strict_micro2x4_autosnap_console_v9_base_workers_noblock.yaml
+#
+# TEST VARIANT: Apply settings that work well on TACC Vista (also GH200)
+#   - kv_cache_dtype: fp8 (reduces KV cache memory by ~50%)
+#   - block_size: 16 (smaller blocks, better memory management)
+#   - max_num_partial_prefills: 1 (limits concurrent partial prefills)
+#   - gpu_memory_utilization: 0.80 (lower utilization helped)
+#
+# These settings are proven to work on GH200 at TACC with larger models.
+
+# SkyRL entrypoint module
+entrypoint: examples.terminal_bench.entrypoints.main_tbench
+
+# Hydra config groups (+ prefix in CLI)
+config_groups:
+  terminal_bench_config: terminal_bench
+
+# Terminal bench / agentic environment settings
+terminal_bench:
+  trials_dir: null
+
+  harbor:
+    name: terminus-2
+    max_episodes: 999999
+    enable_summarize: false
+    store_all_messages: true
+    enable_episode_logging: false
+    record_terminal_session: false
+    enable_pane_logging: false
+    strict_json_parser: true
+    # Interleaved Thinking Settings
+    interleaved_thinking: true
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+      response_prefix: "<think>\n\n</think>\n\n{\n  \"analysis\": \""
+    override_timeout_sec: 900
+    override_cpus: 1
+    override_memory_mb: 2048
+    override_storage_mb: 2048
+    auto_snapshot: true
+    verifier_override_timeout_sec: 120
+    max_retries: 3
+    min_wait_sec: 60.0
+    max_wait_sec: 600.0
+    wait_multiplier: 2.0
+    exclude_exceptions:
+      - VerifierTimeoutError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - VerifierOutputParseError
+    n_concurrent_trials: 384
+    log_level: INFO
+    enable_reward_shaping: false
+    enable_error_classification: true
+    mask_exceptions:
+      - DaytonaError
+      - EnvironmentStartTimeoutError
+      - NetworkError
+      - ConnectionError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+    zero_exceptions:
+    default_error_treatment: zero
+    passthrough_exceptions:
+      - AgentTimeoutError
+      - ContextLengthExceededError
+
+  model_info:
+    max_input_tokens: 32768
+    max_output_tokens: 8192
+
+  archiving:
+    enabled: false
+
+trainer:
+  strategy: fsdp2
+  algorithm:
+    advantage_estimator: rloo_n
+    use_kl_loss: false
+    kl_loss_coef: 0.01
+    eps_clip_low: 0.2
+    eps_clip_high: 0.2
+    loss_reduction: token_mean
+
+  epochs: 2
+  update_epochs_per_batch: 1
+  train_batch_size: 64
+  policy_mini_batch_size: 64
+  eval_batch_size: 64
+  micro_forward_batch_size_per_gpu: 4
+  micro_train_batch_size_per_gpu: 2
+  max_prompt_length: 999999
+  eval_interval: 999999
+  eval_before_train: false
+  ckpt_interval: 999999
+  resume_mode: latest
+  hf_save_interval: 20
+  hf_hub_repo_id: null
+  hf_hub_private: false
+  hf_hub_revision: main
+  enable_db_registration: true
+  logger: console
+  project_name: OpenThoughts-Agent
+  log_level: INFO
+  tracker_commit_each_step: true
+  run_name: null
+  ckpt_path: null
+  export_path: null
+
+  policy:
+    optimizer_config:
+      lr: 1e-6
+      weight_decay: 0.0
+      adam_betas: [0.9, 0.999]
+      max_grad_norm: 5.0
+    fsdp_config:
+      cpu_offload: false
+      reshard_after_forward: false
+      fsdp_size: 4
+  ref:
+    fsdp_config:
+      cpu_offload: false
+      reshard_after_forward: false
+      fsdp_size: 4
+
+  placement:
+    colocate_all: false
+    policy_num_nodes: 2
+    ref_num_nodes: 2
+    policy_num_gpus_per_node: 4
+    ref_num_gpus_per_node: 4
+
+  fully_async:
+    max_staleness_steps: 32
+    num_parallel_generation_workers: 768
+
+generator:
+  backend: vllm
+  timeout_multiplier: 2.0
+  model_dtype: bfloat16
+
+  inference_engine_tensor_parallel_size: 1
+  num_inference_engines: 8
+
+  n_samples_per_prompt: 8
+  eval_n_samples_per_prompt: 8
+
+  # TEST CHANGE: Lower GPU memory (helped in previous test)
+  gpu_memory_utilization: 0.80
+
+  max_num_seqs: 32
+  max_num_batched_tokens: 32768
+
+  enable_prefix_caching: true
+  enable_chunked_prefill: true
+
+  run_engines_locally: true
+  weight_sync_backend: nccl
+  async_engine: true
+  batched: false
+  enable_http_endpoint: true
+  enable_ray_prometheus_stats: false
+  vllm_stats_interval: 1
+  append_eos_token_after_stop_str_in_multi_turn: true
+  max_turns: 999999
+
+  sampling_params:
+    max_generate_length: 8192
+    temperature: 1.0
+    top_p: 0.95
+    top_k: -1
+
+  # TEST CHANGES: TACC GH200 optimized settings
+  engine_init_kwargs:
+    max_model_len: 32768
+    # FP8 KV cache - reduces memory by ~50%, proven on GH200
+    kv_cache_dtype: fp8
+    # Smaller block size - better memory management on unified memory
+    block_size: 16
+    # Limit concurrent partial prefills
+    max_num_partial_prefills: 1
+
+data:
+  train_data: []
+  val_data: ["open-thoughts/OpenThoughts-TB-dev"]

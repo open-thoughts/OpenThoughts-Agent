@@ -30,7 +30,7 @@ def upload_folder(local_folder, repo_id, repo_type="model"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, required=True, help="Hugging Face model name (e.g., username/model-name)")
-    parser.add_argument("--checkpoint_folder", type=str, default="/leonardo_work/EUHPC_E03_068/DCFT_shared/checkpoints", help="Path to the checkpoint folder to upload")
+    parser.add_argument("--checkpoint_folder", type=str, default="/leonardo_work/AIFAC_5C0_290/DCFT_shared/checkpoints", help="Path to the checkpoint folder to upload")
     args = parser.parse_args()
 
     if "mlfoundations-dev/" not in args.model_name:

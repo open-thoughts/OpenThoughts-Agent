@@ -1,0 +1,94 @@
+# Harbor eval configuration (16 concurrency, OpenHands, 32k context).
+
+job_name: default-eval-job
+jobs_dir: trace_jobs
+n_attempts: 3
+timeout_multiplier: 1.0
+debug: false
+
+orchestrator:
+  type: local
+  n_concurrent_trials: 16
+  quiet: false
+  plain_output: true
+  adaptive_concurrency:
+    enabled: false
+    algorithm: gradient2
+    min_limit:
+    max_limit:
+    metrics_endpoint:
+    metrics_timeout_sec: 10.0
+    poll_interval_sec: 120.0
+    window_size: 5
+    queue_p95_drop_threshold:
+    algorithm_kwargs: {}
+  retry:
+    max_retries: 10
+    include_exceptions:
+    exclude_exceptions:
+    - AgentTimeoutError
+    - VerifierTimeoutError
+    - RewardFileNotFoundError
+    - RewardFileEmptyError
+    - VerifierOutputParseError
+    - SandboxBuildFailedError
+    - VerifierRuntimeError
+    - SummarizationTimeoutError
+    - ContextLengthExceededError
+    wait_multiplier: 2.0
+    min_wait_sec: 1.0
+    max_wait_sec: 90.0
+  kwargs: {}
+
+environment:
+  type: daytona
+  force_build: true
+  delete: true
+  override_cpus: 2
+  override_memory_mb: 4096
+  override_storage_mb: 4096
+  kwargs: {}
+
+verifier:
+  override_timeout_sec:
+  max_timeout_sec:
+  disable: false
+
+metrics:
+  - type: mean-drop-ei
+    kwargs: {}
+  - type: accuracy-drop-ei
+    kwargs: {}
+
+agents:
+- name: openhands
+  import_path:
+  model_name: placeholder/override-at-runtime
+  # 1800s base × timeout_multiplier=1.0 = 30min cap per trial. Without this
+  # explicit cap, timeout_multiplier has no base to multiply and OpenHands
+  # runs until max_iterations=250 (many hours/trial). See 390317 debug.
+  max_timeout_sec: 1800
+  override_setup_timeout_sec: 600
+  kwargs:
+    disable_tool_calls: true
+    collect_rollout_details: false
+    collect_engine_metrics: false
+    metrics_endpoint: https://replace-with-vllm-host/metrics
+    metrics_timeout_sec: 10
+    model_info:
+      # OpenHands tokenizer undercounts — at 23808/8192 vLLM rejected with
+      # "24577 input + 8192 output > 32768 max_model_len", then OpenHands looped
+      # retrying the same oversized prompt (eval 389639: 0 completions in 2.5h).
+      # 20000/4096 leaves ~8k headroom for tool-schema prepends + tokenizer drift.
+      max_input_tokens: 20000
+      max_output_tokens: 4096
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+
+    trajectory_config:
+      raw_content: false
+      linear_history: true
+datasets:
+- path: /replace/with/tasks/path
+
+tasks: []

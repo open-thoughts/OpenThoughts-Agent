@@ -106,7 +106,7 @@ def main() -> None:
 
     parquet_input = args.parquet
     source_dir: Path | None = None  # For raw task directories
-    parquet_path: Path | None = None  # For parquet extraction
+    parquet_paths: list[Path] = []  # For parquet extraction (multi-shard support)
 
     candidate_path = Path(parquet_input).expanduser()
     if candidate_path.exists():
@@ -129,11 +129,11 @@ def main() -> None:
                         raise FileNotFoundError(
                             f"Could not find parquet named '{args.parquet_name}' under {candidate_path}"
                         )
-                    parquet_path = matching[0]
+                    parquet_paths = [matching[0]]
                 else:
-                    parquet_path = parquet_files[0]
+                    parquet_paths = list(parquet_files)
         else:
-            parquet_path = candidate_path.resolve()
+            parquet_paths = [candidate_path.resolve()]
     else:
         # Not a local path - treat as HuggingFace repo
         global download_hf_dataset
@@ -171,10 +171,13 @@ def main() -> None:
                         f"Could not find parquet named '{args.parquet_name}' in repo '{parquet_input}'. "
                         f"Available examples:\n  - {available}"
                     )
-                parquet_path = matching[0]
+                parquet_paths = [matching[0]]
             else:
-                parquet_path = parquet_files[0]
-            print(f"[extract] Using parquet file: {parquet_path}")
+                parquet_paths = list(parquet_files)
+            if len(parquet_paths) == 1:
+                print(f"[extract] Using parquet file: {parquet_paths[0]}")
+            else:
+                print(f"[extract] Found {len(parquet_paths)} parquet shards; will extract all of them.")
 
     output_dir = Path(args.output_dir).expanduser().resolve()
 
@@ -194,7 +197,8 @@ def main() -> None:
         if source_dir:
             print(f"[extract] DRY RUN: Would copy raw tasks from {source_dir} to {output_dir}")
         else:
-            print(f"[extract] DRY RUN: Would extract parquet {parquet_path} to {output_dir}")
+            for p in parquet_paths:
+                print(f"[extract] DRY RUN: Would extract parquet {p} to {output_dir}")
         return
 
     # Perform extraction or copy
@@ -205,12 +209,18 @@ def main() -> None:
         num_copied = copy_raw_tasks(source_dir, output_dir, on_exist=args.on_exist)
         print(f"[extract] Done. Copied {num_copied} task directories.")
     else:
-        # Parquet with task_binary - extract
-        assert parquet_path is not None
-        print(f"[extract] Extracting parquet: {parquet_path}")
-        print(f"[extract] Output directory: {output_dir} (on_exist={args.on_exist})")
-        tpc.from_parquet(str(parquet_path), str(output_dir), on_exist=args.on_exist)
-        print("[extract] Done.")
+        # Parquet with task_binary - extract every shard sequentially into the same output dir
+        assert parquet_paths, "No parquet files resolved"
+        # For multi-shard runs, the first shard uses --on_exist as-is; subsequent shards
+        # treat 'error' as 'skip' so an empty starting dir doesn't immediately blow up
+        # on the 2nd shard. 'overwrite' / 'skip' pass through unchanged.
+        for i, parquet_path in enumerate(parquet_paths):
+            label = f"shard {i + 1}/{len(parquet_paths)}: " if len(parquet_paths) > 1 else ""
+            print(f"[extract] Extracting parquet ({label}{parquet_path})")
+            print(f"[extract] Output directory: {output_dir} (on_exist={args.on_exist})")
+            eff = args.on_exist if (i == 0 or args.on_exist != "error") else "skip"
+            tpc.from_parquet(str(parquet_path), str(output_dir), on_exist=eff)
+        print(f"[extract] Done. Extracted {len(parquet_paths)} parquet file(s).")
 
 
 if __name__ == "__main__":

@@ -16,6 +16,8 @@ terminal_bench:
     max_episodes: 999999
     enable_summarize: false
     store_all_messages: true
+    trajectory_config:
+      raw_content: true
     enable_episode_logging: false
     record_terminal_session: false
     enable_pane_logging: false
@@ -54,12 +56,11 @@ terminal_bench:
     wait_multiplier: 2.0
 
     exclude_exceptions:
-      - AgentTimeoutError
       - VerifierTimeoutError
+      - VerifierRuntimeError
       - RewardFileNotFoundError
       - RewardFileEmptyError
       - VerifierOutputParseError
-      - ContextLengthExceededError
 
     n_concurrent_trials: 280
 
@@ -79,9 +80,10 @@ terminal_bench:
       - RewardFileNotFoundError
       - RewardFileEmptyError
       - AgentEnvironmentTimeoutError
+    default_error_treatment: zero
+    passthrough_exceptions:
       - AgentTimeoutError
       - ContextLengthExceededError
-    default_error_treatment: zero
 
   # Model info for Harbor's hosted_vllm validation
   model_info:
@@ -131,7 +133,7 @@ trainer:
   eval_interval: 999999
   eval_before_train: false
   # Resumable checkpointing
-  ckpt_interval: 5
+  ckpt_interval: 3
   resume_mode: latest
   # HF upload-ready checkpoints
   hf_save_interval: 5
@@ -157,7 +159,7 @@ trainer:
 
   policy:
     optimizer_config:
-      lr: 5e-6
+      lr: 8e-6
       weight_decay: 0.0
       adam_betas: [0.9, 0.999]
       max_grad_norm: 10.0

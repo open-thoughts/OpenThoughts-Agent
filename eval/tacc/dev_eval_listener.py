@@ -33,7 +33,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from unified_db.utils import get_supabase_client  # your code
+from database.unified_db.utils import get_supabase_client
 
 # ---------- Config ----------
 LOOKBACK_DAYS = int(os.getenv("EVAL_LISTENER_LOOKBACK_DAYS", "100"))

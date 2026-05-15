@@ -1,0 +1,73 @@
+# Sera v4 axolotl config template — consumes laion/Sera-4.6-Lite-T2-v4-<SIZE>
+# where tool_calls are already pre-rendered into content as <tool_call>...</tool_call>
+# (Hermes/Qwen3 wire format) per SERA's transform_traj_hermes.
+#
+# Fill __SIZE__ via sed-substitution.
+
+base_model: Qwen/Qwen3-8B
+deepspeed: /e/scratch/jureap59/feuer1/code/axolotl/deepspeed_configs/zero3_bf16.json
+
+load_in_8bit: false
+load_in_4bit: false
+
+# CCE disabled (aarch64/torch2.9 grad explosion — see baselines/sera/README.md)
+# plugins:
+#   - axolotl.integrations.cut_cross_entropy.CutCrossEntropyPlugin
+
+# Use the base model's own chat_template (from Qwen/Qwen3-8B tokenizer_config.json)
+# so training-time rendering matches vLLM's inference-time rendering byte-for-byte.
+# The prior `chat_template: chatml` was a bare <|im_start|>role\ncontent<|im_end|>
+# template that doesn't strip `<think>` blocks from prior assistant turns, while
+# stock Qwen3-8B's template DOES strip them (and pads the last one with newlines).
+# That mismatch between training and inference multi-turn contexts caused the
+# model to go OOD after ~2 tool-call turns → whitespace collapse → 0% pass rate.
+# See agent-traces-analysis/SMOKE_TEST_FINDING.md for the full diagnosis.
+chat_template: tokenizer_default
+datasets:
+  - path: laion/Sera-4.6-Lite-T2-v4-__SIZE__
+    data_files:
+      - sera-4.6-lite-t2_v4___SIZE__.jsonl
+    type: chat_template
+    field_messages: messages
+    ds_type: json
+    message_field_training: train
+
+dataset_prepared_path: /e/data1/datasets/playground/ot-baf/axolotl_dataset_cache/sera-v4-__SIZE__
+output_dir: /e/data1/datasets/playground/ot-baf/checkpoints/sera-v4-__SIZE__-axolotl__Qwen3-8B
+
+sequence_len: 32768
+
+wandb_project:
+wandb_entity:
+wandb_watch:
+wandb_name: sera-v4-__SIZE__-axolotl__Qwen3-8B
+wandb_log_model:
+
+gradient_accumulation_steps: 8
+micro_batch_size: 1
+num_epochs: 3
+optimizer: adamw_torch
+lr_scheduler: cosine
+learning_rate: 1e-5
+adam_beta1: 0.9
+adam_beta2: 0.95
+
+bf16: auto
+tf32: false
+
+gradient_checkpointing: true
+activation_offloading: true
+resume_from_checkpoint:
+logging_steps: 1
+flash_attention: true
+
+loss_watchdog_threshold: 5.0
+loss_watchdog_patience: 3
+
+warmup_ratio: 0.1875
+evals_per_epoch: 0
+save_strategy: epoch
+
+weight_decay: 0.01
+max_grad_norm: 1.0
+special_tokens:

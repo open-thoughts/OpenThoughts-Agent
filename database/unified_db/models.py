@@ -365,16 +365,18 @@ class SandboxJobModel(BaseModel):
     ended_at: Optional[datetime] = None
     git_commit_id: Optional[str] = None
     package_version: Optional[str] = None
-    n_trials: int
-    config: Dict[str, Any]
+    n_trials: Optional[int] = None
+    config: Optional[Dict[str, Any]] = None
     metrics: Optional[Dict[str, Any]] = None
     stats: Optional[Dict[str, Any]] = None
     agent_id: UUID
     model_id: UUID
     benchmark_id: UUID
-    n_rep_eval: int
+    n_rep_eval: Optional[int] = None
     hf_traces_link: Optional[str] = None
     job_status: Optional[str] = None
+    submitted_at: Optional[datetime] = None
+    slurm_job_id: Optional[str] = None
 
     @field_validator('git_commit_id', 'package_version')
     @classmethod
@@ -408,6 +410,10 @@ class SandboxJobModel(BaseModel):
 
     @field_serializer('ended_at')
     def serialize_ended_at(self, value: Optional[datetime]) -> Optional[str]:
+        return value.isoformat() if value else None
+
+    @field_serializer('submitted_at')
+    def serialize_submitted_at(self, value: Optional[datetime]) -> Optional[str]:
         return value.isoformat() if value else None
 
 

@@ -6,6 +6,9 @@ __pycache__/
 # Beam cruft
 scripts/beam/helm-chart/charts/localstack-0.6.5.tgz
 
+# database bu
+scripts/database/backups
+
 # C extensions
 *.so
 
@@ -407,3 +410,8 @@ train/hpc/dotenv/secret.env
 # Claude
 CLAUDE.md
 development_progress.md
+
+# Eval listener — operator-local state (templates ship as .example / EXAMPLE.txt)
+eval/.local_notes/
+hpc/dotenv/jupiter_eval.env
+hpc/dotenv/jupiter_eval_data_org.env

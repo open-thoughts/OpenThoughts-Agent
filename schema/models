@@ -1,0 +1,63 @@
+create table public.models (
+  id uuid not null default extensions.uuid_generate_v4 (),
+  name text not null,
+  base_model_id uuid null,
+  created_by text not null,
+  creation_location text not null,
+  creation_time timestamp with time zone null default now(),
+  dataset_id uuid null,
+  is_external boolean not null default false,
+  weights_location text not null,
+  wandb_link text null,
+  updated_at timestamp with time zone null default now(),
+  training_start timestamp with time zone not null,
+  training_end timestamp with time zone null,
+  training_parameters jsonb not null,
+  training_status text null,
+  agent_id uuid not null,
+  training_type text null,
+  traces_location_s3 text null,
+  description text null,
+  dataset_names text null,
+  duplicate_of uuid null,
+  is_long_context boolean null,
+  "model_size_B" bigint null,
+  is_hf_bucketed boolean null,
+  constraint models_pkey primary key (id),
+  constraint models_base_model_id_fkey foreign KEY (base_model_id) references models (id),
+  constraint models_dataset_id_fkey foreign KEY (dataset_id) references datasets (id),
+  constraint models_duplicate_of_fkey foreign KEY (duplicate_of) references models (id) on delete RESTRICT,
+  constraint models_no_self_duplicate check (
+    (
+      (duplicate_of is null)
+      or (duplicate_of <> id)
+    )
+  ),
+  constraint models_training_type_check check (
+    (
+      training_type = any (array['SFT'::text, 'RL'::text])
+    )
+  )
+) TABLESPACE pg_default;
+
+create index IF not exists idx_models_name on public.models using btree (name) TABLESPACE pg_default;
+
+create index IF not exists idx_models_created_by on public.models using btree (created_by) TABLESPACE pg_default;
+
+create index IF not exists idx_models_agent_id on public.models using btree (agent_id) TABLESPACE pg_default;
+
+create index IF not exists idx_models_dataset_id on public.models using btree (dataset_id) TABLESPACE pg_default;
+
+create index IF not exists idx_models_base_model_id on public.models using btree (base_model_id) TABLESPACE pg_default;
+
+create index IF not exists idx_models_training_type on public.models using btree (training_type) TABLESPACE pg_default;
+
+create index IF not exists idx_models_creation_time on public.models using btree (creation_time desc) TABLESPACE pg_default;
+
+create index IF not exists idx_models_training_start on public.models using btree (training_start desc) TABLESPACE pg_default;
+
+create index IF not exists idx_models_duplicate_of on public.models using btree (duplicate_of) TABLESPACE pg_default;
+
+create trigger update_models_updated_at_trigger BEFORE
+update on models for EACH row
+execute FUNCTION update_models_updated_at ();

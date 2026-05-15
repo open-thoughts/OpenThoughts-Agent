@@ -1,0 +1,197 @@
+# SkyRL Configuration: Qwen3 8B - HIGH GENERATOR THROUGHPUT VARIANT (v1)
+# Based on: qwen3_8b_16x80GB_thinking_bs64_group8_async_rloo_n_noct_strict_micro2x4_autosnap_console.yaml
+#
+# THROUGHPUT OPTIMIZATION v1: High Generator Count
+# Key changes:
+#   - num_inference_engines: 8 -> 12 (50% more engines)
+#   - num_parallel_generation_workers: 768 -> 256 (2x workers)
+#   - n_concurrent_trials: 256 -> 384 (50% more concurrent trials)
+#   - max_num_seqs: 32 -> 48 (more sequences per engine)
+#
+# Expected impact: ~40-60% reduction in generation wait time
+# Trade-off: Higher GPU memory pressure on inference engines
+
+entrypoint: examples.terminal_bench.entrypoints.main_tbench
+
+config_groups:
+  terminal_bench_config: terminal_bench
+
+terminal_bench:
+  trials_dir: null
+
+  harbor:
+    name: terminus-2
+    max_episodes: 999999
+    enable_summarize: false
+    store_all_messages: true
+    enable_episode_logging: false
+
+    strict_json_parser: true
+
+    interleaved_thinking: true
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+
+    override_timeout_sec: 900
+
+    override_cpus: 1
+    override_memory_mb: 2048
+    override_storage_mb: 2048
+
+    auto_snapshot: true
+
+    verifier_override_timeout_sec: 120
+
+    max_retries: 3
+    min_wait_sec: 60.0
+    max_wait_sec: 600.0
+    wait_multiplier: 2.0
+
+    exclude_exceptions:
+      - VerifierTimeoutError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - VerifierOutputParseError
+
+    # INCREASED: 256 -> 384 concurrent trials
+    n_concurrent_trials: 384
+
+    log_level: INFO
+
+    enable_reward_shaping: false
+
+    enable_error_classification: true
+    mask_exceptions:
+      - DaytonaError
+      - EnvironmentStartTimeoutError
+      - NetworkError
+      - ConnectionError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+    zero_exceptions:
+    default_error_treatment: zero
+    passthrough_exceptions:
+      - AgentTimeoutError
+      - ContextLengthExceededError
+
+  model_info:
+    max_input_tokens: 32768
+    max_output_tokens: 8192
+
+  archiving:
+    enabled: false
+
+trainer:
+  strategy: fsdp2
+  algorithm:
+    advantage_estimator: rloo_n
+    use_kl_loss: false
+    kl_loss_coef: 0.01
+    eps_clip_low: 0.2
+    eps_clip_high: 0.2
+    loss_reduction: token_mean
+
+  epochs: 2
+  update_epochs_per_batch: 1
+
+  train_batch_size: 64
+  policy_mini_batch_size: 64
+  eval_batch_size: 64
+
+  micro_forward_batch_size_per_gpu: 4
+  micro_train_batch_size_per_gpu: 2
+
+  max_prompt_length: 999999
+
+  eval_interval: 999999
+  eval_before_train: false
+  ckpt_interval: 999999
+  resume_mode: latest
+  hf_save_interval: 20
+  hf_hub_repo_id: null
+  hf_hub_private: false
+  hf_hub_revision: main
+
+  enable_db_registration: true
+
+  logger: console
+  project_name: OpenThoughts-Agent
+  log_level: INFO
+  tracker_commit_each_step: true
+
+  run_name: null
+  ckpt_path: null
+  export_path: null
+
+  policy:
+    optimizer_config:
+      lr: 1e-6
+      weight_decay: 0.0
+      adam_betas: [0.9, 0.999]
+      max_grad_norm: 5.0
+    fsdp_config:
+      cpu_offload: false
+      reshard_after_forward: false
+      fsdp_size: 4
+  ref:
+    fsdp_config:
+      cpu_offload: false
+      reshard_after_forward: false
+      fsdp_size: 4
+
+  placement:
+    colocate_all: false
+    policy_num_nodes: 2
+    ref_num_nodes: 2
+    policy_num_gpus_per_node: 4
+    ref_num_gpus_per_node: 4
+
+  fully_async:
+    max_staleness_steps: 8
+    # INCREASED: 128 -> 256 generation workers
+    num_parallel_generation_workers: 256
+
+generator:
+  backend: vllm
+  timeout_multiplier: 2.0
+  model_dtype: bfloat16
+
+  inference_engine_tensor_parallel_size: 1
+  # INCREASED: 8 -> 12 inference engines
+  num_inference_engines: 12
+
+  n_samples_per_prompt: 8
+  eval_n_samples_per_prompt: 8
+
+  gpu_memory_utilization: 0.90
+
+  # INCREASED: 32 -> 48 sequences per engine
+  max_num_seqs: 48
+  max_num_batched_tokens: 32768
+
+  enable_prefix_caching: true
+  enable_chunked_prefill: true
+
+  run_engines_locally: true
+  weight_sync_backend: nccl
+  async_engine: true
+  batched: false
+  enable_http_endpoint: true
+  enable_ray_prometheus_stats: false
+
+  append_eos_token_after_stop_str_in_multi_turn: true
+  max_turns: 999999
+
+  sampling_params:
+    max_generate_length: 8192
+    temperature: 1.0
+    top_p: 0.95
+    top_k: -1
+
+  engine_init_kwargs:
+    max_model_len: 32768
+
+data:
+  train_data: []
+  val_data: ["open-thoughts/OpenThoughts-TB-dev"]

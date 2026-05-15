@@ -1,0 +1,73 @@
+# CoderForge v6 axolotl config template — consumes laion/CoderForge-Preview-v6-<SIZE>
+# where every assistant turn has a <think>REASONING</think> block and tool calls
+# are rendered as native OpenHands XML (<function=NAME><parameter=K>V</parameter></function>).
+#
+# Why v6: v3 (pre-tokenized) and v5 (wrapper-stripped, no <think>) both produced
+# garbage output at eval time because stock Qwen3-8B assigns 100% prior to
+# <think> as the first token after <|im_start|>assistant. Injecting <think>
+# blocks into CF's training data aligns with Qwen3's post-training prior and
+# preserves long-context coherence.
+#
+# Fill __SIZE__ via sed-substitution.
+
+base_model: Qwen/Qwen3-8B
+deepspeed: /e/scratch/jureap59/feuer1/code/axolotl/deepspeed_configs/zero3_bf16.json
+
+load_in_8bit: false
+load_in_4bit: false
+
+# CCE disabled (aarch64/torch2.9 grad explosion — see baselines/sera/README.md)
+# plugins:
+#   - axolotl.integrations.cut_cross_entropy.CutCrossEntropyPlugin
+
+# Use the base model's own chat_template (from Qwen/Qwen3-8B tokenizer_config.json)
+# so training-time rendering matches vLLM's inference-time rendering byte-for-byte.
+chat_template: tokenizer_default
+datasets:
+  - path: laion/CoderForge-Preview-v6-__SIZE__
+    data_files:
+      - coderforge-preview_v6___SIZE__.jsonl
+    type: chat_template
+    field_messages: messages
+    ds_type: json
+    message_field_training: train
+
+dataset_prepared_path: /e/data1/datasets/playground/ot-baf/axolotl_dataset_cache/cf-v6-__SIZE__
+output_dir: /e/data1/datasets/playground/ot-baf/checkpoints/cf-v6-__SIZE__-axolotl__Qwen3-8B
+
+sequence_len: 32768
+
+wandb_project:
+wandb_entity:
+wandb_watch:
+wandb_name: cf-v6-__SIZE__-axolotl__Qwen3-8B
+wandb_log_model:
+
+gradient_accumulation_steps: 8
+micro_batch_size: 1
+num_epochs: 1
+optimizer: adamw_torch
+lr_scheduler: cosine
+learning_rate: 1e-5
+adam_beta1: 0.9
+adam_beta2: 0.95
+
+bf16: auto
+tf32: false
+
+gradient_checkpointing: true
+activation_offloading: true
+resume_from_checkpoint:
+logging_steps: 1
+flash_attention: true
+
+loss_watchdog_threshold: 5.0
+loss_watchdog_patience: 3
+
+warmup_ratio: 0.1875
+evals_per_epoch: 0
+save_strategy: epoch
+
+weight_decay: 0.01
+max_grad_norm: 1.0
+special_tokens:

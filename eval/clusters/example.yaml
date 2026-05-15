@@ -1,0 +1,78 @@
+# Example cluster configuration for the eval listener.
+#
+#   python eval/unified_eval_listener.py --cluster-config eval/clusters/example.yaml ...
+#
+# Copy this file to eval/clusters/<your-cluster>.yaml (or anywhere outside
+# the repo, e.g. ~/.local/eval-cluster.yaml) and fill in every placeholder
+# below. Every value is required unless noted otherwise. Strings support
+# $USER and ~ expansion at load time.
+
+# Short identifier for this cluster. Used in trace tags, log dirs, and the
+# EVAL_CLUSTER_NAME env var the sbatch sees.
+cluster_name: <your-cluster>          # e.g. mbz, jupiter, leonardo
+
+# --- SLURM defaults --------------------------------------------------------
+# Override per-fire with --slurm-partition / --slurm-time on the listener.
+slurm_partition: <PARTITION>          # e.g. gpu, highprio, boost_usr_prod
+slurm_account: ""                     # leave empty if your site doesn't use accounts
+slurm_time: "24:00:00"                # walltime upper bound
+
+# --- Conda environments ----------------------------------------------------
+# Map each name to the conda env *prefix directory* (the dir containing
+# bin/python). The listener picks one via --conda-env / per-model
+# baseline-yaml conda_env override / per-preset default.
+conda_envs:
+  otagent: <path-to-conda-env>        # primary env for terminus-2 evals
+  # otagent-fix: <path-to-conda-env>  # harbor-fix variant for OOD presets
+  # otagent2: <path-to-conda-env>     # axolotl-trained Qwen3 variants
+  # otagent2-fix: <path-to-conda-env> # otagent2 + harbor-fix
+
+# --- Paths -----------------------------------------------------------------
+paths:
+  # Repository root — the directory containing eval/, hpc/, scripts/ etc.
+  # Becomes ${DCFT} for baseline-yaml extra_args expansion.
+  project_root: <path-to-OpenThoughts-Agent-checkout>
+
+  # HF_HUB_CACHE-equivalent. The listener seeds HF_TOKEN-authenticated
+  # snapshot_downloads here before submitting.
+  hf_cache: <path-to-hf-hub-cache>    # e.g. ~/.cache/huggingface/hub
+
+  # Where Harbor writes per-trial directories. The sbatch reads
+  # EVAL_JOBS_DIR from this.
+  eval_jobs_dir: <path-to-jobs>       # e.g. ${project_root}/jobs
+
+  # Where the listener and sbatch write SLURM .out logs. Relative paths
+  # are resolved against project_root.
+  eval_logs_dir: eval/logs
+  listener_logs_dir: experiments/listener_logs
+
+  # SLURM submission templates (relative to project_root).
+  sbatch_script: eval/unified_eval_harbor.sbatch
+  dp_sbatch_script: eval/unified_eval_harbor_dp.sbatch
+
+  # Editable harbor checkout (the agent runtime).
+  harbor_src: <path-to-harbor-checkout>/src   # e.g. ~/harbor/src
+
+  # Extra HF cache locations to add to HF_HOME / HF_DATASETS_CACHE.
+  datasets_dirs:
+    - <path-to-hf-hub-cache>          # usually same as hf_cache
+
+  # Sourced before every fire (HF_TOKEN, SUPABASE_*, DAYTONA_*_API_KEY, ...).
+  secrets_file: ~/secrets.env
+
+# --- Proxy / no-internet support ------------------------------------------
+# Set enabled: true on no-internet clusters (Jupiter, Leonardo, ...).
+# The sbatch will route HF / Daytona traffic via proxychains4 + an SSH
+# tunnel to login_node.
+proxy:
+  enabled: false
+  # login_node: <login-host>          # e.g. login01.jupiter.fz-juelich.de
+  # proxychains_bin: <path-to-proxychains4>
+
+# --- Hardware --------------------------------------------------------------
+hardware:
+  gpus_per_node: <N>                  # e.g. 8 for H200, 4 for A100
+  cpus_per_node: <N>                  # e.g. 96
+  mem_per_node_mb: <N>                # e.g. 1860000
+  arch: <ARCH>                        # x86_64 or aarch64
+  cuda_home: <path-to-cuda>           # e.g. /usr/local/cuda-12.8

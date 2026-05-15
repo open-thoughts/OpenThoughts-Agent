@@ -1065,6 +1065,36 @@ When reporting RL job progress, use this table format:
 
 Use box-drawing characters for the table borders. Include columns: Job, Step, Reward, Policy Loss, Grad Norm, Trend. Use a separate table for new jobs that are still filling their generation buffer.
 
+### Metrics to track per RL run (in this priority order)
+
+The minimal status table above carries the primary signals (step, reward, policy_loss, grad_norm). When doing deeper diagnostic passes — especially if a run is showing decline, instability, or you're investigating collapse — also pull these from the wandb run / `.out` log:
+
+**Always track when reporting (the 5 core metrics):**
+- `reward/avg_raw_reward` — primary learning signal
+- `reward/avg_pass_at_8` — n=8 pass rate; less noisy than raw_reward when group composition fluctuates
+- `policy/policy_loss` — bounded by clipping, mostly diagnostic for "is the loss flowing"
+- `policy/policy_entropy` — distribution concentration. Both *direction* and *magnitude* of changes matter. Sudden drops (slow concentration) and sudden jumps (semantic confusion) are both pre-collapse signatures.
+- `policy/raw_grad_norm` — the most predictive single signal for collapse. In healthy phases (this codebase + 32k context + Qwen3-derived bases) ‖g‖ stays < 1.0; values above 1.0 for ≥2 consecutive steps have predicted collapse 2-5 steps before reward visibly degrades.
+
+**Track the clip ratio whenever you have wandb access (we did NOT track this in older runs):**
+- `policy/ppo_clip_ratio` — fraction of tokens hitting the PPO surrogate clip. With our default eps_clip=0.2 + lr=8e-6 + 1 update epoch per batch this metric is essentially always ≈0 (max observed 0.03%) because ratios stay near 1.0. Useful as a *consistency check*: if clip_ratio is non-trivially elevated (>1%), it means the LR ↔ eps_clip configuration is mismatched (eps_clip is too tight for the LR regime, OR multiple update epochs are letting ratios drift). An elevated clip_ratio with a stable training run is a reason to re-examine the trust-region config.
+
+**Per-token log-ratio diagnostics (added to SkyRL 2026-05-06; available on runs launched from that commit onward):**
+- `policy/log_ratio_abs_mean` / `policy/log_ratio_abs_p99` / `policy/log_ratio_abs_max` — distribution of |log r_t| across all response tokens in a batch. Identifies whether updates are spread across many tokens with similar magnitudes (mean rises, max stays bounded → within-batch *correlation* is amplifying ‖g‖) vs. concentrated on a few outlier tokens (max spikes far above mean → individual-token-blowup mode).
+- `policy/n_tokens_dp_gt_1pct` / `n_tokens_dp_gt_10pct` / `n_tokens_dp_gt_50pct` — how many tokens moved more than 1% / 10% / 50% in probability. Big rises in `_gt_10pct` while `_gt_50pct` stays flat = correlation mode. Rises across all three together = both correlation + outliers.
+- `policy/log_ratio_abs_pos00..pos90` — mean |log r_t| binned into 10 relative-position buckets (0-10%, 10-20%, ..., 90-100% of each row's response length). Useful for seeing *where in the response* the policy is concentrating updates. Useful learning often concentrates on early tokens (decision branches); degenerate patterns (think-spam, JSON-loops) on late tokens (autoregressive trap).
+
+When a run is healthy, these per-token metrics should show: `log_ratio_abs_mean` ~ 0.005-0.02, `log_ratio_abs_max` < 0.5, `n_tokens_dp_gt_50pct` near 0, position buckets roughly equal. Any sustained departure from this profile alongside rising grad_norm is a collapse warning.
+
+**Collapse warning rule (combine signals — single metrics are noisy):**
+A run is at meaningful collapse risk when ≥2 of the following fire in the same logged step:
+- `policy/raw_grad_norm` > 1.0 (or > 2× recent-window mean)
+- `policy/policy_entropy` deviates from its rolling 10-step trend by > 30% (in either direction)
+- `policy/log_ratio_abs_mean` rises > 2× its recent-window mean while `log_ratio_abs_max` stays bounded (within-batch correlation rising — distinct from individual-token outliers)
+- Trial-level reward distribution (from `parse_skyrl_metrics.py` if available) shows pass-rate < 10% for last 100 trials
+
+A single metric crossing a threshold is suggestive but not actionable; two-of-the-above firing simultaneously is the threshold for cancel + salvage per the RL Job Cleanup Checklist below.
+
 ## RL Job Cleanup Checklist
 
 After an RL job terminates (early or completed), follow these steps to preserve and publish the checkpoint:
@@ -1110,26 +1140,46 @@ After an RL job terminates (early or completed), follow these steps to preserve 
    ```
    If any secrets are found, remove or redact them before proceeding.
 
-6. **Upload to HuggingFace**: Use `huggingface-cli upload-large-folder` to push to `laion/<job_name>-<step>` (append the global step number to the HF model name, e.g. `-20` for step 20):
+6. **Upload to HuggingFace**: Use `huggingface-cli upload-large-folder` to push to `laion/<job_name>-<step>-<size>` (append the global step AND the base-model size suffix, e.g. `-20-32B` for step 20 of a 32B model, `-20-8B` for an 8B model). The size suffix is required:
    ```bash
-   huggingface-cli upload-large-folder laion/<job_name>-<step> $CHECKPOINT_DIR
+   huggingface-cli upload-large-folder laion/<job_name>-<step>-<size> $UPLOAD_DIR
    ```
+   **Naming convention:** the SkyRL trainer auto-pushes intermediates to a
+   *canonical* repo `laion/<job_name>` with the wrong layout (weights nested
+   under `checkpoints/step_N/` instead of root) and auto-registers it in
+   Supabase. We bypass that by uploading the manually-flattened export to
+   the `-<step>-<size>` repo with weights at root.
 
-7. **Register in DB**: Manual push to the unified DB via `scripts/database/manual_db_push.py`:
-   ```bash
-   # Single dataset:
-   python scripts/database/manual_db_push.py \
-     --hf-model-id laion/<job_name>-<step> \
-     --base-model <base_model_hf> \
-     --dataset-name <dataset_name>
+7. **Register in DB**: First, delete the trainer's auto-registered duplicate, then push the correct row.
 
-   # Multi-dataset (comma-separated → sets dataset_names instead of dataset_id):
-   python scripts/database/manual_db_push.py \
-     --hf-model-id laion/<job_name>-<step> \
-     --base-model <base_model_hf> \
-     --dataset-name "DCAgent/dataset-a,DCAgent/dataset-b"
-   # --wandb-run is optional (timestamps default to now if omitted; Jupiter has no W&B)
-   ```
+   - **Delete the trainer's auto-registered Supabase row** (it points to the wrong-layout canonical repo):
+     ```python
+     # Find the row by name and delete it
+     c.table("models").delete().eq("name", "laion/<job_name>").execute()
+     ```
+   - **Optionally also delete the trainer's auto-uploaded canonical HF repo**:
+     ```python
+     from huggingface_hub import HfApi
+     HfApi().delete_repo("laion/<job_name>", repo_type="model")
+     ```
+   - **Then register the manually-uploaded `-<step>-<size>` repo** via `scripts/database/manual_db_push.py` with `--training-type RL` (the script defaults to SFT — passing RL is required, otherwise you create a second wrong-type row):
+     ```bash
+     # Single dataset:
+     python scripts/database/manual_db_push.py \
+       --hf-model-id laion/<job_name>-<step>-<size> \
+       --base-model <base_model_hf> \
+       --dataset-name <dataset_name> \
+       --training-type RL
+
+     # Multi-dataset (comma-separated → sets dataset_names instead of dataset_id):
+     python scripts/database/manual_db_push.py \
+       --hf-model-id laion/<job_name>-<step>-<size> \
+       --base-model <base_model_hf> \
+       --dataset-name "DCAgent/dataset-a,DCAgent/dataset-b" \
+       --training-type RL
+     # --wandb-run is optional (timestamps default to now if omitted; Jupiter has no W&B)
+     ```
+
    **IMPORTANT — verify `--base-model` carefully**: The `--base-model` flag must be
    the exact HF repo name of the SFT/base model that RL was trained *from* — NOT
    a default or the most common base. The base is encoded in the job name suffix
@@ -1160,7 +1210,7 @@ After an RL job terminates (early or completed), follow these steps to preserve 
    cp $EXPERIMENTS_DIR/<job_name>/logs/<job_name>_*.out $UPLOAD_DIR/training_logs/
 
    # Re-upload the model folder (now includes training_logs/)
-   huggingface-cli upload-large-folder laion/<job_name>-<step> $UPLOAD_DIR
+   huggingface-cli upload-large-folder laion/<job_name>-<step>-<size> $UPLOAD_DIR
    ```
    This produces: `metrics.csv`, `vllm_metrics.csv`, `trial_stats.csv`, `report.md`, `reward_plot.png` in `training_logs/`.
 
@@ -1196,11 +1246,22 @@ After an 8B SFT job completes on a no-internet cluster (Jupiter, Leonardo), foll
    ```
 
 2. **Upload model weights to HuggingFace**:
+
+   **Naming convention:**
+   - **Full final upload (training reached 100%)**: use the configured
+     `--hub_model_id` from the launch command (typically `laion/<descriptive_name>`,
+     no `-step` or `-size` suffix). Do NOT use the job name verbatim — the launch
+     command's `--hub_model_id` is the canonical name.
+   - **Partial salvage upload (uncommon — only when explicitly requested)**: use
+     `laion/<job_name>-<step>-<size>` (e.g. `laion/<job_name>-2400-32B` for a
+     step-2400 partial of a 32B model). Default policy is **don't upload partials**;
+     relaunch and let chain restarts auto-resume from the latest checkpoint.
+
    ```bash
    # On the login node (has direct internet on Jupiter; use proxychains on Leonardo)
    source ~/secrets.env
    huggingface-cli upload-large-folder \
-     laion/<job_name>-<step> \
+     <hub_model_id> \
      $CHECKPOINTS_DIR/<job_name> \
      --repo-type=model
    ```
@@ -1210,21 +1271,105 @@ After an 8B SFT job completes on a no-internet cluster (Jupiter, Leonardo), foll
    ```bash
    # Single dataset:
    python scripts/database/manual_db_push.py \
-     --hf-model-id laion/<job_name> \
+     --hf-model-id <hub_model_id> \
      --base-model <base_model_hf> \
      --dataset-name <dataset_name>
 
    # Multi-dataset (comma-separated → sets dataset_names instead of dataset_id):
    python scripts/database/manual_db_push.py \
-     --hf-model-id laion/<job_name> \
+     --hf-model-id <hub_model_id> \
      --base-model <base_model_hf> \
      --dataset-name "DCAgent/dataset-a,DCAgent/dataset-b"
    ```
+   `manual_db_push.py` defaults to `--training-type SFT`, so no flag needed for
+   SFT jobs. (RL jobs require `--training-type RL` — see RL Cleanup Checklist.)
 
 4. **Clean up experiments dir**: Only after steps 1-3 succeed, remove the local experiment directory to free disk space:
    ```bash
    rm -rf $EXPERIMENTS_DIR/<job_name>
    ```
+
+## 32B SFT Job Cleanup Checklist
+
+For 32B SFT (and any SFT run using DeepSpeed ZeRO-3 sharding without
+`stage3_gather_16bit_weights_on_model_save: true`), the trainer writes sharded
+ZeRO-3 state into `checkpoint-N/global_stepN/` instead of consolidated
+safetensors at root. You must consolidate before uploading. Most steps mirror
+the 8B checklist; only the consolidate step + the manual upload location
+change.
+
+0. **Cancel pending retries** (same as 8B):
+   ```bash
+   squeue -u $USER --format='%i %j %T' | grep <job_name> | grep PENDING | awk '{print $1}' | xargs -r scancel
+   ```
+
+1. **Verify training reached 100%** — open `trainer_log.jsonl` and confirm
+   `current_steps == total_steps`. Per `feedback_no_partial_checkpoint_uploads`,
+   default policy is **don't salvage-upload partials**; relaunch and let chain
+   restarts auto-resume. Only proceed to step 2 if explicitly OK'd as a partial.
+
+2. **Run consolidate** to convert ZeRO-3 shards → fp32 state_dict → safetensors:
+   ```bash
+   python -m hpc.launch \
+     --job_type consolidate \
+     --consolidate_input $CHECKPOINTS_DIR/<job_name> \
+     --consolidate_output_repo <hub_model_id> \
+     --consolidate_workdir <writable_workdir>/<job_name> \
+     --time_limit 02:00:00 \
+     --num_nodes 1
+   ```
+   This produces `<workdir>/<job_name>/final_repo/` containing
+   `model-NNNN-of-MMMM.safetensors` + tokenizer + config files at root.
+
+   The consolidate job ALSO attempts an HF push at the end. **Do not rely on
+   that auto-push — it has historically hit a `BrokenPipeError` at
+   `api.create_commit` for very large 32B uploads** (observed for the
+   tasrep-...-2400 case). Treat the consolidate job as having succeeded as
+   long as `final_repo/` is fully written; do the HF upload manually in
+   step 3.
+
+3. **Manually upload from `final_repo/` to HuggingFace** (NOT from the original
+   checkpoint dir — that still contains ZeRO-3 shards):
+
+   **Naming convention** (same as 8B):
+   - Full final upload: use the configured `--consolidate_output_repo` /
+     `--hub_model_id` (typically `laion/<descriptive_name>`, no suffix).
+   - Partial salvage (uncommon, only when explicitly OK'd): use
+     `laion/<job_name>-<step>-32B`.
+
+   ```bash
+   source ~/secrets.env
+   huggingface-cli upload-large-folder \
+     <hub_model_id> \
+     <consolidate_workdir>/<job_name>/final_repo \
+     --repo-type=model
+   ```
+
+4. **Register in the unified DB** (same flow as 8B; SFT is the default
+   `--training-type`):
+   ```bash
+   python scripts/database/manual_db_push.py \
+     --hf-model-id <hub_model_id> \
+     --base-model <base_model_hf> \
+     --dataset-name <dataset_name>
+   ```
+
+5. **Clean up**: only after steps 2-4 succeed, remove BOTH the original
+   sharded checkpoint dir AND the consolidate workdir to free disk space (32B
+   sharded checkpoint is ~700GB, consolidate workdir adds ~200GB):
+   ```bash
+   rm -rf $CHECKPOINTS_DIR/<job_name>
+   rm -rf <consolidate_workdir>/<job_name>
+   ```
+
+**Recognition heuristic — when do I need this checklist vs the 8B one?**
+After training completes, check the checkpoint root:
+```bash
+ls $CHECKPOINTS_DIR/<job_name>/ | grep -E 'safetensors|global_step'
+```
+- `model-*.safetensors` at root → 8B path (or Qwen3.5 — no consolidate needed)
+- `global_stepN/` + `zero_to_fp32.py` at root, no safetensors → 32B path
+  (this checklist)
 
 ## NYU Torch Access
 

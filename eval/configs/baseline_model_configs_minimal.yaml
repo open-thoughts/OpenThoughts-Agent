@@ -1,0 +1,381 @@
+# Minimal vLLM serving config — treats 32B like 8B by default.
+#
+# Drop-in replacement for eval/baseline_model_configs.yaml.
+# Use via: --baseline-model-config eval/configs/baseline_model_configs_minimal.yaml
+#
+# Differences from the original:
+#   - Removed `tool_call_parser: hermes` from the 32B group (hermes parser hijacks
+#     plain-text JSON output and breaks terminus-2 agents; confirmed on 30B-A3B).
+#   - Removed redundant flags (`--dtype bfloat16`, `--block-size 16`,
+#     `--enable-chunked-prefill`) which are already vLLM defaults.
+#   - Removed `--max-num-partial-prefills 1` (conservative, throughput-negative).
+#   - Kept `--enable-prefix-caching` (genuine win for agent evals with
+#     byte-identical system prompts across trials).
+#   - Dropped `trust_remote_code: true` from the group — only needed per-model
+#     for custom-code archs; set it explicitly there.
+#   - Default `tensor_parallel_size: 2` for 32B (matches the listener default).
+#
+# Format (unchanged):
+#   models:      Per-model overrides (exact HF name -> config).
+#   groups:      Apply one config to many models. Per-model entries merge on top.
+#   patterns:    Regex fallback when no exact/group match. First match wins.
+
+# --- Groups: many models sharing the same config ---
+# groups:
+#   - models:
+#       - "nvidia/Nemotron-Terminal-32B"
+#       - "DCAgent/staqc-sandboxes-traces-terminus-2_Qwen3-32B"
+#       - "NovaSky-AI/SA-SWE-32B"
+#       - "Qwen/Qwen2.5-Coder-32B-Instruct"
+#       - "Qwen/Qwen3-32B"
+#       - "R2E-Gym/R2EGym-32B-Agent"
+#       - "SWE-Swiss/SWE-Swiss-32B"
+#       - "SWE-bench/SWE-agent-LM-32B"
+#       - "Skywork/Skywork-SWE-32B"
+#       - "allenai/SERA-32B"
+#       - "laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_Qwen3-32B"
+#       - "laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_adam-beta1_0-91_Qwen3-32B"
+#       - "laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_adam-beta1_0-93_Qwen3-32B"
+#       - "laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_adam-beta1_0-95_Qwen3-32B"
+#       - "laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_global-batch-size_32_Qwen3-32B"
+#       - "laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_global-batch-size_64_Qwen3-32B"
+#       - "laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_learning-rate_1e-06_Qwen3-32B"
+#       - "laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_lr_1e-5_Qwen3-32B"
+#       - "laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_num-train-epochs_4.0_Qwen3-32B"
+#       - "laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_num-train-epochs_6.0_Qwen3-32B"
+#       - "laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_num-train-epochs_7.0_Qwen3-32B"
+#       - "laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_num-train-epochs_8-0_Qwen3-32B"
+#       - "laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_warmup-ratio_0-01_Qwen3-32B"
+#       - "laion/GLM-4.6-stackexchange-overflow-sandboxes-32eps-65k-reasoning_warmup-ratio_0-05_Qwen3-32B"
+#       - "laion/Qwen3-32B-NL2Bash-31step"
+#       - "laion/Qwen3-32B-R2EGYM-256-3epochs"
+#       - "laion/Qwen3-32B-SweSmith-20step"
+#       - "laion/open-thoughts-4-code-qwen3-32b-annotated"
+#       - "laion/rl__40GPU_base_32b__exp_rpt_codeelo-v2__sft_GLM-4-7-swesmith"
+#       - "laion/rl__40GPU_base_32b__exp_rpt_nemotron-bash__sft_GLM-4-7-swesmith"
+#       - "laion/sft_GLM-4-7-swesmith-sandboxes-with_tests-oracle_verified_120s-maxeps-131k_Qwen3-32B"
+#       - "laion/sft_r2egym-nl2bash-stackoverflow-inferredbugs-32B_Qwen3-32B"
+#       - "laion/syh-r2eg-askl-glm_4-7_trac_jupi_-gfi-swes-rand-filt-10K_glm_4-7_trac_jupi_32B"
+#       - "laion/rl__48GPU_shaped_32b__exp_rpt_nemotron-bash__Qwen3-32B-45"
+#     tensor_parallel_size: 2
+#     max_model_len: 32768
+#     swap_space: 32
+#     extra_args: "--enable-prefix-caching"
+
+# # --- Per-model overrides (merged on top of group config) ---
+models:
+  # SA-SWE-32B: authors use custom SkyRL OHCodeActAgent (engine-direct, not
+  # portable). Best knowable scaffold via OpenAI-compat: Pattern B (hermes +
+  # qwen3 reasoning) + swe-agent regular = 24.7% (paper 39.4%). Custom acc-
+  # thinking template REGRESSED to 14.3% by filling 32K context with stale
+  # <think> blocks → stuck-loop failures. See PREFERRED_HARNESS_REPRODUCTION.md §3.
+  "NovaSky-AI/SA-SWE-32B":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    extra_args: "--enable-prefix-caching"
+
+  # OpenSWE-32B (GAIR daVinci-Env paper, arxiv 2603.13023): vanilla Qwen2.5
+  # Hermes-style chat template — emits <tool_call>{"name":...}</tool_call> JSON
+  # (NOT XML <function=bash>; earlier subagent claim was wrong). Stock swe-agent
+  # default scaffold, parse_function: function_calling. Authors' sampling:
+  # temp 0.7 / top_p 0.8 / top_k 20 / rep_penalty 1.2 (paper §4.1). Paper 62.4%
+  # at 128k context; we cap at 32k.
+  "GAIR/OpenSWE-32B":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: '--enable-prefix-caching --override-generation-config {"temperature":0.7,"top_p":0.8,"top_k":20,"repetition_penalty":1.2}'
+
+  "GAIR/daVinci-Dev-32B":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--enable-prefix-caching"
+
+  # Skywork-SWE-32B (Qwen2.5-Coder-32B finetune): plain vLLM serve, no parsers,
+  # no chat template. Authors use OpenHands 0.32.0 CodeActAgent with mock_
+  # function_calling (XML prompt parsed client-side). Paper 38.0% pass@1.
+  # See PREFERRED_HARNESS_REPRODUCTION.md.
+  "Skywork/Skywork-SWE-32B":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    extra_args: "--enable-prefix-caching"
+
+  # R2EGym-32B-Agent (Qwen2.5-Coder-32B finetune): plain vLLM serve, no parsers.
+  # Authors use custom R2E-Gym harness with XML <function=NAME><parameter=KEY>VAL
+  # </parameter></function> format which matches OpenHands text-tools (mock_
+  # function_calling). Native ctx 32k matches our cap. Paper 34.4% pass@1.
+  # See PREFERRED_HARNESS_REPRODUCTION.md.
+  "R2E-Gym/R2EGym-32B-Agent":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    extra_args: "--enable-prefix-caching"
+
+  # Mistral Devstral-Small-2507 (24B SWE model) — requires mistral-format
+  # tokenizer/config/weights and TP=2 per official Mistral recommendation.
+  "mistralai/Devstral-Small-2507":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    tool_call_parser: mistral
+    extra_args: "--tokenizer-mode mistral --config-format mistral --load-format mistral --enable-prefix-caching"
+
+  # Mistral Devstral-Small-2-24B-Instruct-2512 (v2, 24B) — standard HF loading
+  # (no mistral-format flags). Needs mistral_common >= 1.8.6 in the conda env.
+  # Native context 262144; capped at 32768 for eval parity.
+  "mistralai/Devstral-Small-2-24B-Instruct-2512":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    tool_call_parser: mistral
+    extra_args: "--enable-prefix-caching"
+
+  # Qwen3-32B — openhands native tool calling config.
+  # hermes parser for tool calls, qwen3 reasoning parser to strip <think> blocks.
+  "Qwen/Qwen3-32B":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    extra_args: "--enable-prefix-caching"
+
+  # Qwen3-Coder-30B-A3B-Instruct (30B MoE, 3B active) — designed for tool calling.
+  # Model card recommends qwen3_coder parser for native tool calling, newer vLLM
+  # (otagent2-fix, 0.17+) for MoE stability, and specific sampling params:
+  # temperature=0.7, top_p=0.8, top_k=20, repetition_penalty=1.05.
+  # Using --override-generation-config to apply server-side (applies to all
+  # requests regardless of client-side settings).
+  "Qwen/Qwen3-Coder-30B-A3B-Instruct":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: qwen3_coder
+    extra_args: '--enable-prefix-caching --override-generation-config {"temperature":0.7,"top_p":0.8,"top_k":20,"repetition_penalty":1.05}'
+
+  # NVIDIA Nemotron-3-Nano-30B-A3B-BF16 — 30B MoE, 3B active. Mirrors the legacy
+  # TACC sbatch `openhands_nvidia_eval_harbor.sbatch` (native tool calling
+  # with qwen3_coder parser + custom nano_v3 reasoning parser plugin +
+  # model-specific chat template). otagent2-fix required for MoE on vLLM 0.17+.
+  # Max context capped at 32768 for eval parity with other models.
+  # --enforce-eager matches legacy. Sampling temp=0.6, top_p=0.95.
+  "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16":
+    conda_env: otagent2-fix
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: qwen3_coder
+    reasoning_parser: nano_v3
+    extra_args: '--reasoning-parser-plugin ${DCFT}/eval/configs/nano_v3_reasoning_parser.py --chat-template ${DCFT}/eval/configs/nemotron_chat_template.jinja --enable-prefix-caching --override-generation-config {"temperature":0.6,"top_p":0.95}'
+
+  # Qwen3-30B-A3B-Instruct-2507 (30B MoE, 3B active) — Pattern D for terminus-2.
+  # otagent2-fix required for MoE stability on vLLM 0.17+.
+  "Qwen/Qwen3-30B-A3B-Instruct-2507":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    extra_args: "--enable-prefix-caching"
+
+  # Allen AI SERA-32B (SWE-bench model) — Pattern A. Paper-parity vLLM flags
+  # (enforce-eager, disable-cascade-attn, seed 42); no prefix-caching or
+  # reasoning_parser. TP=2 (not paper's TP=4) to fit a single-node serving slot.
+  "allenai/SERA-32B":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--enforce-eager --disable-cascade-attn --seed 42"
+
+  # Allen AI SERA-8B — mirror SERA-32B paper-parity flags, scaled for 8B.
+  "allenai/SERA-8B":
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--enforce-eager --disable-cascade-attn --seed 42"
+
+  # SWE-bench/SWE-agent-LM-32B — trained for swe-agent scaffold, needs hermes parser.
+  "SWE-bench/SWE-agent-LM-32B":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--enable-prefix-caching"
+
+  # SWE-bench/SWE-agent-LM-7B — trained for swe-agent scaffold (7B variant).
+  # Hermes parser for tool calls; no reasoning_parser (model doesn't emit <think>).
+  "SWE-bench/SWE-agent-LM-7B":
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--enable-prefix-caching"
+
+  # zai-org/GLM-4.7-Flash — GLM architecture (likely MoE), otagent2-fix for safety.
+  # Pattern D for terminus-2 reg eval.
+  "zai-org/GLM-4.7-Flash":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    extra_args: "--enable-prefix-caching"
+
+  # Lite-Coder/LiteCoder-Terminal-30b-a3b-sft — 30B MoE (3B active), SFT for
+  # terminus scaffold. Pattern D — do NOT add tool_call_parser or
+  # reasoning_parser; both hijack the JSON the terminus-2 agent parses
+  # client-side (verified A/B: hermes+qwen3 → 0% acc; no parsers → 23–32%).
+  "Lite-Coder/LiteCoder-Terminal-30b-a3b-sft":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    extra_args: "--enable-prefix-caching"
+
+  # Sera-4.5A-Full-T1-v2 Qwen3-8B finetunes — used with swe-agent SERA e2e config
+  # (native function_calling). Without tool_call_parser, vLLM 400s every request
+  # ("auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser).
+  # tool_call_parser field auto-adds --enable-auto-tool-choice via build_vllm_cmd.sh.
+  "laion/Sera-4.5A-Full-T1-v2-316__Qwen3-8B":
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    extra_args: "--enable-prefix-caching"
+
+  "laion/Sera-4.5A-Full-T1-v2-1000__Qwen3-8B":
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    extra_args: "--enable-prefix-caching"
+
+  "laion/Sera-4.5A-Full-T1-v2-3160__Qwen3-8B":
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    extra_args: "--enable-prefix-caching"
+
+  "laion/Sera-4.5A-Full-T1-v2-10000__Qwen3-8B":
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+
+  # Sera-4.5A-Full-T1-v3-axolotl Qwen3-8B finetunes — axolotl-retrained
+  # variants. Pattern A serving flags (enforce-eager, disable-cascade-attn,
+  # seed 42; no reasoning_parser, no prefix-caching) to mirror SERA-8B
+  # paper-parity behavior on the markdown-output / hermes-parser interaction.
+  "laion/Sera-4.5A-Full-T1-v3-316-axolotl__Qwen3-8B":
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--enforce-eager --disable-cascade-attn --seed 42"
+
+  "laion/Sera-4.5A-Full-T1-v3-1000-axolotl__Qwen3-8B":
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--enforce-eager --disable-cascade-attn --seed 42"
+
+  # Sera-4.6-Lite-T2-v4-axolotl Qwen3-8B finetunes — Pattern B (hermes
+  # tool-call parser + qwen3 reasoning parser + prefix-caching).
+  "laion/Sera-4.6-Lite-T2-v4-316-axolotl__Qwen3-8B":
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    extra_args: "--enable-prefix-caching"
+
+  "laion/Sera-4.6-Lite-T2-v4-1000-axolotl__Qwen3-8B":
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    extra_args: "--enable-prefix-caching"
+
+  # CoderForge-Preview-v2-10000 — hermes confirmed correct parser (9.4% vs 0% on
+  # qwen3_coder); kept here for potential future family fires.
+  "laion/CoderForge-Preview-v2-10000__Qwen3-8B":
+    tool_call_parser: hermes
+
+  # CoderForge-Preview-v3-axolotl Qwen3-8B finetunes — Pattern B (hermes
+  # tool-call parser + qwen3 reasoning parser + prefix-caching). Handles the
+  # `<think>` blocks emitted by Qwen3 finetunes when run under openhands
+  # native-tool scaffolds.
+  "laion/CoderForge-Preview-v3-316-axolotl__Qwen3-8B":
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    extra_args: "--enable-prefix-caching"
+
+  "laion/CoderForge-Preview-v3-1000-axolotl__Qwen3-8B":
+    trust_remote_code: true
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    extra_args: "--enable-prefix-caching"
+
+  # Qwen/Qwen3-8B (base instruct) — baseline control for 8B openhands native tools.
+  # hermes parser + qwen3 reasoning parser to mirror Qwen3-32B entry.
+  "Qwen/Qwen3-8B":
+    tool_call_parser: hermes
+    reasoning_parser: qwen3
+    trust_remote_code: true
+
+  # SWE-Lego/SWE-Lego-Qwen3-8B — mirror Qwen/Qwen3-8B for openhands native tools.
+  # SWE-Lego authors run plain vLLM (no tool_call_parser, no reasoning_parser)
+  # and rely on OpenHands' XML prompt-based function calling (text tools), NOT
+  # native tool calls. Authors use temp=0.0 — bake via override-generation-config
+  # to get greedy decoding (biggest within-32k tweak per subagent research, +3-7pp
+  # expected). Paper 42.2% at 163k; structural floor at 32k ~25-30%.
+  "SWE-Lego/SWE-Lego-Qwen3-8B":
+    trust_remote_code: true
+    extra_args: '--enable-prefix-caching --override-generation-config {"temperature":0.0,"top_p":1.0,"top_k":-1}'
+
+# Pattern-based configs: matched by regex when no exact/group match is found.
+# Checked in order; first match wins.
+# Every pattern sets: trust_remote_code=true + --enable-prefix-caching
+#   trust_remote_code: permission-only, no-op unless model ships custom code
+#   --enable-prefix-caching: pure-win for agent evals (shared system prompt)
+patterns:
+  - match: "(?i)qwen3\\.5"
+    conda_env: otagent2-fix
+    trust_remote_code: true
+    max_model_len: 32768
+    swap_space: 32
+    extra_args: "--enable-prefix-caching"
+
+  - match: "(?i)(?:32b.*(131k|-lc)|(131k|-lc).*32b)"
+    trust_remote_code: true
+    tensor_parallel_size: 2
+    max_model_len: 131072
+    swap_space: 32
+    hf_overrides: '{"rope_scaling":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":32768}}'
+    extra_args: "--enable-prefix-caching"
+
+  - match: "(?i)32[Bb]"
+    trust_remote_code: true
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    extra_args: "--enable-prefix-caching"
+
+  - match: "131k|-lc$"
+    trust_remote_code: true
+    max_model_len: 131072
+    swap_space: 32
+    hf_overrides: '{"rope_scaling":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":32768}}'
+    extra_args: "--enable-prefix-caching"

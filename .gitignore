@@ -410,3 +410,8 @@ train/hpc/dotenv/secret.env
 # Claude
 CLAUDE.md
 development_progress.md
+
+# Eval listener — operator-local state (templates ship as .example / EXAMPLE.txt)
+eval/.local_notes/
+hpc/dotenv/jupiter_eval.env
+hpc/dotenv/jupiter_eval_data_org.env

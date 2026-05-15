@@ -1,0 +1,39 @@
+# Harbor eval config — openhands agent, tuned for Qwen3-Coder-30B-A3B-Instruct
+# - Native tool calling ON (disable_tool_calls=false) — model is designed for it
+# - Recommended sampling: temperature=0.7, top_p=0.8 (per HF model card)
+# - Pairs with baseline override: tool_call_parser=qwen3_coder on vLLM side
+# - Model is non-thinking only; no enable_thinking toggle needed
+n_attempts: 3
+timeout_multiplier: 1.0
+orchestrator:
+  type: local
+  n_concurrent_trials: 16
+  quiet: false
+  plain_output: true
+  retry:
+    max_retries: 10
+    exclude_exceptions:
+      - AgentTimeoutError
+      - AgentEnvironmentTimeoutError
+      - BadRequestError
+      - VerifierTimeoutError
+      - SummarizationTimeout
+      - SummarizationTimeoutError
+      - ContextLengthExceededError
+    wait_multiplier: 1.0
+    min_wait_sec: 1.0
+    max_wait_sec: 60.0
+environment:
+  type: daytona
+  force_build: false
+verifier:
+  max_timeout_sec: 14400
+agents:
+  - name: openhands
+    max_timeout_sec: 7200
+    kwargs:
+      disable_tool_calls: false
+      temperature: "0.7"
+      top_p: "0.8"
+datasets:
+  - path: examples/tasks

@@ -896,6 +896,7 @@ leonardo = HPC(
     # SSH tunnel + proxychains for no-internet compute nodes (like JSC clusters)
     needs_ssh_tunnel=True,
     proxychains_binary="/leonardo_work/AIFAC_5C0_290/bfeuer00/proxychains/bin/proxychains4",
+    conda_activate="source /leonardo_work/AIFAC_5C0_290/bfeuer00/miniforge3/etc/profile.d/conda.sh && conda activate otagent",
     # Note: PBS Pro is NOT used here — Leonardo uses SLURM
 )
 

@@ -1953,10 +1953,27 @@ def get_sandbox_job_by_id(job_id: str) -> Optional[Dict[str, Any]]:
 
 
 def get_sandbox_job_by_name(job_name: str) -> Optional[Dict[str, Any]]:
-    """Retrieve a sandbox job from the database by name."""
+    """Retrieve a sandbox job from the database by name.
+
+    When v6 resume reuses a run_tag, multiple rows may share the same job_name
+    (the original Started/Finished row plus the new Pending row created by the
+    resume listener). Without explicit ordering, Postgres returns rows in
+    physical-insertion order, which means callers like
+    update_job_status_to_started() may see the stale Started row first and
+    short-circuit "already_started", leaving the actual Pending row never
+    flipped to Started. Order by submitted_at desc to always return the most
+    recent row.
+    """
     try:
         client = get_supabase_client()
-        response = client.table('sandbox_jobs').select('*').eq('job_name', job_name).execute()
+        response = (
+            client.table('sandbox_jobs')
+            .select('*')
+            .eq('job_name', job_name)
+            .order('submitted_at', desc=True)
+            .limit(1)
+            .execute()
+        )
 
         if not response.data:
             return None

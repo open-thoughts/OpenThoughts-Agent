@@ -15,12 +15,13 @@
 # Env vars consumed (all optional, set by listener):
 #   EVAL_VLLM_TENSOR_PARALLEL_SIZE  (default: 4)
 #   EVAL_VLLM_MAX_MODEL_LEN         (default: unset = model native)
-#   EVAL_VLLM_SWAP_SPACE            (default: 4)
+#   EVAL_VLLM_SWAP_SPACE            (default: 32)
 #   EVAL_VLLM_TRUST_REMOTE_CODE     (default: unset; set to "1" to enable)
 #   EVAL_VLLM_TOOL_CALL_PARSER      (default: unset)
 #   EVAL_VLLM_REASONING_PARSER      (default: unset)
 #   EVAL_VLLM_DATA_PARALLEL_SIZE    (default: unset; vLLM v0.8+ only)
 #   EVAL_VLLM_EXTRA_ARGS            (default: unset; space-separated string)
+#   EVAL_VLLM_HF_OVERRIDES          (default: unset; JSON string for --hf-overrides)
 # ==============================================================================
 
 build_vllm_cmd() {
@@ -31,18 +32,19 @@ build_vllm_cmd() {
     # Read overrides from env (set by listener via sbatch --export)
     local tp="${EVAL_VLLM_TENSOR_PARALLEL_SIZE:-4}"
     local dp="${EVAL_VLLM_DATA_PARALLEL_SIZE:-}"
-    local max_model_len="${EVAL_VLLM_MAX_MODEL_LEN:-}"
-    local swap_space="${EVAL_VLLM_SWAP_SPACE:-4}"
+    local max_model_len="${EVAL_VLLM_MAX_MODEL_LEN:-32768}"
+    local swap_space="${EVAL_VLLM_SWAP_SPACE:-32}"
     local trust_remote_code="${EVAL_VLLM_TRUST_REMOTE_CODE:-}"
     local tool_call_parser="${EVAL_VLLM_TOOL_CALL_PARSER:-}"
     local reasoning_parser="${EVAL_VLLM_REASONING_PARSER:-}"
     local extra_args="${EVAL_VLLM_EXTRA_ARGS:-}"
+    local hf_overrides="${EVAL_VLLM_HF_OVERRIDES:-}"
 
     # Build command array
     VLLM_CMD=(
         "$python_bin" -m vllm.entrypoints.openai.api_server
         --model "$model"
-        --host 0.0.0.0 --port 8000
+        --host 0.0.0.0 --port "${VLLM_PORT:-8000}"
         --served-model-name "$model"
         --tensor-parallel-size "$tp"
         --gpu-memory-utilization "$gpu_mem_util"
@@ -68,6 +70,11 @@ build_vllm_cmd() {
 
     if [ -n "$reasoning_parser" ]; then
         VLLM_CMD+=(--reasoning-parser "$reasoning_parser")
+    fi
+
+    # HF model config overrides (JSON string, properly quoted)
+    if [ -n "$hf_overrides" ]; then
+        VLLM_CMD+=(--hf-overrides "$hf_overrides")
     fi
 
     # Append extra args (space-separated string)

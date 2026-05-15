@@ -193,8 +193,10 @@ def inject_inferredbugs_verifier(dataset_dir: str, questions: List[str], model_n
             print(f"  - Skipping {task_dir.name}: LLM authoring failed.")
             return
 
-        with open(test_py_path, "w") as f:
+        with open(test_py_path, "w", encoding="utf-8") as f:
             f.write(python_code)
+        with open(test_sh_path, "w", encoding="utf-8") as f:
+            f.write(bash_code)
         with open(test_sh_path, "w") as f:
             f.write(bash_code)
         os.chmod(test_sh_path, 0o755)

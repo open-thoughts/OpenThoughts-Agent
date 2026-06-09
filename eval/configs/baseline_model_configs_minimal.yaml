@@ -210,6 +210,67 @@ models:
     tool_call_parser: hermes
     extra_args: "--enforce-eager --disable-cascade-attn --seed 42"
 
+  # ethanlshen Qwen3-32B SERA reproductions — Pattern A paper-parity flags
+  # (mirror allenai/SERA-32B: hermes + enforce-eager + disable-cascade-attn + seed 42).
+  # Size ladder: 316, 1000, 3160 (converted from broken FSDP upload), 10000 rows.
+  "ethanlshen/Qwen3-32B-316_sera_46_47000":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--enforce-eager --disable-cascade-attn --seed 42"
+
+  "ethanlshen/Qwen3-32B-1000_sera_46_47000":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--enforce-eager --disable-cascade-attn --seed 42"
+
+  "ethanlshen/Qwen3-32B-3160_sera_46_47000-converted":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--enforce-eager --disable-cascade-attn --seed 42"
+
+  "ethanlshen/Qwen3-32B-10000_sera_46_47000":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--enforce-eager --disable-cascade-attn --seed 42"
+
+  "ethanlshen/Qwen3-32B-31600_sera_46_47000_converted":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--enforce-eager --disable-cascade-attn --seed 42"
+
+  # ethanlshen Qwen3-32B-47000-46 — SERA Pattern A (mirror 31600/SERA-32B).
+  "ethanlshen/Qwen3-32B-47000-46":
+    tensor_parallel_size: 2
+    max_model_len: 32768
+    swap_space: 32
+    trust_remote_code: true
+    tool_call_parser: hermes
+    extra_args: "--enforce-eager --disable-cascade-attn --seed 42"
+
+  # GLM-4_7 swesmith 131k-fixthink 8B — model name contains "131k" which triggers
+  # the generic `131k|-lc$` pattern → yarn rope_scaling factor 4.0 = 131k context.
+  # User requested REGULAR 32k config (not 131k). Exact-match overrides the pattern.
+  "laion/GLM-4_7-swesmith-sandboxes-with_tests-oracle_verified_120s-maxeps-131k-fixthink":
+    tensor_parallel_size: 1
+    max_model_len: 32768
+    swap_space: 32
+    extra_args: "--enable-prefix-caching"
+
   # SWE-bench/SWE-agent-LM-32B — trained for swe-agent scaffold, needs hermes parser.
   "SWE-bench/SWE-agent-LM-32B":
     tensor_parallel_size: 2
@@ -234,6 +295,39 @@ models:
     swap_space: 32
     trust_remote_code: true
     extra_args: "--enable-prefix-caching"
+
+  # QuantTrio/GLM-4.{6,7}-AWQ — 358B Glm4MoeForCausalLM AWQ INT4
+  # (~180 GB weights). Same arch family as zai-org/GLM-4.7-FP8 (see
+  # eval/.local_notes/GLM_4_7_FP8_PROCEDURE.md). Fits TP=4 on a single Jupiter
+  # GH200 node (4×96=384 GB). Pattern D for terminus-2 reg eval — NO
+  # tool_call_parser, NO reasoning_parser (both hijack the plain-JSON output
+  # the terminus-2 agent parses client-side; vendor glm47/glm45/deepseek_v3
+  # parsers are for native-tool / openhands scaffolds, not terminus-2).
+  # NB: vLLM 0.17.1 in otagent2-fix had a deterministic q_norm CUDA crash on
+  # swebench-length prompts for the FP8 variant (project_glm47_fp8_qnorm_crash);
+  # AWQ may inherit. Smoke v2 + tb2 before swebench.
+  # max_num_seqs sized to comfortably hold listener --n-concurrent 32 without
+  # waiting (52 for 4.7, 64 for 4.6 per vendor/guha1 spec).
+  "QuantTrio/GLM-4.6-AWQ":
+    conda_env: otagent2-fix
+    tensor_parallel_size: 4
+    max_model_len: 32768
+    swap_space: 8
+    trust_remote_code: true
+    extra_args: "--enable-expert-parallel --enable-prefix-caching --enable-chunked-prefill --max-num-seqs 64 --max-num-batched-tokens 32768 --dtype bfloat16 --kv-cache-dtype fp8"
+
+  # NB: 504964 (fp16 KV) saturated at 32 concurrent trials (Waiting 1-7, KV
+  # 95-100%). Switching default to fp8 KV (matches 4.6 entry above) to halve
+  # per-token KV and roughly double effective cache. vLLM 0.17.1 requires
+  # --dtype bfloat16 when kv_cache_dtype=fp8 (FP16 activations + FP8 KV is an
+  # unsupported combination — 505124 died at engine init with this error).
+  "QuantTrio/GLM-4.7-AWQ":
+    conda_env: otagent2-fix
+    tensor_parallel_size: 4
+    max_model_len: 32768
+    swap_space: 4
+    trust_remote_code: true
+    extra_args: "--enable-expert-parallel --enable-prefix-caching --enable-chunked-prefill --max-num-seqs 52 --max-num-batched-tokens 32768 --dtype bfloat16 --kv-cache-dtype fp8"
 
   # Lite-Coder/LiteCoder-Terminal-30b-a3b-sft — 30B MoE (3B active), SFT for
   # terminus scaffold. Pattern D — do NOT add tool_call_parser or

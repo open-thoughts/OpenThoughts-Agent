@@ -441,13 +441,22 @@ unset -v VLLM_PORT_ENV  # ensure no VLLM_PORT env var leaks to subprocesses
 echo "Physical GPUs: $_PHYSICAL_GPUS (CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES), vLLM port: $VLLM_PORT"
 
 # Pre-download model via proxychains (compute nodes have no direct internet)
+# Try offline-resolve first (cache may be read-only for current user when the
+# HF Hub HEAD has advanced past the cached snapshot — fetching a new snapshot
+# into a foreign-owned cache dir fails with PermissionError). Only fall back
+# to online download if the model isn't already cached.
 echo "Pre-downloading model: $MODEL"
 proxied $PYTHON_BIN -c "
 from huggingface_hub import snapshot_download
-import os
+import os, sys
 cache = os.environ.get('HF_HUB_CACHE')
-path = snapshot_download('$MODEL', cache_dir=cache)
-print(f'Model cached at: {path}')
+try:
+    path = snapshot_download('$MODEL', cache_dir=cache, local_files_only=True)
+    print(f'Model cached at (offline): {path}')
+except Exception as e:
+    print(f'Offline resolve failed ({type(e).__name__}: {e}); attempting online fetch...', flush=True)
+    path = snapshot_download('$MODEL', cache_dir=cache)
+    print(f'Model cached at (online): {path}')
 "
 if [ $? -ne 0 ]; then
     echo "ERROR: Model pre-download failed for $MODEL. Exiting."
@@ -849,6 +858,62 @@ if [ "${EVAL_FORCE_FRESH:-false}" != "true" ] && [ -d "$EXISTING_JOB_DIR" ] && [
         find "$EXISTING_JOB_DIR" -mindepth 2 -maxdepth 2 -name config.json -print0 2>/dev/null | \
             xargs -0 -r sed -i.bak-port "s|\"api_base\": \"http://localhost:[0-9]\+/|\"api_base\": \"http://localhost:${VLLM_PORT}/|g"
     fi
+    # Cat 3 resume (Pinggy tunnel): the dir's saved api_base points to the OLD
+    # Pinggy URL from the prior fire (e.g. https://pydpungncw.a.pinggy.link/v1).
+    # That tunnel died with the prior SLURM job. The current fire opens a new
+    # tunnel at $EVAL_PINGGY_URL — rewrite the config.json + per-trial configs
+    # so harbor uses the new URL. If $EVAL_PINGGY_URL matches what's already in
+    # config.json (same pair re-allocated), the sed is a no-op.
+    if [ -n "${EVAL_PINGGY_URL:-}" ]; then
+        echo "Patching api_base Pinggy URL in config.json: -> https://${EVAL_PINGGY_URL}/v1"
+        sed -i.bak-pinggy "s|\"api_base\": \"https://[a-zA-Z0-9]\+\.a\.pinggy\.link/v1\"|\"api_base\": \"https://${EVAL_PINGGY_URL}/v1\"|g" "$EXISTING_JOB_DIR/config.json"
+        if [ "$PATCHED_TRIAL_COUNT" -gt 0 ]; then
+            echo "Patching Pinggy URL in $PATCHED_TRIAL_COUNT per-trial config.json files: -> https://${EVAL_PINGGY_URL}/v1"
+            find "$EXISTING_JOB_DIR" -mindepth 2 -maxdepth 2 -name config.json -print0 2>/dev/null | \
+                xargs -0 -r sed -i.bak-pinggy "s|\"api_base\": \"https://[a-zA-Z0-9]\+\.a\.pinggy\.link/v1\"|\"api_base\": \"https://${EVAL_PINGGY_URL}/v1\"|g"
+        fi
+    fi
+    # --- FIX (G18): Cat-3 installed-agent resume needs the Pinggy tunnel too.
+    # The fresh-fire branch starts the tunnel (see "Tunnel for installed agents"
+    # below), but the resume branch previously only patched the Pinggy URL into
+    # the configs WITHOUT starting a tunnel → swe-agent sandboxes hit
+    # "[Errno 111] Connection refused" on every LLM call → 100% trial failure.
+    # (Confirmed empirically on JIDs 581168/581169/581170, 2026-06-04.)
+    # Gated on EVAL_PINGGY_URL: only Cat-3 installed-agent resumes set it;
+    # terminus-2 resumes leave it empty, so this is a no-op for them.
+    if [ -n "${EVAL_PINGGY_URL:-}" ] && [ -n "${EVAL_PINGGY_TOKEN:-}" ]; then
+        echo "[pinggy] (resume) Starting SSH tunnel to ${EVAL_PINGGY_URL} (port $VLLM_PORT)..."
+        PINGGY_LOG="$EVAL_LOGS_DIR/pinggy_${SLURM_JOB_ID}.log"
+        _PINGGY_PROXY_PREFIX=""
+        if [ -x "$PROXYCHAINS_BIN" ] && [ -n "${PROXYCHAINS_CONF_FILE:-}" ]; then
+            _PINGGY_PROXY_PREFIX="$PROXYCHAINS_BIN -f $PROXYCHAINS_CONF_FILE "
+        fi
+        bash -c "while true; do ${_PINGGY_PROXY_PREFIX}ssh -p 443 \
+            -R0:localhost:${VLLM_PORT} \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ExitOnForwardFailure=yes \
+            ${EVAL_PINGGY_TOKEN}@pro.pinggy.io; \
+            sleep 10; done" > "$PINGGY_LOG" 2>&1 &
+        PINGGY_PID=$!
+        echo "[pinggy] (resume) Started with PID $PINGGY_PID"
+        _pinggy_verified=false
+        for _vt in $(seq 1 6); do
+            if proxied curl -sk --connect-timeout 5 "https://${EVAL_PINGGY_URL}/v1/models" 2>/dev/null | grep -q "object"; then
+                echo "[pinggy] (resume) Connectivity verified: https://${EVAL_PINGGY_URL} (attempt $_vt)"
+                _pinggy_verified=true
+                break
+            fi
+            sleep 5
+        done
+        if [ "$_pinggy_verified" = false ]; then
+            echo "[pinggy] (resume) FATAL: connectivity test failed after 6 attempts (30s)."
+            echo "[pinggy] (resume) Installed-agent fires require a working tunnel; refusing to waste compute."
+            tail -20 "$PINGGY_LOG" 2>/dev/null || true
+            cleanup
+            exit 1
+        fi
+    fi
     proxied $HARBOR_BIN jobs resume \
         -p "$EXISTING_JOB_DIR" \
         --filter-error-type EnvironmentStartTimeoutError \
@@ -953,7 +1018,15 @@ print(agents[0].get('name', 'terminus-2') if agents else 'terminus-2')
             echo "[pinggy] Starting SSH tunnel to ${EVAL_PINGGY_URL} (port $VLLM_PORT)..."
             PINGGY_LOG="$EVAL_LOGS_DIR/pinggy_${SLURM_JOB_ID}.log"
 
-            bash -c "while true; do ssh -p 443 \
+            # Build proxychains prefix so the SSH-out can reach pro.pinggy.io
+            # from no-internet compute nodes (Jupiter). On clusters with direct
+            # internet (PROXYCHAINS_BIN empty), this expands to nothing.
+            _PINGGY_PROXY_PREFIX=""
+            if [ -x "$PROXYCHAINS_BIN" ] && [ -n "${PROXYCHAINS_CONF_FILE:-}" ]; then
+                _PINGGY_PROXY_PREFIX="$PROXYCHAINS_BIN -f $PROXYCHAINS_CONF_FILE "
+            fi
+
+            bash -c "while true; do ${_PINGGY_PROXY_PREFIX}ssh -p 443 \
                 -R0:localhost:${VLLM_PORT} \
                 -o StrictHostKeyChecking=no \
                 -o ServerAliveInterval=30 \
@@ -978,11 +1051,25 @@ print(agents[0].get('name', 'terminus-2') if agents else 'terminus-2')
 
             if [ "$_PINGGY_OK" = true ]; then
                 TUNNEL_URL="https://${EVAL_PINGGY_URL}"
-                # Verify connectivity
-                if curl -sk "${TUNNEL_URL}/v1/models" 2>/dev/null | grep -q "object"; then
-                    echo "[pinggy] Connectivity verified: $TUNNEL_URL"
-                else
-                    echo "[pinggy] WARNING: connectivity test failed, continuing anyway..."
+                # Verify connectivity (proxied: curl must also egress via the
+                # SOCKS5 tunnel on no-internet clusters). Retry to account for
+                # Pinggy DNS / vLLM-readiness lag.
+                _pinggy_verified=false
+                for _vt in $(seq 1 6); do
+                    if proxied curl -sk --connect-timeout 5 "${TUNNEL_URL}/v1/models" 2>/dev/null | grep -q "object"; then
+                        echo "[pinggy] Connectivity verified: $TUNNEL_URL (attempt $_vt)"
+                        _pinggy_verified=true
+                        break
+                    fi
+                    sleep 5
+                done
+                if [ "$_pinggy_verified" = false ]; then
+                    echo "[pinggy] FATAL: connectivity test failed after 6 attempts (30s)."
+                    echo "[pinggy] Installed-agent fires require a working tunnel; refusing to waste compute."
+                    echo "[pinggy] Last 20 lines of $PINGGY_LOG:"
+                    tail -20 "$PINGGY_LOG" 2>/dev/null || true
+                    cleanup
+                    exit 1
                 fi
             fi
         fi

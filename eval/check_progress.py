@@ -152,8 +152,16 @@ def parse_eval_log(jid, job_name, all_log_dirs=None, max_lines=2000):
                     break
                 if line.startswith("Model: "):
                     model = line.strip()[7:]
+                # API-mode sbatch banner uses "Model (DB-name): <unprefixed>"
+                # (preferred for display since it matches the registered DB
+                # name) plus "Model (LiteLLM): <prefixed>" as a sibling. Prefer
+                # the DB-name line; fall back to LiteLLM if it shows up first.
+                elif line.startswith("Model (DB-name): "):
+                    model = line.strip()[len("Model (DB-name): "):].strip()
+                elif line.startswith("Model (LiteLLM): ") and model is None:
+                    model = line.strip()[len("Model (LiteLLM): "):].strip()
                 elif line.startswith("Dataset: "):
-                    bench = line.strip()[9:]
+                    bench = line.strip()[len("Dataset: "):].strip()
                 elif line.startswith("Run tag: "):
                     run_tag = line.strip()[9:]
                 elif line.startswith("N concurrent: "):
@@ -164,6 +172,13 @@ def parse_eval_log(jid, job_name, all_log_dirs=None, max_lines=2000):
                 elif line.startswith("Timeout multiplier: "):
                     try:
                         timeout_mult = float(line.strip()[20:])
+                    except ValueError:
+                        pass
+                # API-mode sbatch uses the shorter label "Timeout multi: " for
+                # banner alignment. Same numeric value.
+                elif line.startswith("Timeout multi: "):
+                    try:
+                        timeout_mult = float(line.strip()[len("Timeout multi: "):].strip())
                     except ValueError:
                         pass
                 elif "total shards)" in line:
@@ -323,27 +338,40 @@ def collect_job_data(jobs_dir):
     # this resume continues from). A run dir gets one log per fire (original +
     # each resume); we sort numerically so the highest JID < current is the
     # immediate predecessor.
+    # Reading the run tag out of every historical slurm log is pure I/O on a
+    # network filesystem and dominates wall time (thousands of logs accumulate).
+    # Each read is independent, so fan them out over a thread pool — same as the
+    # per-job work below — then assemble the dict from the results.
     fire_index: dict[str, list[str]] = {}
-    for log_dir in all_log_dirs:
-        if not log_dir.is_dir():
-            continue
-        for f in log_dir.glob("data_*.out"):
-            try:
-                fjid = f.stem.split("_", 1)[1]
-            except IndexError:
-                continue
-            try:
-                with open(f, "r", errors="replace") as fh:
-                    for i, line in enumerate(fh):
-                        if i > 200:
-                            break
-                        if line.startswith("Run tag: "):
-                            rt = line[len("Run tag: "):].strip()
-                            if rt:
-                                fire_index.setdefault(rt, []).append(fjid)
-                            break
-            except (OSError, IOError):
-                continue
+    fire_log_files = [
+        f for log_dir in all_log_dirs if log_dir.is_dir()
+        for f in log_dir.glob("data_*.out")
+    ]
+
+    def _read_fire_tag(f):
+        try:
+            fjid = f.stem.split("_", 1)[1]
+        except IndexError:
+            return None
+        try:
+            with open(f, "r", errors="replace") as fh:
+                for i, line in enumerate(fh):
+                    if i > 200:
+                        break
+                    if line.startswith("Run tag: "):
+                        rt = line[len("Run tag: "):].strip()
+                        return (rt, fjid) if rt else None
+        except (OSError, IOError):
+            return None
+        return None
+
+    if fire_log_files:
+        fi_workers = min(32, max(4, len(fire_log_files)))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=fi_workers) as fi_exec:
+            for res in fi_exec.map(_read_fire_tag, fire_log_files):
+                if res is not None:
+                    rt, fjid = res
+                    fire_index.setdefault(rt, []).append(fjid)
 
     def process_one(job):
         jid, name, state, start_time = job

@@ -133,6 +133,19 @@ def build_listener_argv(
         cmd += ["--resume-error-threshold", str(args.resume_error_threshold)]
     if args.enable_thinking:
         cmd.append("--enable-thinking")
+    # Cat 3 (preferred-harness reproduction): pass through Pinggy URL/token so the
+    # sbatch opens a tunnel and the unified_eval_harbor.sbatch resume sed-patch
+    # can rewrite the dir's config.json from the (dead) old Pinggy URL to this
+    # new one. Each fire needs its own free pair. resume_chunked.py is single-
+    # pair per invocation; for multi-model batches, fire one chunk per pair.
+    if args.pinggy_url:
+        cmd += ["--pinggy-url", args.pinggy_url]
+    if args.pinggy_token:
+        cmd += ["--pinggy-token", args.pinggy_token]
+    if args.config_yaml:
+        cmd += ["--config-yaml", args.config_yaml]
+    if args.agent_parser is not None:
+        cmd += ["--agent-parser", args.agent_parser]
     return cmd
 
 
@@ -225,6 +238,20 @@ def main() -> int:
                          "inspector's slurm-log-based --max-total-fires filter). Default: 1, "
                          "meaning the listener will also refuse to resume a dir whose meta.env "
                          "shows >= 1 prior resume completed. Bump if you raised --max-total-fires."))
+    p.add_argument("--pinggy-url", default=None,
+                   help=("Cat 3 only. Pinggy URL (e.g. dadccqeqqf.a.pinggy.link) for the "
+                         "tunnel back to the served model. Pair with --pinggy-token. The "
+                         "sbatch will sed-rewrite the existing dir's config.json's stale "
+                         "Pinggy URL to this one. Single pair per orchestrator invocation; "
+                         "for multi-model resumes, fire one invocation per (model, pair)."))
+    p.add_argument("--pinggy-token", default=None,
+                   help="Cat 3 only. Pinggy auth token, paired with --pinggy-url.")
+    p.add_argument("--config-yaml", default=None,
+                   help=("Cat 3 only. Harbor config YAML (e.g. dcagent_eval_config_swe_agent.yaml). "
+                         "Listener passes this to the sbatch for scaffold/parser selection."))
+    p.add_argument("--agent-parser", default=None,
+                   help=("Cat 3 only. Agent parser override (typically empty string '' for "
+                         "swe-agent which doesn't use a parser). Empty string = disable parser."))
     p.add_argument("--resume-error-threshold", type=int, default=None,
                    help=("Listener-side --resume-error-threshold passthrough. When omitted, the "
                          "listener uses its own default (10). Pass -1 to enable resuming "

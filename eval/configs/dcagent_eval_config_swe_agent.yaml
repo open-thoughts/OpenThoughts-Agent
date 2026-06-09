@@ -14,13 +14,18 @@ orchestrator:
   retry:
     max_retries: 10
     exclude_exceptions:
-      - AgentTimeoutError
-      - AgentEnvironmentTimeoutError
-      - BadRequestError
+      # Aligned to the M1 parity run 7d05ffbf (2026-04-22, SERA-32B 48.67%).
+      # That run RETRIED ContextLengthExceededError / BadRequestError /
+      # AgentEnvironmentTimeoutError (they are NOT terminal here) — important for
+      # long-output SERA checkpoints (e.g. 47K overflowing 32k context, then
+      # recovering on retry). The later wrapup snapshot had drifted to make these
+      # terminal, which suppressed scores vs the parity run.
       - VerifierTimeoutError
-      - SummarizationTimeout
       - SummarizationTimeoutError
-      - ContextLengthExceededError
+      - AgentTimeoutError
+      - VerifierOutputParseError
+      - RewardFileEmptyError
+      - RewardFileNotFoundError
     wait_multiplier: 1.0
     min_wait_sec: 1.0
     max_wait_sec: 60.0

@@ -913,6 +913,30 @@ if [ "${EVAL_FORCE_FRESH:-false}" != "true" ] && [ -d "$EXISTING_JOB_DIR" ] && [
             cleanup
             exit 1
         fi
+        # --- FIX (G18b, 2026-06-09): export the tunnel env so the SANDBOXED agent
+        # uses the public Pinggy URL, NOT the localhost api_base saved in config.json.
+        # The per-trial/job config api_base is "http://localhost:<port>/v1" (harmless
+        # on FRESH fires because the agent reads OPENAI_BASE_URL/OPENAI_API_BASE which
+        # the fresh-fire tunnel block exports — see ~L1123-1165). The resume branch
+        # started the tunnel but never exported these, so swe-agent/openhands/etc.
+        # fell back to localhost inside the remote Daytona sandbox → [Errno 111]
+        # Connection refused → empty patch → reward 0 on EVERY post-resume trial
+        # (confirmed: 668150/158/165 etc., 2026-06-09; pre-resume ~50%, post ~0%).
+        TUNNEL_URL="https://${EVAL_PINGGY_URL}"
+        export OPENAI_API_KEY="fake_key"
+        export OPENAI_API_BASE="${TUNNEL_URL}/v1"
+        export OPENAI_BASE_URL="${TUNNEL_URL}/v1"
+        _RESUME_AGENT_NAME=$(${PYTHON_BIN:-python3} -c "import yaml;c=yaml.safe_load(open('$EXISTING_JOB_DIR/config.json'));a=(c.get('agents') or [{}]);print((a[0] or {}).get('name',''))" 2>/dev/null || echo "")
+        if [ "$_RESUME_AGENT_NAME" = "openhands" ]; then
+            export LLM_BASE_URL="${TUNNEL_URL}/v1"
+            export LLM_API_KEY="fake_key"
+        fi
+        if [ "$_RESUME_AGENT_NAME" = "mini-swe-agent" ]; then
+            export MSWEA_MODEL_API_KEY="fake_key"
+            export MSWEA_MODEL_API_BASE="${TUNNEL_URL}/v1"
+            export HOSTED_VLLM_API_BASE="${TUNNEL_URL}/v1"
+        fi
+        echo "[pinggy] (resume) Exported tunnel env: OPENAI_BASE_URL=${TUNNEL_URL}/v1 (agent=${_RESUME_AGENT_NAME:-unknown})"
     fi
     proxied $HARBOR_BIN jobs resume \
         -p "$EXISTING_JOB_DIR" \

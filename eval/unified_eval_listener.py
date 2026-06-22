@@ -2987,17 +2987,29 @@ class EvalListener:
                 hf_cache = os.environ.get("HF_HUB_CACHE", _cc_path("hf_cache", _FALLBACK_HF_CACHE))
                 log(f"  Pre-downloading model {hf_model} to {hf_cache}...")
                 try:
-                    # Run snapshot_download in a subprocess thread with timeout
-                    # to avoid indefinite hangs on network issues
+                    # Run snapshot_download in a worker thread with a hard wall
+                    # timeout. etag_timeout=120 + max_workers=8 keep slow HF
+                    # metadata/file fetches from stalling (the default 10s etag
+                    # retries serially and wedged an entire fire for hours on a
+                    # slow link — 2026-06 ablation batch). Critically, we drive
+                    # the executor manually and shutdown(wait=False) in finally:
+                    # the old `with ThreadPoolExecutor()` block's implicit
+                    # shutdown(wait=True) re-blocked on the still-running (un-
+                    # killable) download thread AFTER the 300s timeout fired,
+                    # which was the actual indefinite hang.
                     import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                    try:
                         future = executor.submit(
-                            snapshot_download, repo_id=hf_model, repo_type="model", cache_dir=hf_cache
+                            snapshot_download, repo_id=hf_model, repo_type="model",
+                            cache_dir=hf_cache, etag_timeout=120, max_workers=8,
                         )
-                        path = future.result(timeout=300)  # 5 minute timeout
-                    log(f"  Cached at {path}")
+                        path = future.result(timeout=600)  # 10 minute hard cap
+                        log(f"  Cached at {path}")
+                    finally:
+                        executor.shutdown(wait=False)
                 except concurrent.futures.TimeoutError:
-                    log(f"  WARNING: Pre-download of {hf_model} timed out after 300s, skipping (will retry next iteration)")
+                    log(f"  WARNING: Pre-download of {hf_model} timed out after 600s, skipping (will retry next iteration)")
                 except Exception as e:
                     log(f"  WARNING: Failed to download {hf_model}: {e}")
                 downloaded_models.add(hf_model)

@@ -21,7 +21,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 # Add repo root to sys.path for imports
 _repo_root = Path(__file__).resolve().parents[2]

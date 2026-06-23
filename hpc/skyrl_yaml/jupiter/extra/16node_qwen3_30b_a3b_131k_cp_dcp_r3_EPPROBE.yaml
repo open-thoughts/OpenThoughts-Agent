@@ -1,0 +1,375 @@
+# =============================================================================
+# Qwen3-Coder-30B-A3B-Instruct — CP + DCP + R3 EP/CP-DISPATCH PROBE (FAST)
+# =============================================================================
+# PURPOSE: a FAST diagnostic variant of 16node_qwen3_30b_a3b_131k_cp_dcp_r3_SMOKE.yaml
+#   whose ONLY job is to OBSERVE the per-rank training-batch shard assignment under the
+#   ep8 x fsdp2 x cp2 = 32 policy-GPU mesh, to confirm/refute the EP/CP-unaware data
+#   dispatch hypothesis (2026-06-22 ep-dispatch localization log).
+#
+#   Probe #1 (decisive, batch/context-INDEPENDENT): EPDISPATCH=1 makes
+#   PolicyWorkerBase.ppo_train log on EVERY rank, once per gs, its global torch rank,
+#   MeshRank dp/dp_size, the (ddp,fsdp,cp,ep) FSDP2 device-mesh coords, and a fingerprint
+#   (shape + fp_sum + first-8 tokens) of the dispatched `sequences`. Ranks sharing an EP
+#   group (and a CP group) MUST get REPLICATED data -> identical fingerprint = correct;
+#   different = mis-distribution confirmed.
+#   Probe #2: R3_EPTRACE=1 emits [R3EPTRACE] (totals, df02f51) + [R3EPTRACE-VEC] (the
+#   full 128-entry num_tokens_per_expert histogram) right before the expert all-to-all.
+#
+#   Because Probe #1 is batch/context-INDEPENDENT we do NOT need the 3h 131k full-batch
+#   reproducer: we only need to reach the FIRST gs1 policy forward. This variant keeps
+#   the policy mesh UNDER TEST (ep8 x fsdp2 x cp2 = 32) and the Option-B gen geometry
+#   (TP4/DCP1/8-engines) IDENTICAL, but shrinks the context + generation so gs1 is
+#   reached in ~20-30 min instead of ~3h.
+#
+# This is a DIAGNOSTIC PROBE — NOT a controlled-ablation arm. Not for DB/HF.
+#
+# KEPT UNCHANGED from the SMOKE (the thing under test + the mesh):
+#   * EP8 x FSDP2 x CP2 = 32 policy GPU mesh (fsdp_size=2, expert_model_parallel_size=8,
+#     context_parallel_size=2), ring_sdpa, allgather, sdpa, flash_attn=false,
+#     use_sample_packing=false, gradient_checkpointing=true.  *** DO NOT CHANGE ***
+#   * R3 ON (enable_return_routed_experts=true, moe_router_replay=true).
+#   * Option-B gen geometry: TP=4, 8 engines, DCP=1, RAY executor, async_scheduling=false.
+#   * 16 nodes / 64 GPU placement (8 policy + 8 vLLM-engine), fixb SIF + all extra_env.
+#   * batch sizes: train==mini==32 (policy_dp_size=32 -> smallest value clearing the three
+#     coupled fully-async / lcm(DP)>=32 / train%mini constraints; see SMOKE header).
+#   * n_samples_per_prompt=2 => 16 prompts x 2 = 32 episodes/step.
+#
+# MADE FAST vs the SMOKE (context + generation ONLY — mesh/dispatch code is unaffected):
+#   * engine_init_kwargs.max_model_len 131072 -> 16384 (short context: the per-rank shard
+#     assignment that Probe #1 observes is independent of context length, and the slow
+#     ~1h part of the 131k SMOKE is the long-context rollout/KV sizing we no longer need).
+#   * model_info.max_input_tokens 130000 -> 14000, max_output_tokens 16384 -> 1024.
+#   * sampling_params.max_generate_length 2048 -> 1024 (shorter episodes).
+#   * generator.max_turns 6 -> 4, harbor.override_timeout_sec 600 -> 300.
+#   * max_steps 2 (KEEP >=2 so we reach gs1 policy forward — that is where Probe #1 logs).
+#
+# Launch (KEEP the mesh + cp + dcp + r3; short context; probes ON via extra_env):
+#   python -m hpc.launch --job_type rl \
+#     --rl_config ./hpc/skyrl_yaml/jupiter/extra/16node_qwen3_30b_a3b_131k_cp_dcp_r3_EPPROBE.yaml \
+#     --model_path Qwen/Qwen3-Coder-30B-A3B-Instruct \
+#     --num_nodes 16 --train_data '["DCAgent/exp_rpt_pymethods2test-large"]' \
+#     --time_limit 01:00:00 --reservation reformo \
+#     --experiments_dir /e/data1/datasets/playground/ot-baf \
+#     --job_name rl_30b_a3b_cpdcpr3_EPPROBE
+# =============================================================================
+
+entrypoint: examples.terminal_bench.entrypoints.main_tbench
+
+config_groups:
+  terminal_bench_config: terminal_bench
+
+terminal_bench:
+  trials_dir: null
+
+  harbor:
+    name: terminus-2
+    max_episodes: 999999
+    enable_summarize: false
+    store_all_messages: true
+    trajectory_config:
+      raw_content: true
+    enable_episode_logging: false
+    record_terminal_session: false
+    enable_pane_logging: false
+
+    strict_json_parser: true
+
+    interleaved_thinking: true
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+    # PROBE: shorter sandbox timeout (short context -> fast episodes).
+    override_timeout_sec: 300
+
+    override_cpus: 1
+    override_memory_mb: 2048
+    override_storage_mb: 2048
+
+    auto_snapshot: true
+
+    verifier_override_timeout_sec: 120
+
+    max_retries: 3
+    min_wait_sec: 60.0
+    max_wait_sec: 600.0
+    wait_multiplier: 2.0
+
+    exclude_exceptions:
+      - VerifierTimeoutError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - VerifierOutputParseError
+      - VerifierRuntimeError
+
+    # 32 episodes/step fit in one concurrency wave.
+    n_concurrent_trials: 32
+
+    log_level: INFO
+
+    enable_reward_shaping: false
+
+    collect_rollout_details: true
+
+    enable_error_classification: true
+    mask_exceptions:
+      - DaytonaError
+      - EnvironmentStartTimeoutError
+      - NetworkError
+      - ConnectionError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - AgentEnvironmentTimeoutError
+    default_error_treatment: zero
+    passthrough_exceptions:
+      - AgentTimeoutError
+      - ContextLengthExceededError
+
+  # PROBE: short context budget (the per-rank shard assignment Probe #1 observes is
+  # context-INDEPENDENT, so we drop the 131k budget to reach gs1 fast).
+  model_info:
+    max_input_tokens: 14000
+    max_output_tokens: 1024
+
+  archiving:
+    enabled: false
+
+  # PROBE: no trace export.
+  trace_upload:
+    enabled: false
+    repo_org: DCAgent
+    episodes: last
+    dataset_type: SFT
+    cleanup: true
+
+# =============================================================================
+# Trainer configuration  (CP/EP MESH UNCHANGED — this is the thing under test)
+# =============================================================================
+trainer:
+  strategy: fsdp2
+  attn_backend: sdpa
+  flash_attn: false
+  gradient_checkpointing: true
+  gradient_checkpointing_use_reentrant: false
+  algorithm:
+    advantage_estimator: rloo_n
+    use_kl_loss: false
+    kl_loss_coef: 0.0
+    eps_clip_low: 0.2
+    eps_clip_high: 0.05
+    loss_reduction: seq_mean_token_sum_norm_global
+    use_tis: true
+    tis_imp_ratio_cap: 2.0
+
+  epochs: 2
+  # PROBE: 2 steps reaches gs1 policy forward (where Probe #1 [EPDISPATCH] logs).
+  max_steps: 2
+  update_epochs_per_batch: 1
+
+  # train==mini==32 (policy_dp_size=32; smallest value clearing the three coupled
+  # fully-async / lcm(DP)>=32 / train%mini batch-size constraints — see SMOKE header).
+  train_batch_size: 32
+  policy_mini_batch_size: 32
+  eval_batch_size: 32
+
+  micro_forward_batch_size_per_gpu: 2
+  micro_train_batch_size_per_gpu: 1
+
+  max_prompt_length: 999999
+
+  use_sample_packing: false
+
+  eval_interval: 999999
+  eval_before_train: false
+  # PROBE: no checkpoint saves — we only need to OBSERVE the gs1 dispatch.
+  ckpt_interval: 999
+  resume_mode: latest
+  hf_save_interval: 999
+  hf_hub_repo_id: null
+  hf_hub_private: false
+  hf_hub_revision: main
+
+  enable_db_registration: false
+
+  project_name: OpenThoughts-Agent
+  log_level: INFO
+  tracker_commit_each_step: true
+  logger: console
+
+  run_name: null
+  ckpt_path: null
+  export_path: null
+
+  policy:
+    optimizer_config:
+      lr: 8e-6
+      weight_decay: 0.0
+      adam_betas: [0.9, 0.999]
+      max_grad_norm: 0.9
+    fsdp_config:
+      cpu_offload: true
+      reshard_after_forward: true
+      fsdp_size: 2
+      expert_model_parallel_size: 8
+      context_parallel_size: 2
+      cp_style: ring_sdpa
+      cp_rotate_method: allgather
+      moe_router_replay: true
+      moe_grouped_gemm: true
+      ep_comm_backend: torch
+  ref:
+    model:
+      path: Qwen/Qwen3-Coder-30B-A3B-Instruct
+    fsdp_config:
+      cpu_offload: true
+      reshard_after_forward: true
+      fsdp_size: 2
+      expert_model_parallel_size: 8
+      context_parallel_size: 2
+      cp_style: ring_sdpa
+      cp_rotate_method: allgather
+      moe_router_replay: true
+      moe_grouped_gemm: true
+      ep_comm_backend: torch
+
+  placement:
+    colocate_all: false
+    policy_num_nodes: 8
+    ref_num_nodes: 8
+    policy_num_gpus_per_node: 4
+    ref_num_gpus_per_node: 4
+    policy_strict_spread_pg: true
+    policy_per_gpu_bundles: true
+    policy_force_cvd_mask: true
+
+  fully_async:
+    max_staleness_steps: 16
+    num_parallel_generation_workers: 256
+
+# =============================================================================
+# Generator configuration (vLLM)  — Option-B gen geometry UNCHANGED; context shrunk.
+# =============================================================================
+generator:
+  backend: vllm
+  timeout_multiplier: 1.0
+  model_dtype: bfloat16
+
+  # Option B geometry (UNCHANGED): TP=4, 8 engines = 32 gen GPU = 8 nodes.
+  inference_engine_tensor_parallel_size: 4
+  num_inference_engines: 8
+
+  inference_engine_expert_parallel_size: 1
+
+  # DCP=1 (Option B): UNCHANGED.
+  inference_engine_decode_context_parallel_size: 1
+
+  inference_engine_mp_backend: false
+
+  # 2 samples/prompt x 16 prompts = 32 episodes/step.
+  n_samples_per_prompt: 2
+  eval_n_samples_per_prompt: 2
+
+  gpu_memory_utilization: 0.80
+
+  max_num_seqs: 16
+  max_num_batched_tokens: 16384
+
+  enable_prefix_caching: true
+  enable_chunked_prefill: true
+
+  run_engines_locally: true
+  weight_sync_backend: nccl
+  async_engine: true
+  batched: false
+  enable_http_endpoint: true
+  enable_ray_prometheus_stats: false
+  vllm_stats_interval: 1
+  append_eos_token_after_stop_str_in_multi_turn: true
+  # PROBE: cap agent turns so episodes terminate quickly.
+  max_turns: 4
+
+  sampling_params:
+    # PROBE: short generations (short context -> fast rollout).
+    max_generate_length: 1024
+    temperature: 0.7
+    top_p: 0.95
+    top_k: 20
+
+  engine_init_kwargs:
+    # PROBE: 16k context (dropped from 131072 — Probe #1 is context-independent).
+    max_model_len: 16384
+    custom_chat_template_chat_completion_path: ./chat_templates/qwen3_thinking_acc.jinja2
+    disable_custom_all_reduce: true
+    enable_return_routed_experts: true
+    async_scheduling: false
+
+# Data paths
+data:
+  train_data: []
+  val_data: []
+
+rollout:
+  fanout:
+    enabled: true
+    num_coordinators: 4
+    cpus_per_coordinator: 8
+
+# =============================================================================
+# Apptainer runtime container  (IDENTICAL to the SMOKE — fixb SIF)
+# =============================================================================
+container:
+  sif: /e/scratch/jureap59/feuer1/containers/skyrl_megatron_vllm0202rc0_r3_cp_fixb6.sif
+  binds:
+    - /e/scratch
+    - /e/data1
+  pydeps: /e/scratch/jureap59/feuer1/sif_pydeps_longctx_titan022:/e/scratch/jureap59/feuer1/sif_pydeps
+  extra_env:
+    # --- EP/CP-DISPATCH PROBES (2026-06-22): turn ON both diagnostic probes. ---
+    # Probe #1 ([EPDISPATCH] in PolicyWorkerBase.ppo_train) + Probe #2 ([R3EPTRACE] /
+    # [R3EPTRACE-VEC] in models/layers/moe.py MoE.forward).
+    EPDISPATCH: 1
+    APPTAINERENV_EPDISPATCH: 1
+    R3_EPTRACE: 1
+    APPTAINERENV_R3_EPTRACE: 1
+    SKYRL_GDN_MASK_FLA: 1
+    PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    APPTAINERENV_PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    VLLM_USE_FLASHINFER_SAMPLER: 0
+    VLLM_ATTENTION_BACKEND: FLASH_ATTN
+    TRITON_LIBCUDA_PATH: /.singularity.d/libs
+    APPTAINERENV_VLLM_USE_FLASHINFER_SAMPLER: 0
+    APPTAINERENV_VLLM_ATTENTION_BACKEND: FLASH_ATTN
+    APPTAINERENV_TRITON_LIBCUDA_PATH: /.singularity.d/libs
+    LIBRARY_PATH: /.singularity.d/libs
+    APPTAINERENV_LIBRARY_PATH: /.singularity.d/libs
+    NCCL_COLLNET_ENABLE: 0
+    NCCL_NVLS_ENABLE: 0
+    NCCL_P2P_DISABLE: 1
+    NCCL_DEBUG: INFO
+    APPTAINERENV_NCCL_COLLNET_ENABLE: 0
+    APPTAINERENV_NCCL_NVLS_ENABLE: 0
+    APPTAINERENV_NCCL_P2P_DISABLE: 1
+    APPTAINERENV_NCCL_DEBUG: INFO
+    VLLM_ALLOW_ROUTED_EXPERTS_DCP: 1
+    APPTAINERENV_VLLM_ALLOW_ROUTED_EXPERTS_DCP: 1
+    VLLM_MQ_MAX_CHUNK_BYTES_MB: 160
+    APPTAINERENV_VLLM_MQ_MAX_CHUNK_BYTES_MB: 160
+    VLLM_ROUTED_EXPERTS_SIDE_TIMEOUT_SECONDS: 1200
+    APPTAINERENV_VLLM_ROUTED_EXPERTS_SIDE_TIMEOUT_SECONDS: 1200
+    VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: 900
+    APPTAINERENV_VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: 900
+    TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC: 600
+    APPTAINERENV_TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC: 600
+    TORCH_NCCL_ENABLE_MONITORING: 1
+    APPTAINERENV_TORCH_NCCL_ENABLE_MONITORING: 1
+    TORCH_NCCL_DUMP_ON_TIMEOUT: 1
+    APPTAINERENV_TORCH_NCCL_DUMP_ON_TIMEOUT: 1
+    TORCH_FR_BUFFER_SIZE: 2000
+    APPTAINERENV_TORCH_FR_BUFFER_SIZE: 2000
+    TORCH_NCCL_TRACE_CPP_STACK: 1
+    APPTAINERENV_TORCH_NCCL_TRACE_CPP_STACK: 1
+    TORCH_NCCL_DEBUG_INFO_TEMP_FILE: /e/data1/datasets/playground/ot-baf/fr_dumps_epprobe/nccl_fr_rank
+    APPTAINERENV_TORCH_NCCL_DEBUG_INFO_TEMP_FILE: /e/data1/datasets/playground/ot-baf/fr_dumps_epprobe/nccl_fr_rank
+    HF_HUB_OFFLINE: 1
+    TRANSFORMERS_OFFLINE: 1
+    APPTAINERENV_HF_HUB_OFFLINE: 1
+    APPTAINERENV_TRANSFORMERS_OFFLINE: 1

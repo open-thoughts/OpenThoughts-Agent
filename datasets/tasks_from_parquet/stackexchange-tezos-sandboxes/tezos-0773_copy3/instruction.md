@@ -1,2 +1,0 @@
-
-I'm trying to run Jakarta testnet node locally. Node starts and syncs, but RPC does not work. docker-compose.yaml I'm using: version: "2" services: node: image: tezos/tezos:v13.0 hostname: node command: tezos-node --network=jakartanet ports: - 9732:9732 expose: - '8732' volumes: - node_data:/var/run/tezos/node - client_data:/var/run/tezos/client restart: on-failure volumes: node_data: client_data: What am I doing wrong here?

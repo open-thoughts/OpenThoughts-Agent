@@ -1,2 +1,0 @@
-
-I have a few wallets ( tz1... ), but I would like to only use one. Is it possible to delete a wallet? If so, does the blockchain record this action? Is there actually any benefit for the blockchain for deleting accounts? The number of unique wallets is of course very very high, enough to satisfy any potential demand, so releasing account numbers is unlikely to be of any help. Perhaps, adding information of deletion of wallets to the blockchain might just add redundant information to it, unnecessarily increasing its size.

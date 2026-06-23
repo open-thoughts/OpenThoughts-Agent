@@ -1,2 +1,0 @@
-
-I'm trying to understand the different steps involved in the creation of a transaction operation. Tezos-client -l shows a number of RPC calls, among them: chains/main/blocks/head/helpers/scripts/run_operation chains/main/blocks/head/helpers/preapply/operations injection/operation?chain=main What do run_operation and preapply do, and why are they both needed? Besides, the operation to be injected is binary-encoded, what encoding is used? (one can get the encoding using the /chains/main/blocks/head/helpers/forge/operations , but I'd like encode the operation myself).

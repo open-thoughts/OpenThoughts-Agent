@@ -1,0 +1,458 @@
+# =============================================================================
+# Qwen3-Coder-30B-A3B-Instruct — #232 DE-RISK RUNG: PROVEN FLOOR + CP=2 ring-SDPA
+# =============================================================================
+# Target: Qwen/Qwen3-Coder-30B-A3B-Instruct  (task #232 de-risk ladder, rung 2)
+#
+# WHY THIS CONFIG EXISTS (the de-risk ladder):
+#   The PROVEN FLOOR is #217 (job 913908, 24GPU_qwen3_coder_30b_a3b.yaml):
+#   Qwen3-Coder-30B-A3B-Instruct, 32k ctx / CP=1 / R3-OFF, EP4×FSDP4=16 policy GPUs
+#   + 4×TP=2 vLLM engines = 24 GPU / 6 nodes. It trains cleanly to gs 79/80. A
+#   sibling investigation PROVED the earlier "floor stuck at gs0" was a BASE-model
+#   degenerate-generation artifact (base Qwen3-30B-A3B), NOT an infra deadlock —
+#   so the floor infra is sound. This rung adds back EXACTLY ONE stripped axis to
+#   de-risk it in isolation:
+#     * SINGLE DELTA: CP=1 -> CP=2 ring-SDPA (torch-native context parallel).
+#   DELIBERATELY NOT added this rung (they come later on the ladder):
+#     * R3 routed-experts capture  (being fixed separately under #237) -> stays OFF
+#     * 131k long-context + YaRN    (comes AFTER CP is validated)       -> stays 32k
+#   SUCCESS CRITERION FOR THIS RUNG: reach global_step 1 with no CP/ring-SDPA stall.
+#
+# BASE = the PROVEN #217 yaml (24GPU_qwen3_coder_30b_a3b.yaml). Model /
+# chat-template / task / 32k / sampling / R3-OFF / batch sizes / hparams are all
+# the #217 known-good values, carried over byte-for-byte. The Coder-Instruct's
+# #217 template settings are kept exactly as #217 ran them (NOT changed).
+#
+# THE SINGLE CP=2 DELTA vs #217 (extracted from the full #232 config
+# extra/64GPU_qwen3_30b_a3b_longctx131k_cp_dcp.yaml):
+#   1. policy.fsdp_config + ref.fsdp_config:  + context_parallel_size: 2
+#                                             + cp_style: ring_sdpa
+#                                             + cp_rotate_method: allgather
+#   2. trainer.attn_backend: sdpa  + trainer.flash_attn: false
+#      (CP>1 REQUIRES sdpa: the torch-native ring-SDPA CP path rejects flash-attn
+#       varlen — full #232 config Stage-2 attn-backend pivot. "auto"/flash crashes.)
+#   3. trainer.use_sample_packing: false
+#      (Sample packing MUST be off under CP>1: SkyRL's _validate_cp_cfg asserts it —
+#       packed-varlen ring-SDPA CP is deferred. #217 left it at the schema default
+#       off; set EXPLICITLY here so the assertion is unambiguous.)
+#   4. sequence_parallel_size STAYS at its schema default 1 — NOT set (CP and Ulysses
+#      SP both shard the seq dim; mutually exclusive). It lives at the policy top
+#      level, NOT in fsdp_config; setting it would emit a struct-strict override of a
+#      nonexistent fsdp_config key. Matches the full #232 long-ctx parent.
+#   5. CONTAINER -> the CP-capable SIF skyrl_megatron_vllm0202rc0_r3_cp_fixb2.sif
+#      (NOT #217's skyrl_megatron_vllm0202rc0_r3.sif). The CP path needs the baked
+#      /opt/SkyRL @ marin penfever/working 34c348b (FSDP2 torch-native CP ring-SDPA +
+#      ExpertParallel) + torchtitan 0.2.2 via the sif_pydeps_longctx_titan022 pydeps.
+#      With R3 OFF (enable_return_routed_experts=false) the R3/FIX-B code in this SIF
+#      is INERT (Noop capturer) — same SIF the full #232 R3-OFF A/B (job 923903) ran.
+#
+# NOT a delta (stays as #217 / floor):
+#   * max_model_len 32768  (< native 40960 -> NO YaRN rope_scaling; do NOT add it)
+#   * enable_return_routed_experts=false + moe_router_replay=false  (R3 OFF)
+#   * vLLM 4×TP=2 engines (decode TP all-reduce is ON-NODE NVLink; no cross-node
+#     split -> the SkyRL e5f0ff5 per-engine placement fix is moot here, as in #217)
+#   * disable_custom_all_reduce NOT set (#217 didn't set it; inert at TP=2 on-node)
+#   * enable_db_registration: false  (standing guardrail; launcher also auto-injects)
+#
+# Launch via the standard path:
+#
+#   python -m hpc.launch \
+#     --job_type rl \
+#     --rl_config ./hpc/skyrl_yaml/jupiter/extra/6node_qwen3_30b_a3b_32k_cp2.yaml \
+#     --model_path Qwen/Qwen3-Coder-30B-A3B-Instruct \
+#     --num_nodes 6 \
+#     --train_data '["DCAgent/exp_rpt_pymethods2test-large"]' \
+#     --time_limit 11:59:00 \
+#     --max_restarts 5 \
+#     --reservation reformo \
+#     --experiments_dir /e/data1/datasets/playground/ot-baf \
+#     --job_name rl_30b_a3b_32k_cp2
+#
+# -----------------------------------------------------------------------------
+# GPU / NODE SIZING (6 nodes × 4 GH200 = 24 GPUs)  [colocate_all: false]
+# -----------------------------------------------------------------------------
+# MESH MATH — policy GPU count held CONSTANT vs the #217 floor.
+#   Floor (#217):  EP=4 × FSDP=4 × CP=1 = 16 policy GPUs (4 nodes).
+#   To absorb CP=2 at the SAME 16 policy GPUs, HALVE FSDP (4 -> 2):
+#                  EP=4 × FSDP=2 × CP=2 = 16 policy GPUs (4 nodes).
+#
+# Generation (vLLM):  4 engines × TP=2              = 8 GPUs  =  2 nodes  (UNCHANGED vs #217)
+# Policy/Ref FSDP  :  EP=4 × FSDP=2 × CP=2          = 16 GPUs =  4 nodes  (FSDP 4->2, +CP=2)
+#                                                     -------    --------
+#                                            TOTAL =  24 GPUs    6 nodes
+#
+# DIVISIBILITY CHECKS (all hard constraints):
+#   * MoE dim-0 guard (num_experts//ep) % fsdp == 0:
+#       128 experts / EP=4 = 32 experts/EP-rank; 32 / FSDP=2 = 16 (even) -> VALID.
+#     (CP=2 shards the SEQUENCE dim, NOT the expert dim, so the MoE guard is unchanged.)
+#   * EP × FSDP × CP = 4 × 2 × 2 = 16 = policy GPUs -> VALID.
+#   * CP G4 divisibility: padded seq_len % (2*cp)=4 == 0; 32768 % 4 == 0 -> OK.
+#   * vLLM TP=2 divides 32 attn heads (16/GPU) AND 4 KV heads (2 KV/rank, valid GQA)
+#     AND 128 experts (64/GPU) -> VALID. TP=2 = 2 engines per 4-GPU node ->
+#     decode TP all-reduce is ON-NODE NVLink (no cross-node split possible).
+#
+# FSDP memory arithmetic (30B, full-fidelity Adam, bf16-mixed):
+#   ~540 GB sharded state. At FSDP=2 (vs the floor's FSDP=4) the per-rank shard
+#   DOUBLES, but cpu_offload: true moves params+optimizer into the GH200 coherent
+#   LPDDR (480 GB/node), and CP=2 HALVES the per-rank activation working set over
+#   the 32k sequence -> comfortable HBM headroom for a 30B at 32k.
+# =============================================================================
+
+entrypoint: examples.terminal_bench.entrypoints.main_tbench
+
+# Hydra config groups (+ prefix in CLI)
+config_groups:
+  terminal_bench_config: terminal_bench
+
+# Terminal bench / agentic environment settings
+terminal_bench:
+  trials_dir: null
+
+  harbor:
+    name: terminus-2
+    max_episodes: 999999
+    enable_summarize: false
+    store_all_messages: true
+    trajectory_config:
+      raw_content: true
+    enable_episode_logging: false
+    record_terminal_session: false
+    enable_pane_logging: false
+
+    strict_json_parser: true
+
+    interleaved_thinking: true
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+    override_timeout_sec: 1800
+
+    override_cpus: 1
+    override_memory_mb: 2048
+    override_storage_mb: 2048
+
+    auto_snapshot: true
+
+    verifier_override_timeout_sec: 120
+
+    max_retries: 3
+    min_wait_sec: 60.0
+    max_wait_sec: 600.0
+    wait_multiplier: 2.0
+
+    exclude_exceptions:
+      - VerifierTimeoutError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - VerifierOutputParseError
+      - VerifierRuntimeError
+
+    # 300 concurrent trials — the no-R3-capture value (R3 capture is OFF here, so
+    # no routed_experts arrays held resident → keeps the async buffer full across
+    # the 4 TP=2 engines). Same as #217.
+    n_concurrent_trials: 300
+
+    log_level: INFO
+
+    enable_reward_shaping: false
+
+    # collect_rollout_details=true → per-token rollout logprobs from vLLM, REQUIRED
+    # for use_tis below (trainer asserts non-null rollout_logprobs when use_tis).
+    collect_rollout_details: true
+
+    enable_error_classification: true
+    mask_exceptions:
+      - DaytonaError
+      - EnvironmentStartTimeoutError
+      - NetworkError
+      - ConnectionError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - AgentEnvironmentTimeoutError
+    default_error_treatment: zero
+    passthrough_exceptions:
+      - AgentTimeoutError
+      - ContextLengthExceededError
+
+  # 768-token buffer below max_model_len=32768 (matches #217 / 56GPU_base).
+  model_info:
+    max_input_tokens: 32767
+    max_output_tokens: 4096
+
+  archiving:
+    enabled: false
+
+  trace_upload:
+    enabled: true
+    repo_org: DCAgent
+    episodes: last
+    dataset_type: SFT
+    cleanup: true
+
+# =============================================================================
+# Trainer configuration
+# =============================================================================
+trainer:
+  strategy: fsdp2
+  # CP=2 DELTA: CP>1 REQUIRES the torch-native ring-SDPA attention backend. The CP
+  # path rejects flash-attn varlen (full #232 config Stage-2 attn-backend pivot);
+  # "auto" would pick flash_attention_2 and crash. sdpa is the validated CP backend.
+  # NOTE: this pins the TRAINER (policy/ref forward) to sdpa; the vLLM GENERATION
+  # engine keeps its own attention backend (FLASH_ATTN via extra_env, unchanged).
+  attn_backend: sdpa
+  flash_attn: false
+  # Gradient checkpointing ON at 32k (cheap insurance on the activation peak even
+  # for a 30B). use_reentrant=false is the recompute-safe variant.
+  gradient_checkpointing: true
+  gradient_checkpointing_use_reentrant: false
+  algorithm:
+    advantage_estimator: rloo_n
+    use_kl_loss: false
+    kl_loss_coef: 0.0
+    eps_clip_low: 0.2
+    eps_clip_high: 0.05
+    # seqnorm baseline (matches #217): global length-unbiased + grad-accum-correct.
+    loss_reduction: seq_mean_token_sum_norm_global
+    # Truncated Importance Sampling ON — bounds the vLLM↔FSDP rollout-vs-train gap
+    # (R3 router-replay is OFF, so TIS is the correction lever). REQUIRES
+    # collect_rollout_details=true (above). cap=2.0 = standard truncation.
+    use_tis: true
+    tis_imp_ratio_cap: 2.0
+
+  epochs: 2
+  max_steps: 80
+  update_epochs_per_batch: 1
+
+  train_batch_size: 64
+  policy_mini_batch_size: 64
+  eval_batch_size: 64
+
+  # micro_forward 4 (forward-only logprob pass), micro_train 1 (MoE backward spike).
+  micro_forward_batch_size_per_gpu: 4
+  micro_train_batch_size_per_gpu: 1
+
+  max_prompt_length: 999999
+
+  # CP=2 DELTA: Sample packing MUST be off under context_parallel_size>1 — SkyRL's
+  # _validate_cp_cfg rejects packed-varlen + CP (packed-varlen ring-SDPA CP is
+  # deferred). #217 left this at the schema default (off); set EXPLICITLY here so
+  # the CP assertion is unambiguous. micro_train=1 uses one sequence per micro-batch,
+  # so packing buys nothing here anyway.
+  use_sample_packing: false
+
+  eval_interval: 999999
+  eval_before_train: false
+  # ckpt_interval=1: de-risk run — bank step-1 IMMEDIATELY so reaching gs1 is durable
+  # (the whole point of this run is the gs1 GATE). 30B/32k steps are fast.
+  ckpt_interval: 1
+  resume_mode: latest
+  hf_save_interval: 5
+  hf_hub_repo_id: null
+  hf_hub_private: false
+  hf_hub_revision: main
+
+  enable_db_registration: false
+
+  project_name: OpenThoughts-Agent
+  log_level: INFO
+  tracker_commit_each_step: true
+  logger: console
+
+  run_name: null
+  ckpt_path: null
+  export_path: null
+
+  # Policy optimizer — a3 production hparams (lr 8e-6, max_grad_norm 0.9).
+  policy:
+    optimizer_config:
+      lr: 8e-6
+      weight_decay: 0.0
+      adam_betas: [0.9, 0.999]
+      max_grad_norm: 0.9
+    fsdp_config:
+      cpu_offload: true
+      reshard_after_forward: true
+      # CP=2 MESH: EP=4 × FSDP=2 × CP=2 = 16 policy GPUs (4 nodes). FSDP halved 4->2
+      # vs the #217 floor to absorb CP=2 at constant 16 policy GPUs. MoE dim-0 guard
+      # (num_experts//ep)%fsdp==0: 128/EP4 = 32; 32/FSDP2 = 16 (even) -> VALID. CP=2
+      # shards the SEQUENCE dim (not the expert dim), so the MoE constraint holds.
+      # Device-mesh ordering ddp<fsdp<cp<ep is built by create_device_mesh.
+      fsdp_size: 2
+      expert_model_parallel_size: 4
+      # CP=2 DELTA: torch-native ring-SDPA context parallel over the 32k sequence.
+      # Requires trainer.attn_backend=sdpa (set above). sequence_parallel_size stays
+      # at its schema default 1 (CP and Ulysses SP are mutually exclusive) — it is a
+      # policy top-level key, NOT an fsdp_config key, so intentionally NOT set here.
+      context_parallel_size: 2
+      cp_style: ring_sdpa
+      cp_rotate_method: allgather
+      # R3 OFF (this rung strips R3): no router-replay. grouped-GEMM ON (only the
+      # grouped weight-sync path produces vLLM-loadable per-expert names).
+      moe_router_replay: false
+      moe_grouped_gemm: true
+      ep_comm_backend: torch
+  ref:
+    # INERT (use_kl_loss=false → no RefWorker built). Mirror for config-consistency.
+    model:
+      path: Qwen/Qwen3-Coder-30B-A3B-Instruct
+    fsdp_config:
+      cpu_offload: true
+      reshard_after_forward: true
+      fsdp_size: 2
+      expert_model_parallel_size: 4
+      context_parallel_size: 2
+      cp_style: ring_sdpa
+      cp_rotate_method: allgather
+      moe_router_replay: false
+      moe_grouped_gemm: true
+      ep_comm_backend: torch
+
+  # Disaggregated placement: policy+ref share 4 nodes / 16 GPUs (FSDP), the 2
+  # generation nodes (4 TP=2 engines) are allocated separately.
+  placement:
+    colocate_all: false
+    policy_num_nodes: 4
+    ref_num_nodes: 4
+    policy_num_gpus_per_node: 4
+    ref_num_gpus_per_node: 4
+    # Reserve the 4 policy nodes (STRICT_SPREAD) BEFORE the vLLM PG is created so
+    # policy claims its nodes first and the 4 TP=2 engines land on the disjoint 2.
+    policy_strict_spread_pg: true
+    # One {GPU:1,CPU:1} bundle PER policy GPU → each actor pins to a distinct GPU
+    # (avoids GPU-0-stacking init-OOM in the EP layout).
+    policy_per_gpu_bundles: true
+    policy_force_cvd_mask: true
+
+  fully_async:
+    max_staleness_steps: 16
+    num_parallel_generation_workers: 256
+
+# =============================================================================
+# Generator configuration (vLLM)
+# =============================================================================
+generator:
+  backend: vllm
+  timeout_multiplier: 1.0
+  model_dtype: bfloat16
+
+  # TP=2 per engine: 32 attn heads / 2 = 16/GPU; 4 KV heads / 2 = 2/rank (valid
+  # GQA); 128 experts / 2 = 64/GPU. 4 engines × TP=2 = 8 GPUs = 2 nodes (2
+  # engines/node → the decode TP all-reduce stays ON-NODE NVLink by construction).
+  inference_engine_tensor_parallel_size: 2
+  # 4 TP=2 engines = 8 inference GPUs = 2 nodes. Set EXPLICITLY (not null): the
+  # launcher's (num_nodes*gpus)//tp = 6*4//2 = 12 derivation would be WRONG (4 of
+  # the 6 nodes are policy-only).
+  num_inference_engines: 4
+
+  inference_engine_expert_parallel_size: 1
+
+  # mp (multiprocessing) executor backend — no Ray Compiled-DAG. R3 is OFF here so
+  # the DAG-deadlock path is irrelevant; mp is the robust default for plain
+  # qwen3_moe (same as #217). Requires colocate_all=false (set above).
+  inference_engine_mp_backend: true
+
+  n_samples_per_prompt: 8
+  eval_n_samples_per_prompt: 8
+
+  gpu_memory_utilization: 0.85
+
+  max_num_seqs: 24
+  max_num_batched_tokens: 16384
+
+  enable_prefix_caching: true
+  enable_chunked_prefill: true
+
+  run_engines_locally: true
+  weight_sync_backend: nccl
+  async_engine: true
+  batched: false
+  enable_http_endpoint: true
+  enable_ray_prometheus_stats: false
+  vllm_stats_interval: 1
+  append_eos_token_after_stop_str_in_multi_turn: true
+  max_turns: 999999
+
+  sampling_params:
+    max_generate_length: 4096
+    temperature: 0.7
+    top_p: 0.95
+    top_k: 20
+
+  engine_init_kwargs:
+    # 32768 — WELL WITHIN the Qwen3-Coder-30B-A3B-Instruct native context (262144),
+    # so NO YaRN rope_scaling is needed (the #232 131k run needed YaRN factor 3.2;
+    # 131k is NOT added at this rung).
+    max_model_len: 32768
+    # #217's PROVEN template settings (kept exactly as #217 ran them). Leading ./ is
+    # load-bearing (file-path classification → absolute path under bind-mounted /e/scratch).
+    custom_chat_template_chat_completion_path: ./chat_templates/qwen3_thinking_acc.jinja2
+    # R3 routed_experts capture OFF (paired with fsdp_config.moe_router_replay=false).
+    # This rung strips R3 (being fixed separately under #237); TIS handles the
+    # rollout-vs-train correction.
+    enable_return_routed_experts: false
+
+# Data paths
+data:
+  train_data: []
+  val_data: []
+
+# K-actor rollout fan-out — ON (breaks the single-event-loop GIL ceiling).
+rollout:
+  fanout:
+    enabled: true
+    num_coordinators: 4
+    cpus_per_coordinator: 8
+
+# =============================================================================
+# Apptainer runtime container
+# =============================================================================
+# CP-CAPABLE SIF (skyrl_megatron_vllm0202rc0_r3_cp_fixb2.sif): the canonical
+# torch-2.11 / vLLM-0.20.2rc0 SIF with its baked /opt/SkyRL advanced to marin
+# penfever/working @ 34c348b (FSDP2 torch-native CP ring-SDPA + ExpertParallel).
+# This is NOT #217's skyrl_megatron_vllm0202rc0_r3.sif — that floor SIF's baked
+# /opt/SkyRL lacks the CP ring-SDPA path. With R3 OFF (enable_return_routed_experts
+# =false) the R3/FIX-B code in this image is INERT (Noop capturer), so no rebuild
+# is needed — this is the same SIF the full #232 R3-OFF A/B (job 923903) ran on,
+# isolating the CP path from R3 capture. torchtitan 0.2.2 (for ep_comm_backend=torch
+# ExpertParallel) is supplied via PYTHONPATH pydeps (NOT a runtime overlay → dodges
+# the GPFS-FUSE Ray-bootstrap timeout), exactly as the full #232 config does.
+# The three torch-2.11 multi-node env fixes (FlashInfer-sampler off, Triton libcuda
+# stub, NCCL P2P_DISABLE) are REQUIRED on this SIF and live in extra_env below.
+container:
+  sif: /e/scratch/jureap59/feuer1/containers/skyrl_megatron_vllm0202rc0_r3_cp_fixb3.sif
+  binds:
+    - /e/scratch
+    - /e/data1
+    # R3-capture single-file binds OMITTED (R3 is OFF here; the baked source on this
+    # SIF supersedes them anyway).
+  # torchtitan 0.2.2 via PYTHONPATH pydeps (pure-python, bake-equivalent, no FUSE).
+  # Two-dir colon-separated path: titan022 holds torchtitan 0.2.2 (+ tyro), shared
+  # sif_pydeps supplies daytona/hydra/harbor/etc. Matches the full #232 config.
+  pydeps: /e/scratch/jureap59/feuer1/sif_pydeps_longctx_titan022:/e/scratch/jureap59/feuer1/sif_pydeps
+  extra_env:
+    SKYRL_GDN_MASK_FLA: 1
+    PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    APPTAINERENV_PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    # --- vLLM 0.20.2rc0 SIF env fixes (REQUIRED on this SIF, not model-specific) ---
+    # These pin the vLLM GENERATION engine (separate from trainer.attn_backend=sdpa,
+    # which only governs the policy/ref CP forward). vLLM keeps FLASH_ATTN for decode.
+    VLLM_USE_FLASHINFER_SAMPLER: 0
+    VLLM_ATTENTION_BACKEND: FLASH_ATTN
+    TRITON_LIBCUDA_PATH: /.singularity.d/libs
+    APPTAINERENV_VLLM_USE_FLASHINFER_SAMPLER: 0
+    APPTAINERENV_VLLM_ATTENTION_BACKEND: FLASH_ATTN
+    APPTAINERENV_TRITON_LIBCUDA_PATH: /.singularity.d/libs
+    # --- Cross-node NCCL fix for the 0.20.2rc0 SIF (P2P_DISABLE required; root-
+    # caused on the Mixtral run). Correctness-safe; config-local (this SIF only). ---
+    NCCL_COLLNET_ENABLE: 0
+    NCCL_NVLS_ENABLE: 0
+    NCCL_P2P_DISABLE: 1
+    NCCL_DEBUG: INFO
+    APPTAINERENV_NCCL_COLLNET_ENABLE: 0
+    APPTAINERENV_NCCL_NVLS_ENABLE: 0
+    APPTAINERENV_NCCL_P2P_DISABLE: 1
+    APPTAINERENV_NCCL_DEBUG: INFO
+    # --- HF offline on compute nodes (model pre-staged to HF cache) ---
+    HF_HUB_OFFLINE: 1
+    TRANSFORMERS_OFFLINE: 1
+    APPTAINERENV_HF_HUB_OFFLINE: 1
+    APPTAINERENV_TRANSFORMERS_OFFLINE: 1

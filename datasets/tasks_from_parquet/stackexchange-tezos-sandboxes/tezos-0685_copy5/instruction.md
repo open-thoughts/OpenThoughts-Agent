@@ -1,2 +1,0 @@
-
-Is it OK to try to use TRD using Kiln? This is my first question. The second one is this: 2021-09-25 13:23:24,564 - MainThread - ERROR - Error, request ->http://127.0.0.1:6732/keys/[my_address] None HTTPConnectionPool(host='127.0.0.1', port=6732): Max retries exceeded with url: /keys/[my_address] (Caused by NewConnectionError(' : Failed to establish a new connection: [Errno 111] Connection refused')) http://127.0.0.1:6732/keys/[my_address] None The command I try to run is default: python3 src/main.py Any idea what I do wrong?

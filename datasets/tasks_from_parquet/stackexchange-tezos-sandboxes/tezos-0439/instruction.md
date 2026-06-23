@@ -1,2 +1,0 @@
-
-In my .tezos-client/secret_keys file, I have two keys of different lengths. Both start with edsk and are unencrypted. The first is 98 characters long, which I believe is the actual secret key. The second is 54 characters long, which I believe is a seed. ( Why secret key is 98 char long in tezos? ). New keys are always 54 characters long. Is it correct to interpret this as tezos-client is storing seeds in a file called 'secret_keys'? Why would tezos-client not store the full 98 character secret key?

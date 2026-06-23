@@ -1,2 +1,0 @@
-
-When I am connected to rpcalpha.tzbeta.net through tezos-client -l -A rpcalpha.tzbeta.net -S -P 443 config update I can succesfully call tezos-client activate account alice with . But when I connect to my own node an run the same command, I get: % tezos-client activate account alice with ~ tezos-node Error: Unrecognized command. Try using the man command to get more information. Usage: My '~/.tezos-client/config' content when connected to my own node is { "base_dir": "/home/troels/.tezos-client", "node_addr": "127.0.0.1", "node_port": 9999 }

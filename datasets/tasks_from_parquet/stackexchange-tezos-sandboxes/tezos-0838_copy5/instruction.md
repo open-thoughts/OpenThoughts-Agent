@@ -1,2 +1,0 @@
-
-I am using lazify=True to upgrade the function logic, I am wondering if there is a way lazify can help in upgrading the parameters too. Can we update the following function @sp.entry_point(lazify = True) def f1(self): pass with the following code def f1(self, x , y): self.data.token_price = x + y here i am trying to replace old function with new function with same name but taking two parameters . Is this possible?

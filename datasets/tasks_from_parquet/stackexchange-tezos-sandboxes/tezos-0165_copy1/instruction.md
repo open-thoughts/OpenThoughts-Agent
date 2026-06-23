@@ -1,2 +1,0 @@
-
-I am baking tezos, I checked logs and saw errors: Apr 10 06:25:07 xxxx /var/log/tezos/tezos_endor.log[14727]: Apr 10 06:25:07 - client.scheduling: Error while baking: Apr 10 06:25:07 xxxx /var/log/tezos/tezos_endor.log[14727]: Apr 10 06:25:07 - client.scheduling: Error: Apr 10 06:25:07 xxx /var/log/tezos/tezos_endor.log[14727]: Apr 10 06:25:07 - client.scheduling: No Ledger found for focused-abyssinian-xxxx-xxx/ed25519 Does anyone know this error? I imported ledger information already.

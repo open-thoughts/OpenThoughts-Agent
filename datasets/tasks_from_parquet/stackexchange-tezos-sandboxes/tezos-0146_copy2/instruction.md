@@ -1,2 +1,0 @@
-
-Does .257 burn fee for new account needs to be put in the transaction operation? operations.contents.push({ kind: 'transaction', counter, fee: min_fee + burn_fee, // The sender should first query (through RPC) to see if the destination address is new and adjust fee accordingly? That's a bit tricky. I'll have as fee something like minimum_fee=1257 + burn_fee=257000 What if my destination address is a smart contract? my minimum_fee must be adjusted?

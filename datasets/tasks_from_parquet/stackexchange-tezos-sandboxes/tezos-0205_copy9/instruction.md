@@ -1,2 +1,0 @@
-
-(Tezos version: d272059bf474018d0c39f5a6e60634a95f0c44aa ) I recently configured my tezos node with TLS certificate on the RPC API: .tezos-node/config.json: { [...] "rpc": { "listen-addr": "[::]:8732", "crt": "/home/tezos/my.website.crt", "key": "/home/tezos/my.website.key" } } Now, a command like tezos-admin-client p2p stat just hangs and eventually times out after several minutes. If I remove the crt and key entries, the command works fine again. How can I configure TLS and still have working local Tezos commands?

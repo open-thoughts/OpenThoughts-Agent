@@ -1,2 +1,0 @@
-
-I'm deploying the FA1.2 contract with the online LIGO IDE, Here's a link to the SC: https://ide.ligolang.org/p/QZ85RIfszExxeDPEf_W52A and i'm initializing the storage this way: (Pair (Pair {} "tz1djN1zPWUYpanMS1YhKJ2EmFSYs6qjf4bW") 0) But I got Error: ligo: : Parse error in file "", line 0, characters 12-13, after "Pair" and before "{": 121: {} Can anyone confirm that i'm initializing the storage the right way? If not, what's the correct format? Thank you.

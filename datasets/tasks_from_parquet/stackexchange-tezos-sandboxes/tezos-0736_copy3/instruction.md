@@ -1,2 +1,0 @@
-
-my tezos node is stucked on this error: Current head: BLpEPZhSw81k (timestamp: 2022-01-24T03:12:08.000-00:00, validation: 2022-01-24T11:41:02.077-00:00) Jan 24 12:41:03.343 - protocol_cache: start loading cache now Jan 24 12:41:04.792 - protocol_cache: stop loading cache now Error: Kind.of_magic: unexpected magic char '\000' It was running properly until this error appears in logs. I've try to restart it and to delete data to start from scratch, but the problem still happens on this head. Do you know what I can do to fix it ?

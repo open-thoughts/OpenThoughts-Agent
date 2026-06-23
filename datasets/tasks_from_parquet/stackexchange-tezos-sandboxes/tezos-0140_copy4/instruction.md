@@ -1,2 +1,0 @@
-
-I read this great post on tz1 keys with ed25519 . I also saw that the eztz lib doesn't support ed25519 keys. So I'm trying to understand briefly what is considered a valid procedure to get keys/address. Basically I'm trying to achieve in JS what the tezos-client does in that article above using elliptic ed25519 . Hash: tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx Public Key: edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav Secret Key: edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh Any JS snippet available around?

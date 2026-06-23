@@ -1,2 +1,0 @@
-
-Using the TZscan.io Stats - Key Numbers dashboard, how can I calculate the total locked XTZ in the system? And shouldn't this be a KPI measure by itself? Since delegators can very easily move their XTZ I don't consider that locked, especially since all the exchanges will be auto delegating for their account holders. Total frozen balances Total frozen deposits Total frozen rewards Total frozen fees ——- Total Frozen XTZ ? Also, what is the difference between 'Total frozen deposits' and 'Total frozen balances'?

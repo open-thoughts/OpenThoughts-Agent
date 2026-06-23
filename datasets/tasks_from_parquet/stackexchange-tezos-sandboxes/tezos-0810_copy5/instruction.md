@@ -1,2 +1,0 @@
-
-I'm making my first FA2-based NFT contract and I want to reduce the amount of code by sacking the operator logic. To be clear, I'm still following the FA2 interface, but the entrypoint now looks like this (in Camel Ligo): Update_operators updates -> (failwith "FA2_OPERATORS_UNSUPPORTED" : (operation list) * storage) Question: will the NFTs from this contract still show up normally in all the standard wallets, or is this going to cause compatibility problems? If it will cause problems, can you please elaborate on the point of operators for NFTs?

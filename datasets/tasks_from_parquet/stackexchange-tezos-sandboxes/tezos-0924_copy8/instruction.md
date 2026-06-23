@@ -1,2 +1,0 @@
-
-Digging into the DAC code. It seems that the flow is to read the data from the reveal channel and write it to storage. So then to use that data i must read it again. Why read it, write it, and read it again instead of just reading it? That's the current default flow, but nothing stops from doing something else with it. reveal_loop takes a function to handle each content page. What is the reasoning behind the default flow? Question from Slack.

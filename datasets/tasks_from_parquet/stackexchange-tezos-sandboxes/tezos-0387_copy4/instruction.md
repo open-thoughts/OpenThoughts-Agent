@@ -1,2 +1,0 @@
-
-I have deployed a smart contract on carthagenet. The contract only has a single entry point. Taquito is not able to find that single entry point. I tried both default and root methods and it doesn't work. const op = await contract.methods.default(contractAddress).send() const op = await contract.methods.root(contractAddress).send() Error message contract.methods.default is not a function contract.methods.root is not a function

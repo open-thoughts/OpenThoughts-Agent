@@ -1,2 +1,0 @@
-
-I have deployed a contract on a test net and I want to send some tez to it to test out some operations. When I try to send through Temple wallet, I get: Failed Unable to estimate transaction to provided Recipient. This may happen because: Minimal fee for this transaction is greater than your balance. A large fee may be required because of you sending funds to an empty Manager account. That requires a one-time 0.257 ꜩ burn fee; Network or other technical issue. What is this 0.257 burn fee and why do I need to do it on a contract? Is it a reveal? How would I do it?

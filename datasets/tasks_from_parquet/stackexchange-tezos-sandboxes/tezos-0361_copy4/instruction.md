@@ -1,2 +1,0 @@
-
-From the Tezos documentation , I understand that the seed derived at the end of cycle n-1 is used to compute the baking rights for cycle n+5 (so 6 cycles difference). This means that some pictures from this blog post are wrong? See for instance the picture "seed snapshot baking and rewards". There, if I understand it correctly, the seed derived at the cycle n-6 is used to compute the baking rights for cycle n+5 (so 11 cycles difference).

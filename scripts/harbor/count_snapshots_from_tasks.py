@@ -28,8 +28,23 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import asyncio
+import inspect
 import sys
 from pathlib import Path
+from typing import Any
+
+
+def _run_maybe_async(value: Any) -> Any:
+    """Resolve ``value`` whether harbor returns it sync or as a coroutine.
+
+    Recent harbor makes ``get_task_configs`` / ``download_tasks`` ``async def``
+    (they return coroutines); older harbor returned the result directly. Awaiting
+    only when needed keeps this script working across both versions.
+    """
+    if inspect.isawaitable(value):
+        return asyncio.run(value)
+    return value
 
 from harbor.constants import TASK_CACHE_DIR
 from harbor.models.registry import RemoteRegistryInfo
@@ -83,8 +98,9 @@ def load_tasks_from_local_dataset(
         exclude_task_names=exclude_task_names,
         n_tasks=n_tasks,
     )
-    # Get task configs which contain resolved paths
-    task_configs = config.get_task_configs(disable_verification=True)
+    # Get task configs which contain resolved paths.
+    # harbor's get_task_configs is a coroutine on recent versions; resolve it.
+    task_configs = _run_maybe_async(config.get_task_configs(disable_verification=True))
     return [tc.path for tc in task_configs]
 
 
@@ -110,8 +126,10 @@ def load_tasks_from_registry_dataset(
         download_dir=download_dir,
     )
 
-    # Get task configs (this will download tasks if needed)
-    task_configs = config.get_task_configs(disable_verification=True)
+    # Get task configs (this will download tasks if needed).
+    # Both get_task_configs and download_tasks are harbor coroutines on recent
+    # versions; resolve whichever form this harbor returns.
+    task_configs = _run_maybe_async(config.get_task_configs(disable_verification=True))
 
     # Download the actual task directories
     client = TaskClient()
@@ -119,11 +137,11 @@ def load_tasks_from_registry_dataset(
     local_ids = [tc.path for tc in task_configs if not tc.is_git_task()]
 
     if task_ids:
-        downloaded_paths = client.download_tasks(
+        downloaded_paths = _run_maybe_async(client.download_tasks(
             task_ids=task_ids,
             overwrite=False,
             output_dir=download_dir or TASK_CACHE_DIR,
-        )
+        ))
         return downloaded_paths + local_ids
 
     return local_ids

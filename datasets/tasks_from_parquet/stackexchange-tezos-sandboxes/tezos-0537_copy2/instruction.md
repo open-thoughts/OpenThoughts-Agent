@@ -1,2 +1,0 @@
-
-I am wondering if there is a way to send RPC to other nodes without creating your own node because I do not have enough capacity to create a node in my laptop. Below is what I have tried. Got some ips from https://tezos.giganode.io/ and ran curl -s [IP:Port]/version , but nothing responded. Got some ips with https://services.tzkt.io/v1/network?state=running&p=$page&n=50 and ran the same curl command, but nothing responded. Thanks,

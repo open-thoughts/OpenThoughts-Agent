@@ -1,2 +1,0 @@
-
-I have tried this: entry makeOffer() { require { r_higherBid: topBid ? transferred > the : false otherwise "your Bid must be higher than current topBid"; } effect { match lastBuyer with | some(a) -> const lastBuyerConst = a | none -> fail end } and this (in the place of the match) const lastBuyerConst = lastBuyer ? the : fail and many other less likely solution candidates. Both return parsing errors and are invalid to the binding generator. Any help appreciated!

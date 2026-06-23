@@ -1,2 +1,0 @@
-
-When I run curl http://127.0.0.1:8732/mempool/monitor_operations , the mempool contents are printed to the screen, and more data is printed as more operations come into the mempool (ie: stream of data) After some period of time, X, the connection is closed by the node. During my tests, X can vary between a couple of seconds, to 15-20s. What determines X? What causes the stream data of monitor_operations to close? I'm assuming that in the RPC-node code, there is some condition that closes the stream; if so, what is that condition?

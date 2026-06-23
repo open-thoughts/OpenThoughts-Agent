@@ -1,2 +1,0 @@
-
-I'm trying to provide better error messages. I've tried several things already that don't work such as regular python fstrings, regular string concatenation. I'm tried to using the sp.string function now, but it still doesn't work. Example: x_i = (sp.to_int(params.x + i)) y_j = (sp.to_int(params.y + j)) err_msg = "contains pixel(" + sp.string(x_i) + ") that has been bought already" sp.failwith(err_msg) Error message when running it: Error: Error in Scenario Literal format error: (string(toInt(add(attr(params 48)x 57)(iter i 55)58)58))

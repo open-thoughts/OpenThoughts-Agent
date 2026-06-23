@@ -1,2 +1,0 @@
-
-When I was trying to set up a test net I used a docker installation and it's messed with the tezos-client. I am now using mainnet again. ./tezos-client rpc get /chains/main/is_bootstrapped is failing with this error: Warning: This is NOT the Tezos Mainnet. Do NOT use your fundraiser keys on this network. Fatal error: Unexpected server answer I can make it work with using -E http://localhost:8732 My question is how can I reset the tezos-client to use mainnet, not florencenet or granadanet? I've already done ./tezos-node config reset but to no avail.

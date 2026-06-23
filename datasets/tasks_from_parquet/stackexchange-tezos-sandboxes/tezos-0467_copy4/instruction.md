@@ -1,2 +1,0 @@
-
-How do I extract the operations from a block using tezos-codec ? I can decode the block header as follows below, but I'm interested in seeing the contents of the block. export BLOCK="019caecab9000753d3029bc7d9a36b60cce68ade985a0a16929587166e0d3de61efff2fa31b7116bf670000000005ee3c23b04519d71c4e54089c56773c44979b3ba3d61078ade40332ad81577ae074f653e0e0000001100000001010000000800000000000753d2da051ba81185783e4cbc633cf2ba809139ef07c3e5f6c5867f930e7667b224430000cde7fbbb948e030000" tezos-codec decode \ 006-PsCARTHA.block_header.unsigned \ from \ ${BLOCK:10}

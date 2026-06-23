@@ -1,2 +1,0 @@
-
-Currently for payouts I'm using a traditional tz1 addr, which is managed by the default tezos-signer binary. However, it appears to me not that safe. Some kind of HSM + KMS (say, from Google or from Amazon) seems to be a better solution. But this path requires using tz2 and tz3 addresses, which in practice might cause some problems. So, maybe, someone came up with working and well-tested setups apart from one that is described in the trd docs.

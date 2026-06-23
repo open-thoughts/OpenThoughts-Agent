@@ -1,2 +1,0 @@
-
-I built and synced a node with default peer nodes and then switched it to private mode. Now I see many messages like the following days after making the switch to private mode. Is there something I can do to prevent these connection attempts from untrusted peers? And, do these messages matter (other than cluttering the output log)? Was it fundamentally wrong to build a node this way, rather than making it private-mode from the beginning? p2p.connection-pool: [private node] incoming connection from untrused peer rejected!

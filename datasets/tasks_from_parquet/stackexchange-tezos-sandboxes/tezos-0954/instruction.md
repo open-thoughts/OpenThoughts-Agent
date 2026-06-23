@@ -1,2 +1,0 @@
-
-I am getting below issue while deploying SmartPy contract in ghostnet. HttpResponse: Http error response: (500) [ { "kind":"temporary", "id":"failure", "msg":"Error while applying operation oo4FzTAmMBt4tZ7Hbz5HE2fgDw441umhgtHRcSgHT1R4pWt7DBS:\nError:\n The operation oo4FzTAmMBt4tZ7Hbz5HE2fgDw441umhgtHRcSgHT1R4pWt7DBS cannot be added because the mempool already contains a conflicting operation that should not be replaced (e.g. an operation from the same manager with better fees).\n" } ]

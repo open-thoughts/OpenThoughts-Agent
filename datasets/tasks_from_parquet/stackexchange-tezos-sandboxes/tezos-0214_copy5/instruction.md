@@ -1,2 +1,0 @@
-
-I'm not using docker; I've upgraded OPAM to 4.07.1 and just compiled the new mainnet and have also upgraded the node/blockchain; the node is running and seems happy based on logs looking like they always have. But now running my baker/endorser for existing protocol003, for every new block that comes I get 003-PsddFKi3.client.scheduling: Can't fetch the current event. Waiting for new event instead of the regular No slot found for message that is usually seen. Is this a problem? Seems like it wouldnt bake when the rights come?

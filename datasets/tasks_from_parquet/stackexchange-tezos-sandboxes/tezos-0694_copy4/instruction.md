@@ -1,2 +1,0 @@
-
-I'm following this: https://tezos.b9lab.com/smartpy/language guide, but it's written for the SmartPy online IDE, I'm trying to do this all in my local dev environment. PyCharm IDE gives me an "An illegal target for a variable annotation" error when I use the sp.for_ . Can anyone help me understand what am I doing wrong? import smartpy as sp class Summarise(sp.Contract): def __init__(self): self.init(storage=0) @sp.entry_point(name='sum') def sum(self, params): sp.for_ i in sp.range(1, params+1): pass

@@ -1,2 +1,0 @@
-
-I'm trying to reset the ledger baking application HWM (high watermark) to prepare it for the reset zeronet. Trying the ledger tz1 addr I get: ./tezos-signer set ledger high watermark for "ledger:// " to 0 Error: No Ledger found for Trying the animal name thing I get: ./tezos-signer set ledger high watermark for "ledger:// /ed25519/0'/0'" to 0 Error: Ledger Application level error (set_high_watermark): Conditions of use not satisfied Getting the HWM works, but only for the animal URI ‍♂️

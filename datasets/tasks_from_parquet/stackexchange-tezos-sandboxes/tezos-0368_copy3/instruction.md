@@ -1,2 +1,0 @@
-
-Is it true that in zeronet big maps are treated like regular maps? Example: https://rpc.tzkt.io/zeronet/chains/main/blocks/head/context/contracts/KT1JPvBo4Sv7n1WDzcKWEXTVRDU9HQhaZdzd See no big map pointers in the storage but a list of Elt s instead, big_map_diff field is also empty in operations: https://rpc.tzkt.io/zeronet/chains/main/blocks/493088/operations/3 Counterexample: https://rpc.tzkt.io/zeronet/chains/main/blocks/head/context/contracts/KT1EMy5cDrUQgNYZgtN4wX2n39MBqHGQQCiK Origination: https://rpc.tzkt.io/zeronet/chains/main/blocks/335248/operations/3

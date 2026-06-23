@@ -1,2 +1,0 @@
-
-I am trying to figure out how to delete an item from my list that I created with possible_values = sp.range(0, 100, step = 1) I have tried possible_values.pop(index) , that doesnt work. I have tried del possible_values[index] , that didnt work. It also doesnt seem to let me define by index such as possible_values[index] = -1 . Is this possible to do with a list or will I need to use a map ? Also If I need to use a map how do I create a range with a map?

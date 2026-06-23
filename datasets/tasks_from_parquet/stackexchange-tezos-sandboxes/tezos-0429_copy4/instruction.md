@@ -1,2 +1,0 @@
-
-according to https://tezos.gitlab.io/user/various.html private mode can be enabled with the arguments tezos-node run --rpc-addr [::] --private-mode \ --no-bootstrap-peers \ --bootstrap-threshold=1 \ --connections 1 \ --peer How to enable this in kiln? Kiln has the file etc\kiln\args to pass command line arguments setting KILNARGS="--kiln-node-custom-args --private-mode" is valid syntax, but how to add the additional parameters? eg, the following does NOT work: KILNARGS="--kiln-node-custom-args --private-mode --no-bootstrap-peers"

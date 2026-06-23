@@ -1,2 +1,0 @@
-
-I am a developer of a crypto currency exchange, I want to find deposit to my address from each tezos block. After I call the rpc /chains/main/blocks/height, I got the result. And I find there are many balance_updates in the result, should I use balance_updates to judge deposit? And how to verify balance_updates is valid? Where is the document about tezos block structure or about rpc result. I see the doc at https://tezos.gitlab.io/api/rpc.html?highlight=operation_result#get-chains-chain-id-blocks has not detail info about rpc result.

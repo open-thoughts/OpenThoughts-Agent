@@ -1,2 +1,0 @@
-
-I'm playing around with carthagenet, but I'm having trouble activating an account with the .json file I got from https://faucet.tzalpha.net/ I'm using the docker script for carthagenet and I'm trying to activate an account with: ./carthagenet.sh client -A rpctest.tzbeta.net -P 443 -S activate account bob with "container:xxxXXXXXxxxxx.json" but I get the error: Error: Invalid activation. The public key xxxXXXXXxxxxx does not match any commitment. Any idea what I'm doing wrong?

@@ -1,2 +1,0 @@
-
-I have looked at a few transactions with some smart contracts and I have found that they store a dump of contract's storage. For instance: https://mainnet.tezrpc.me/chains/main/blocks/246869/operations/3/0 https://mainnet.tezrpc.me/chains/main/blocks/328655/operations/3/0 "operation_result": { "status": "applied", "storage": [ //... ?? ], //... } What is the point of doing that? It takes a lot of memory, especially if the storage of the contract is large.

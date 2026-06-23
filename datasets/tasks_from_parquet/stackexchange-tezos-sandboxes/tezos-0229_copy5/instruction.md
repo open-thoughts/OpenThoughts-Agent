@@ -1,2 +1,0 @@
-
-I tried to import snapshot but it didn't work. $ ./mainnet.sh snapshot import BMJgBK8rR4gZPaTcj8EN6uu93hU7AVhPM16GsSB14ZMVxoW1iQ1.full mainnet: Pulling from tezos/tezos Digest: sha256:523a8748fc04106501f176e08ac4648523c7cc620b2d206a65a51fea79945992 Status: Image is up to date for tezos/tezos:mainnet ERROR: Named volume "BMJgBK8rR4gZPaTcj8EN6uu93hU7AVhPM16GsSB14ZMVxoW1iQ1.full:/snapshot:rw" is used in service "importer" but no declaration was found in the volumes section. Any solutions?

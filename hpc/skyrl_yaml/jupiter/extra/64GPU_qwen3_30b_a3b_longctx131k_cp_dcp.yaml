@@ -1,0 +1,613 @@
+# =============================================================================
+# Qwen3-30B-A3B — long-context RL config for Jupiter (GH200 96GB, 4 GPU/node)
+# =============================================================================
+# Target: Qwen/Qwen3-30B-A3B   (task #232 pivot: non-hybrid MoE, DCP rollout +
+#   FSDP2 torch-native context-parallel training.)
+#
+#   ~30B total / ~3B activated params. NON-HYBRID Qwen3MoeForCausalLM — DENSE
+#   ATTENTION on ALL 48 layers (NO GatedDeltaNet / linear-attention, unlike the
+#   80B Qwen3-Next). 48 layers, hidden_size=2048, head_dim=128,
+#   32 attn heads / 4 KV heads (GQA). MoE: 128 experts, top-8 routing,
+#   moe_intermediate_size=768, NO shared expert. vocab=151936,
+#   max_position_embeddings=262144 EFFECTIVE via rope_scaling below
+#   (native config is 40960; YaRN factor 3.2 -> 131072 to cover the 131k run),
+#   rope_theta=1e6, bf16.
+#
+# Adapted from 128GPU_qwen3_next_80b_a3b_longctx131k_cp_dcp.yaml (commit 22798340).
+# KEY DIFFERENCES vs the 80B long-ctx config (sizing-relevant):
+#   * NON-HYBRID dense attention -> ALL 48 layers grow KV with length (the 80B's
+#     36 GDN layers used fixed recurrent state). KV pressure is MUCH higher -> we
+#     drop gpu_memory_utilization to 0.80 and max_num_batched_tokens stays bounded.
+#   * 4 KV heads (the 80B had 2). DCP ceiling is dcp <= tp / num_kv_heads. Option B
+#     (#232) runs DCP=1 -> the ceiling is 4/4=1, so TP=4 is legal (one 4-GPU node per
+#     engine, no cross-node TP decode). [Old Option A ran DCP=2 which forced TP=8.]
+#   * 128 experts (the 80B had 512). MoE divisibility (num_experts//ep)%fsdp==0:
+#     128/EP8 = 16/EP-rank, 16/FSDP2 = 8 even -> valid. (fsdp_size 4->2 vs the 80B
+#     long-ctx mesh, since 30B's sharded state is ~2.6x smaller and fits at FSDP2.)
+#   * 30B is far smaller -> 16 nodes total (8 policy + 8 vLLM-engine), not 32.
+#   * Native context 40960 < 131072 -> YaRN rope_scaling REQUIRED (the 80B's native
+#     262144 needed none). Set under generator.engine_init_kwargs.hf_overrides.
+#
+# Launch via the standard path (HELD for human sign-off — see end of file):
+#
+#   python -m hpc.launch \
+#     --job_type rl \
+#     --rl_config ./hpc/skyrl_yaml/jupiter/extra/64GPU_qwen3_30b_a3b_longctx131k_cp_dcp.yaml \
+#     --model_path Qwen/Qwen3-30B-A3B \
+#     --num_nodes 16 \
+#     --train_data '["DCAgent/<dataset>"]' \
+#     --max_restarts 8 \
+#     --time_limit 11:59:00 \
+#     --experiments_dir /e/data1/datasets/playground/ot-baf
+#
+# -----------------------------------------------------------------------------
+# GPU / NODE SIZING (16 nodes x 4 GH200 = 64 GPUs)  [colocate_all: false]
+# -----------------------------------------------------------------------------
+# OPTION B (task #232, USER-APPROVED 2026-06-17): the cross-node-TP decode RPC
+# timeout killed every attempt under the old 4 engines x TP=8 geometry (TP=8 spans
+# 2 nodes on Jupiter's 4-GPU nodes -> per-step IB all-reduce in decode -> dies even
+# at the 900s deadline). Option B drops DCP=2 -> DCP=1, which lifts the DCP ceiling
+# constraint (dcp <= tp/num_kv_heads = 8/4=2 forced TP>=8; with dcp=1 the ceiling is
+# 4/4=1 so TP=4 is now legal). TP=4 = exactly ONE 4-GPU node per engine -> NO cross-
+# node TP decode -> NO per-step IB all-reduce -> NO timeout. The 32-GPU generation
+# footprint is preserved by RESHAPING 4 engines x TP8 -> 8 engines x TP4 (same 8
+# generation nodes, double the engine count, same total 16 nodes). Training mesh is
+# UNCHANGED (EP=8 x FSDP=2 x CP=2). R3-tensorize fix c8be4bb is PROVEN.
+#
+# Generation (vLLM):  8 engines x TP=4 (DCP=1)    = 32 GPUs  =  8 nodes
+# Policy/Ref FSDP  :  EP=8 x FSDP=2 x CP=2        = 32 GPUs  =  8 nodes
+#                                                   --------   --------
+#                                          TOTAL =  64 GPUs   16 nodes
+#
+# (was, Option A — DIED on cross-node-TP decode timeout: 4 engines x TP=8 = 32 GPUs.)
+#
+# FSDP memory arithmetic (why 32 policy GPUs is comfortable):
+#   bf16 weights        : 30e9 x 2 B            =  60 GB
+#   fp32 grads          : 30e9 x 4 B            = 120 GB
+#   Adam m,v (fp32)     : 30e9 x 8 B            = 240 GB
+#   fp32 master copy    : 30e9 x 4 B            = 120 GB
+#                                          TOTAL ~ 540 GB of sharded state.
+#   Sharded over 32 GPUs -> ~17 GB/GPU persistent state. With cpu_offload: true
+#   the params+optimizer live in the GH200 node's coherent LPDDR (480 GB/node),
+#   leaving HBM for the active shard + the 131k-context activations (which CP=2
+#   halves per-rank). Comfortable headroom for a 30B at 131k.
+# =============================================================================
+
+entrypoint: examples.terminal_bench.entrypoints.main_tbench
+
+# Hydra config groups (+ prefix in CLI)
+config_groups:
+  terminal_bench_config: terminal_bench
+
+# Terminal bench / agentic environment settings
+terminal_bench:
+  trials_dir: null
+
+  harbor:
+    name: terminus-2
+    max_episodes: 999999
+    enable_summarize: false
+    store_all_messages: true
+    trajectory_config:
+      raw_content: true
+    enable_episode_logging: false
+    record_terminal_session: false
+    enable_pane_logging: false
+
+    strict_json_parser: true
+
+    interleaved_thinking: true
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+    override_timeout_sec: 1800
+
+    override_cpus: 1
+    override_memory_mb: 2048
+    override_storage_mb: 2048
+
+    auto_snapshot: true
+
+    verifier_override_timeout_sec: 120
+
+    max_retries: 3
+    min_wait_sec: 60.0
+    max_wait_sec: 600.0
+    wait_multiplier: 2.0
+
+    exclude_exceptions:
+      - VerifierTimeoutError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - VerifierOutputParseError
+      - VerifierRuntimeError
+
+    # 150 concurrent trials — same R3-capture host-RAM ceiling as the 80B long-ctx
+    # config (each resident trial holds per-token [gen_len x 48 layers x top-8]
+    # routing arrays in host RAM on its RolloutCoordinator). 30B has fewer experts
+    # /layers in the routing array than the 80B (top-8 vs top-10, 48 layers same),
+    # so 150 is conservative-safe.
+    n_concurrent_trials: 150
+
+    log_level: INFO
+
+    enable_reward_shaping: false
+
+    # TIS: collect per-token rollout logprobs (the true generation distribution)
+    # so trainer.algorithm.use_tis can bound the off-policy importance ratio.
+    # routed_experts ALSO ride this /chat/completions path (native R3 capture on
+    # this 0.20.2rc0 SIF).
+    collect_rollout_details: true
+
+    enable_error_classification: true
+    mask_exceptions:
+      - DaytonaError
+      - EnvironmentStartTimeoutError
+      - NetworkError
+      - ConnectionError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - AgentEnvironmentTimeoutError
+    default_error_treatment: zero
+    passthrough_exceptions:
+      - AgentTimeoutError
+      - ContextLengthExceededError
+
+  model_info:
+    # LONG-CTX 131k: input budget 130000 (1072-token headroom below
+    # max_model_len=131072 for litellm/vLLM BPE drift).
+    max_input_tokens: 130000
+    max_output_tokens: 16384
+
+  archiving:
+    enabled: false
+
+  trace_upload:
+    enabled: true
+    repo_org: DCAgent
+    episodes: last
+    dataset_type: SFT
+    cleanup: true
+
+# =============================================================================
+# Trainer configuration
+# =============================================================================
+trainer:
+  strategy: fsdp2
+  # CP REQUIRES sdpa: under fsdp_config.context_parallel_size>1 the torch-native
+  # ring-SDPA CP path rejects flash-attn varlen (SkyRL ppo_base_config.yaml,
+  # Stage-2 attn-backend pivot). "auto" would pick flash_attention_2 and crash.
+  # sdpa is the validated CP backend (Qwen2.5-0.5B fp32 sdpa-vs-eager parity 2.29e-3).
+  attn_backend: sdpa
+  flash_attn: false
+  # Gradient checkpointing REQUIRED at 131k context (activation memory otherwise
+  # overflows HBM headroom). use_reentrant=false is the recompute-safe variant
+  # verified against router-replay.
+  gradient_checkpointing: true
+  gradient_checkpointing_use_reentrant: false
+  algorithm:
+    advantage_estimator: rloo_n
+    use_kl_loss: false
+    kl_loss_coef: 0.0
+    eps_clip_low: 0.2
+    eps_clip_high: 0.05
+    loss_reduction: token_mean
+    # TIS: bounds the off-policy ratio created by the residual vLLM<->FSDP bf16
+    # logprob gap (and any routing mismatch R3-replay does not fully cancel).
+    # cap=2.0 = standard truncation (fengyao off-policy-rl). Requires
+    # collect_rollout_details=true (above).
+    use_tis: true
+    tis_imp_ratio_cap: 2.0
+
+  epochs: 2
+  max_steps: 80
+  update_epochs_per_batch: 1
+
+  train_batch_size: 64
+  policy_mini_batch_size: 64
+  eval_batch_size: 64
+
+  # micro_train=1 (the full-shard all-gather + MoE expert FFN backward dominates).
+  # micro_forward=2 (forward-only rollout/logprob pass; lower than the 80B's 4
+  # because dense-attention 131k activations are heavier per sequence here).
+  micro_forward_batch_size_per_gpu: 2
+  micro_train_batch_size_per_gpu: 1
+
+  max_prompt_length: 999999
+
+  # Sample packing MUST be off under context_parallel_size>1: SkyRL's _validate_cp_cfg
+  # rejects packed-varlen + CP (packed-varlen ring-SDPA CP is deferred). The 131k run
+  # uses one sequence per micro-batch (micro_train=1), so packing buys nothing here.
+  use_sample_packing: false
+
+  eval_interval: 999999
+  eval_before_train: false
+  # ckpt_interval=1: long-ctx 30B steps are slow; bank step-1 to avoid resume-from-0.
+  ckpt_interval: 1
+  resume_mode: latest
+  hf_save_interval: 5
+  hf_hub_repo_id: null
+  hf_hub_private: false
+  hf_hub_revision: main
+
+  enable_db_registration: false
+
+  project_name: OpenThoughts-Agent
+  log_level: INFO
+  tracker_commit_each_step: true
+  logger: console
+
+  run_name: null
+  ckpt_path: null
+  export_path: null
+
+  policy:
+    optimizer_config:
+      lr: 8e-6
+      weight_decay: 0.0
+      adam_betas: [0.9, 0.999]
+      max_grad_norm: 0.9
+    fsdp_config:
+      # Offload params + optimizer to the GH200 node's coherent LPDDR.
+      cpu_offload: true
+      reshard_after_forward: true
+      # LONG-CTX 131k mesh: EP=8 x FSDP=2 x CP=2 = 32 policy GPUs (8 nodes).
+      # Device-mesh ordering ddp<fsdp<cp<ep is built by create_device_mesh
+      # (fsdp_utils.py). MoE dim-0 divisibility (guard 63cd2eb,
+      # (num_experts//ep)%fsdp==0): 128 experts / EP8 = 16/EP-rank;
+      # 16 / FSDP2 = 8 even -> VALID. CP=2 shards the 131k SEQUENCE dim (not the
+      # expert dim), so the MoE constraint is unchanged. VALIDATE on-cluster.
+      fsdp_size: 2
+      expert_model_parallel_size: 8
+      # CP=2: torch-native ring-SDPA context parallel over the 131k sequence.
+      # Requires trainer.attn_backend=sdpa (set above). Ulysses sequence-parallel
+      # (policy.sequence_parallel_size) MUST stay at its schema default of 1 (CP and
+      # Ulysses both shard the seq dim — mutually exclusive); it lives at the policy
+      # top level, NOT in fsdp_config, so it is intentionally NOT set here (the
+      # launcher would otherwise emit a struct-strict override of a nonexistent
+      # fsdp_config key -> omegaconf "not in struct". Matches the 80B long-ctx parent.)
+      # G4 divisibility: padded seq_len % (2*cp)=4 == 0 (131072 % 4 == 0 OK).
+      context_parallel_size: 2
+      cp_style: ring_sdpa
+      cp_rotate_method: allgather
+      # R3 router-replay: recompute the EXACT rollout routing in the train forward
+      # so the MoE grad matches the sampled experts (pi_old == pi_train for the MoE).
+      # Fed by enable_return_routed_experts=true (generator) via native R3 capture.
+      # #232 TP-placement-fix relaunch (2026-06-19): R3-ON production restored
+      # (reverted the #237 R3-OFF A/B). With the per-engine STRICT_PACK placement
+      # fix (SkyRL e5f0ff5), TP=4 is on-node so the prior wedge no longer applies.
+      moe_router_replay: true
+      moe_grouped_gemm: true
+      ep_comm_backend: torch
+  ref:
+    # Ref is INERT here (use_kl_loss=false -> no RefWorker built); path + mesh set
+    # for config-consistency only.
+    model:
+      path: Qwen/Qwen3-30B-A3B
+    fsdp_config:
+      cpu_offload: true
+      reshard_after_forward: true
+      fsdp_size: 2
+      expert_model_parallel_size: 8
+      context_parallel_size: 2
+      cp_style: ring_sdpa
+      cp_rotate_method: allgather
+      # #232 TP-placement-fix relaunch (2026-06-19): R3-ON restored (matches policy).
+      moe_router_replay: true
+      moe_grouped_gemm: true
+      ep_comm_backend: torch
+
+  placement:
+    colocate_all: false
+    # 8 policy nodes = 32 policy GPUs = EP=8 x FSDP=2 x CP=2.
+    # LAUNCH MUST PASS --num_nodes 16 (8 policy + 8 vLLM-engine nodes).
+    policy_num_nodes: 8
+    ref_num_nodes: 8
+    policy_num_gpus_per_node: 4
+    ref_num_gpus_per_node: 4
+    # Reserve the 8 policy nodes (STRICT_SPREAD) BEFORE the vLLM engines' PG is
+    # created, so policy claims its nodes first and the TP=8 engines are forced
+    # onto the disjoint remaining nodes (avoids the two-PACK-PG init-OOM race).
+    policy_strict_spread_pg: true
+    # One {GPU:1,CPU:1} bundle PER policy GPU so each actor pins to a distinct
+    # physical GPU (avoids GPU0-stacking init-OOM in the real EP layout).
+    policy_per_gpu_bundles: true
+    policy_force_cvd_mask: true
+
+  fully_async:
+    max_staleness_steps: 16
+    # 256 generation workers — over-subscribes the 4 TP=8 engines while keeping
+    # the peak resident rollout+R3 working set bounded (same rationale as the 80B
+    # long-ctx config).
+    num_parallel_generation_workers: 256
+
+# =============================================================================
+# Generator configuration (vLLM)
+# =============================================================================
+generator:
+  backend: vllm
+  timeout_multiplier: 1.0
+  model_dtype: bfloat16
+
+  # TP=4 per engine (Option B, #232) — exactly ONE 4-GPU node per engine, so the
+  # decode-step TP all-reduce stays ON-NODE (NVLink), never crossing the IB fabric.
+  # This eliminates the cross-node-TP decode RPC timeout that killed Option A's TP=8
+  # (split 8x{GPU:1} across 2 nodes). TP=4 cleanly divides: 32 attn heads (8/GPU),
+  # 4 KV heads (1/GPU, no replication), 128 experts (32/GPU). Requires DCP=1 (the
+  # dcp <= tp/num_kv_heads = 4/4 = 1 ceiling). 8 engines x TP=4 = 32 GPUs = 8 gen nodes.
+  inference_engine_tensor_parallel_size: 4
+  # 8 TP=4 engines = 32 inference GPUs = 8 inference nodes. Set explicitly (not null)
+  # so the launcher uses exactly 8 (its (num_nodes*gpus)//tp = 16*4//4 = 16 derivation
+  # would be WRONG — 8 of the 16 nodes are policy-only; the hydra override here is the
+  # authoritative value, the launcher's NUM_INFERENCE_ENGINES env export is coarse).
+  num_inference_engines: 8
+
+  # Expert parallelism on the engine: leave at default 1. With TP=4 the 128
+  # experts are sharded 32/GPU, plenty for a 3B-active MoE at this engine count.
+  inference_engine_expert_parallel_size: 1
+
+  # RAY EXECUTOR BACKEND (task #232 unblock; kept under Option B). The ray backend
+  # splits TP=4 into 4x{GPU:1} bundles which now place WITHIN a single 4-GPU node
+  # (Option B: TP=4 = one node) -> the decode TP all-reduce is on-node NVLink, no IB.
+  # The ray backend was chosen because the mp backend requested ONE atomic {GPU:tp}
+  # bundle per engine; it is also the path the proven attempt-6/7/8 init + R3 capture
+  # validated on (no Compiled-DAG deadlock on this NON-hybrid 30B-A3B; async_scheduling
+  # is explicitly disabled below to satisfy the R3 guard the ray executor would
+  # otherwise trip). Requires colocate_all=false (set above).
+  inference_engine_mp_backend: false
+
+  # DCP=1 (Option B, #232): decode-context-parallel DISABLED. Dropping DCP 2->1 is
+  # what lets TP go 8->4 (ceiling dcp <= tp/num_kv_heads; with dcp=1 the constraint
+  # is satisfied at TP=4 = 4/4=1). The cost is the lost DCP=2 KV-cache sharding at
+  # 131k (KV now sits on the TP shard alone, ~3.2 GB per 131k seq per GPU vs ~1.6 GB
+  # under DCP=2), so max_num_seqs is lowered below to keep a TP=4 engine within one
+  # 4xGH200 node (30B bf16 weights 15 GB/GPU at TP4 + 131k KV + activations). With
+  # DCP=1 the R3+DCP>1 guard path is moot (no DCP), so VLLM_ALLOW_ROUTED_EXPERTS_DCP
+  # is harmless-but-unneeded; the DCP GQA-LSE fp32 parity concern also no longer applies.
+  inference_engine_decode_context_parallel_size: 1
+
+  n_samples_per_prompt: 8
+  eval_n_samples_per_prompt: 8
+
+  # 0.80 — LOWER than the 80B's 0.85 because this is a NON-HYBRID dense-attention
+  # model: ALL 48 layers grow KV with length (the 80B had only 12/48 attention
+  # layers), so KV pressure at 131k is far higher. 0.80 leaves more HBM headroom
+  # for the length-scaling KV cache. TUNE DOWN to 0.75 if the first smoke OOMs.
+  # Option B sizing (TP=4, DCP=1, one 4xGH200 node/engine): weights ~15 GB/GPU +
+  # ~3.2 GB/131k-seq/GPU KV. At util 0.80 (~77 GB usable) -> ~58 GB KV budget ->
+  # ~18 full-length 131k seqs/engine worst-case; max_num_seqs=16 stays under that
+  # with activation headroom. (Old TP8+DCP2 fit ~24 because DCP halved KV to 1.6 GB.)
+  gpu_memory_utilization: 0.80
+
+  # 24 -> 16 for Option B: without DCP=2's KV halving, a TP=4 engine holds the full
+  # 131k KV on its TP shard (~3.2 GB/seq/GPU). 16 keeps the worst-case all-131k
+  # working set under the ~18-seq ceiling at gpu_mem 0.80. Verify against the vLLM
+  # "GPU KV cache size / Maximum concurrency" profiling line; if it OOMs at bind,
+  # drop gpu_memory_utilization 0.80->0.75 first, then max_num_seqs 16->12.
+  max_num_seqs: 16
+  # 16384 prefill batch — keeps the per-engine activation peak bounded on the
+  # TP=8 GH200 engines alongside the KV reservation.
+  max_num_batched_tokens: 16384
+
+  enable_prefix_caching: true
+  enable_chunked_prefill: true
+
+  run_engines_locally: true
+  weight_sync_backend: nccl
+  async_engine: true
+  batched: false
+  enable_http_endpoint: true
+  enable_ray_prometheus_stats: false
+  vllm_stats_interval: 1
+  append_eos_token_after_stop_str_in_multi_turn: true
+  max_turns: 999999
+
+  sampling_params:
+    max_generate_length: 16384
+    temperature: 0.7
+    top_p: 0.95
+    top_k: 20
+
+  engine_init_kwargs:
+    # 131072 long-ctx. Qwen3-30B-A3B native context is 40960, so YaRN rope_scaling
+    # IS REQUIRED to reach 131072 (factor 3.2 = 131072/40960). Applied via
+    # hf_overrides so BOTH vLLM and the FSDP policy (AutoConfig) see it.
+    max_model_len: 131072
+    hf_overrides:
+      rope_scaling:
+        rope_type: yarn
+        factor: 3.2
+        original_max_position_embeddings: 40960
+    custom_chat_template_chat_completion_path: ./chat_templates/qwen3_thinking_acc.jinja2
+    # #232 ROOT-CAUSE FIX (2026-06-19, supervisor-approved, log #237): disable vLLM's
+    # custom CUDA all-reduce. On GH200 full-NVLink the per-layer (<8MB) decode TP
+    # all-reduce uses a watchdog-less device-side custom-AR spin-barrier; this
+    # DEADLOCKS when it interleaves with SkyRL's NCCL weight-sync (2nd communicator,
+    # same GPUs) right after the first sync_weights_to_inference_engines at global_step
+    # 0->1 (the recurring #232 silent freeze on the count-607744 logits AllGather).
+    # Disabling it routes the TP all-reduce through the SAME ordered NCCL domain as the
+    # AllGather + weight-sync, eliminating the watchdog-less spin (vLLM #8410 hang class).
+    # vLLM EngineArgs field; passed through engine_init_kwargs alongside the others here.
+    # Config-only, low-risk, flag-off parity. Placement fix (SkyRL e5f0ff5) is separate.
+    disable_custom_all_reduce: true
+    # R3 router-replay capture flag — emits per-token expert routing over
+    # /chat/completions (native on this 0.20.2rc0 SIF), consumed by the FSDP2
+    # replay hook so the train forward replays the EXACT sampled experts.
+    # #232 TP-placement-fix relaunch (2026-06-19): R3-ON production restored
+    # (reverted the #237 R3-OFF A/B). The TP cross-node all-reduce wedge is now
+    # addressed by the per-engine STRICT_PACK placement fix (SkyRL e5f0ff5), so
+    # R3 capture can be re-enabled as the real production run.
+    enable_return_routed_experts: true
+    # MUST be false under the RAY inference-engine backend (inference_engine_mp_backend:
+    # false, option A). vLLM's R3 guard (_validate_return_routed_experts) rejects
+    # --enable-return-routed-experts together with async scheduling. The mp/uniproc
+    # executors auto-disabled async scheduling, so the mp path never tripped this; the
+    # ray executor leaves it ON, so we must explicitly disable it here. AsyncEngineArgs
+    # accepts the `async_scheduling` field on this 0.20.2rc0 SIF (job 908347 smoke).
+    async_scheduling: false
+
+# Data paths
+data:
+  train_data: []
+  val_data: []
+
+# K-actor rollout fan-out — ON (breaks the single-event-loop GIL ceiling).
+rollout:
+  fanout:
+    enabled: true
+    num_coordinators: 4
+    cpus_per_coordinator: 8
+
+# =============================================================================
+# Apptainer runtime container
+# =============================================================================
+# Uses the NEW FSDP2-CP SIF (skyrl_megatron_vllm0202rc0_r3_cp.sif): the canonical
+# torch-2.11 / vLLM-0.20.2rc0 / R3 / DCP-fp32-fix SIF with its baked /opt/SkyRL
+# advanced to marin penfever/working @ 34c348b (FSDP2 torch-native CP ring-SDPA +
+# ExpertParallel). The vLLM DCP GQA-LSE fp32 fix + VLLM_ALLOW_ROUTED_EXPERTS_DCP
+# guard-lift are preserved byte-for-byte (built ON TOP of the canonical SIF; no
+# vLLM recompile). torchtitan 0.2.2 (for ep_comm_backend=torch ExpertParallel) is
+# supplied via PYTHONPATH pydeps (NOT a runtime overlay -> dodges the GPFS-FUSE
+# Ray-bootstrap timeout), exactly as the 80B long-ctx config does.
+container:
+  # #237 Stage 4 (FIX B baked, 2026-06-18): advanced to the rank-symmetric R3 epilogue
+  # SIF, rebaked from skyrl_megatron_vllm0202rc0_r3_cp.sif with the editable vLLM source
+  # swapped 5d7319dd1 -> afe60f19a (feuer/r3-rank-symmetry). The delta is PYTHON-ONLY (6
+  # vllm/*.py, no csrc/.cu -> compiled kernels byte-identical; no recompile). This bakes,
+  # in one image: FIX B (routed_experts_capturer.py rank-symmetric D2H epilogue), FIX A
+  # (the gpu_model_runner pre-forward finalize drop + watchdog revert), and the #232
+  # R3-transport split + MQ-chunk fix (multiproc_executor.py / outputs.py / envs.py) --
+  # ALL the files that were previously single-file bind-mounted from vllm_patch_232/.
+  # Those binds are now REMOVED (the baked source supersedes them; the stale hand-staged
+  # gpu_model_runner.patched.py bind in particular PREDATED FIX B and would have reverted
+  # the FIX B callsite). The CP /opt/SkyRL (marin penfever/working @ 34c348b, FSDP2
+  # torch-native CP ring-SDPA + ExpertParallel) + DCP fp32 fix + VLLM_ALLOW_ROUTED_EXPERTS_DCP
+  # guard-lift are all preserved (rebaked ON TOP of the _cp SIF). torchtitan 0.2.2 still
+  # via PYTHONPATH pydeps. Baked commit verified: .vllm_commit == afe60f19a, FIX B grep == 2.
+  # #237 R3-OFF A/B (2026-06-18): reuse the _cp_fixb2.sif (FIX B + 28faed993 reverted)
+  # that job 923903 ran on. With enable_return_routed_experts=false the R3/FIX B code
+  # in this image is INERT (Noop capturer path), so no rebuild is needed — this is the
+  # same SIF 923903 used, isolating the CP/DCP path from R3 capture.
+  sif: /e/scratch/jureap59/feuer1/containers/skyrl_megatron_vllm0202rc0_r3_cp_fixb2.sif
+  binds:
+    - /e/scratch
+    - /e/data1
+    # #237 Stage 4: ALL prior #232 single-file vLLM binds REMOVED -- FIX A, the R3
+    # transport split (multiproc_executor.py / outputs.py / envs.py), the MQ-chunk fix,
+    # AND FIX B are now BAKED into the _cp_fixb.sif (commit afe60f19a). The runtime env
+    # vars below (VLLM_MQ_MAX_CHUNK_BYTES_MB, VLLM_ROUTED_EXPERTS_SIDE_TIMEOUT_SECONDS,
+    # VLLM_ALLOW_ROUTED_EXPERTS_DCP, ...) still ARM those baked code paths. The
+    # VLLM_ALLOW_ROUTED_EXPERTS_DCP guard-lift is baked (inherited from the canonical
+    # SIF, grep=2 in config/vllm.py); the env var below alone clears the guard.
+  # torchtitan 0.2.2 via PYTHONPATH pydeps (pure-python, 0 .so -> bake-equivalent,
+  # no rebuild, no FUSE). Two-dir colon-separated path: titan022 holds torchtitan
+  # 0.2.2 (+ tyro), shared sif_pydeps supplies daytona/hydra/harbor/etc.
+  pydeps: /e/scratch/jureap59/feuer1/sif_pydeps_longctx_titan022:/e/scratch/jureap59/feuer1/sif_pydeps
+  extra_env:
+    SKYRL_GDN_MASK_FLA: 1
+    PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    APPTAINERENV_PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    # SIF gotcha: no flashinfer -> use the PyTorch/Triton sampler.
+    VLLM_USE_FLASHINFER_SAMPLER: 0
+    APPTAINERENV_VLLM_USE_FLASHINFER_SAMPLER: 0
+    # tp>1 Triton linking on GH200/aarch64 needs the --nv driver-stub dir.
+    LIBRARY_PATH: /.singularity.d/libs
+    APPTAINERENV_LIBRARY_PATH: /.singularity.d/libs
+    # R3 + DCP>1 guard-lift (baked into the SIF; env var arms it). Mirror to
+    # APPTAINERENV_ so the forked vLLM mp workers inside the SIF see it.
+    # #232 TP-placement-fix relaunch (2026-06-19): R3-ON production restored
+    # (reverted the #237 R3-OFF A/B). At DCP=1 this guard is inert, but restored to
+    # match the original R3-ON production config exactly.
+    VLLM_ALLOW_ROUTED_EXPERTS_DCP: 1
+    APPTAINERENV_VLLM_ALLOW_ROUTED_EXPERTS_DCP: 1
+    # Per-step model-execute RPC timeout (multiproc_executor.py:314; default 300s).
+    # Under Option A (TP=8 split 8x{GPU:1} ACROSS 2 NODES) each decode-step TP all-
+    # reduce crossed the IB fabric and a single 131k step exceeded even 900s, killing
+    # all EngineCores (jobs 908469 + 911361). Option B (TP=4 = one 4-GPU node/engine)
+    # keeps the decode all-reduce on-node NVLink, so this deadline is NO LONGER load-
+    # bearing — kept at 900s as harmless belt-and-suspenders headroom for the long
+    # first-prefill. Mirror to APPTAINERENV_ so the forked vLLM workers inherit it.
+    VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: 900
+    APPTAINERENV_VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: 900
+    # #232 FIX (B): widen the shm message-queue chunk to 160MB (>= the 96MB R3
+    # routed_experts worst case at 131k). This sizes rpc_broadcast_mq directly
+    # (multiproc_executor.py:137) AND is the base the bound patch reads for
+    # worker_response_mq (max'd with a 160MB floor). 160MB x 10 chunks = 1.6GB
+    # of /dev/shm per engine — trivial against the 239G tmpfs. Mirror to
+    # APPTAINERENV_ so the forked vLLM workers inside the SIF see it.
+    VLLM_MQ_MAX_CHUNK_BYTES_MB: 160
+    APPTAINERENV_VLLM_MQ_MAX_CHUNK_BYTES_MB: 160
+    # #232 FIX (R3 TRANSPORT): timeout (s) the driver allows to dequeue the
+    # deferred ~96MB R3 routed_experts side-message AFTER the small per-step
+    # ModelRunnerOutput. This read is NOT governed by the execute_model deadline,
+    # so a slow/contended big transfer can no longer trip the EngineCore-killing
+    # execute_model RPC timeout. Generous by design; mirror to APPTAINERENV_ so the
+    # forked vLLM mp workers inside the SIF see it.
+    VLLM_ROUTED_EXPERTS_SIDE_TIMEOUT_SECONDS: 1200
+    APPTAINERENV_VLLM_ROUTED_EXPERTS_SIDE_TIMEOUT_SECONDS: 1200
+    # =========================================================================
+    # #232 OBSERVABILITY (2026-06-18): make NCCL's flight recorder FIRE + DUMP
+    # before vLLM's 900s execute_model watchdog preempts it.
+    # -------------------------------------------------------------------------
+    # Root cause this fixes: the residual TP-rank-desync wedge (rare mixed
+    # prefill+decode step -> execute_model hangs on a TP=4 decode collective)
+    # was killed at vLLM's VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=900 (kept above)
+    # BEFORE NCCL's own watchdog (TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=1800, the
+    # sbatch-template + hpc.env_vars default) ever reached its dump path -> no FR
+    # dump was ever written. We drop the NCCL heartbeat timeout to 600s so NCCL
+    # trips FIRST (600 < 900). 600s is FAR above the observed clean per-step
+    # collective time (clean groups complete in seconds; 917349 tqdm step-group
+    # cadence ~tens of seconds) so 600 cannot false-fire on a healthy step.
+    #
+    # Var-name verification (torch 2.11.0+cu130 in skyrl_..._cp.sif, libtorch_cuda
+    # symbol grep 2026-06-18): the build reads TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC,
+    # TORCH_NCCL_DUMP_ON_TIMEOUT, TORCH_NCCL_ENABLE_MONITORING,
+    # TORCH_NCCL_TRACE_BUFFER_SIZE (deprecated alias auto-mapped to
+    # TORCH_FR_BUFFER_SIZE; we set the new name), TORCH_NCCL_TRACE_CPP_STACK,
+    # TORCH_NCCL_DEBUG_INFO_PIPE_FILE. The dump TARGET is DebugInfoWriter
+    # getWriterTarget() (default /tmp/nccl_trace_rank_<rank>), overridden by
+    # TORCH_NCCL_DEBUG_INFO_TEMP_FILE (canonical PyTorch 2.x cvar; torch APPENDS
+    # the global rank to this base -> per-rank files land under a findable dir).
+    #
+    # These render via the template's LATE {rl_container_env_late} block (added
+    # 2026-06-18), AFTER the hardcoded `export TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=1800`
+    # and the hpc.env_vars re-export, so THIS 600 wins by shell last-write. Scoped
+    # to #232 only (lives in this config's extra_env; no global edit). Mirror to
+    # APPTAINERENV_ so the forked vLLM mp workers inside the SIF inherit them.
+    TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC: 600
+    APPTAINERENV_TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC: 600
+    # Arm the heartbeat monitor (so a stuck watchdog actually triggers the dump +
+    # process exit instead of spinning) and dump-on-collective-timeout.
+    TORCH_NCCL_ENABLE_MONITORING: 1
+    APPTAINERENV_TORCH_NCCL_ENABLE_MONITORING: 1
+    TORCH_NCCL_DUMP_ON_TIMEOUT: 1
+    APPTAINERENV_TORCH_NCCL_DUMP_ON_TIMEOUT: 1
+    # FR ring buffer (new name; the sbatch sets the deprecated TORCH_NCCL_TRACE_
+    # BUFFER_SIZE=2000 which torch auto-maps -> set TORCH_FR_BUFFER_SIZE explicitly
+    # so the dump has the last 2000 collectives per rank to name the stuck op).
+    TORCH_FR_BUFFER_SIZE: 2000
+    APPTAINERENV_TORCH_FR_BUFFER_SIZE: 2000
+    # Record C++ stack frames in the FR trace (richer "which collective" frames).
+    TORCH_NCCL_TRACE_CPP_STACK: 1
+    APPTAINERENV_TORCH_NCCL_TRACE_CPP_STACK: 1
+    # Per-rank FR dump target base. torch appends the global rank id, so per-rank
+    # dumps land at /e/data1/.../fr_dumps_232/nccl_fr_rank<RANK>. Stable absolute
+    # path (writable, outside the inode-pressured /e/scratch) shared across the
+    # whole restart chain so the FIRST clean catch's dump is preserved. The launch
+    # pre-creates the dir. Mirror to APPTAINERENV_ so SIF workers write there too.
+    TORCH_NCCL_DEBUG_INFO_TEMP_FILE: /e/data1/datasets/playground/ot-baf/fr_dumps_232/nccl_fr_rank
+    APPTAINERENV_TORCH_NCCL_DEBUG_INFO_TEMP_FILE: /e/data1/datasets/playground/ot-baf/fr_dumps_232/nccl_fr_rank
+    # #232 INSTRUMENT REMOVED (2026-06-18): the faulthandler watchdog (gpu_worker.
+    # patched.py bind) + the WEDGE232 env block were reverted (revert of a1255e79)
+    # because the INSTRUMENTED run 921410 uniquely hung ~2h at init_weight_sync_state
+    # (training-init / weight-sync) BEFORE ever generating, whereas every prior NON-
+    # instrumented #232 reached generation first -> the faulthandler dump_traceback_
+    # later armed in every vLLM worker at init_device is the prime init-stall suspect.
+    # The gpu_worker bind is gone. The step-log block still lives (DORMANT) inside the
+    # candidate-1 gpu_model_runner.patched.py (KEPT byte-for-byte — candidate-1 = the
+    # rank-0 finalize_pending_copy removal, fork 1b5a72e9a, STAYS); its gate
+    # VLLM_WEDGE232_STEPLOG defaults "1" in that file, so we explicitly force it OFF
+    # here (=0) to fully disable the step-log at runtime WITHOUT touching the
+    # candidate-1 file. Mirror to APPTAINERENV_ so the forked vLLM mp workers see it.
+    VLLM_WEDGE232_STEPLOG: 0
+    APPTAINERENV_VLLM_WEDGE232_STEPLOG: 0

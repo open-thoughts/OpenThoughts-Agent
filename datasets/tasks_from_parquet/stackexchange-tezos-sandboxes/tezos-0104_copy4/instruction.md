@@ -1,2 +1,0 @@
-
-I want to compare the Proof of Stake in Tezos to Proof of Work in Bitcoin. My assumption is that it is far more cheap in complexity to do that in Tezos as the calculation is not involved to the Proof. But there is still some calculation / comparison made. What is the difference in magnitude? What is the scale of complexity difference and thus the difference of processor time needed? 1 vs N or 1 vs N^2 or something else? I select the N as variable of loops or iterations and of course N^2 or even 2^N denote kind of exponential difference.

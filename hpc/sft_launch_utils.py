@@ -226,7 +226,18 @@ def prebuild_arrow_cache(base_config: dict, train_config_path: str = "") -> None
               "Training may work but tokenization will race on compute nodes.")
 
 
-def apply_data_argument_overrides(base_config: dict, exp_args: dict) -> None:
+def apply_data_argument_overrides(base_config: dict, exp_args: dict, registry_mode: bool = False) -> None:
+    # In registry mode (--dataset_dir with a dataset_info.json), each dataset's
+    # column/tag schema is resolved per-dataset from the registry. Injecting the
+    # global CLI schema defaults here (e.g. messages="conversations") OVERRIDES
+    # that per-dataset resolution and breaks heterogeneous mixes — LLaMA-Factory
+    # then looks up the wrong column and raises KeyError in dataset preprocessing
+    # (bit the Delphi #6279 grid: wildchat_386k's column is `conversation`, but the
+    # default messages="conversations" clobbered it -> KeyError 'conversations').
+    # The registry already carries these tags, so skip all overrides here.
+    if registry_mode:
+        return
+
     tool_call_tag = exp_args.get("tool_call_tag")
     if tool_call_tag:
         base_config["tools"] = tool_call_tag

@@ -1,2 +1,0 @@
-
-How do I check inside a contract entrypoint, that the user sent a particular amount with the transaction? In Frontend: const operation = await contractInstance.methods.methodName().send({amount:12}); How do I check inside contract (CameLIGO syntax)that parameter amount is greater than a particular value inside my LIGO contract(CameLIGO syntax)? I only want user to able to complete contract call if he sends above a particular amount with transaction else transaction fails.

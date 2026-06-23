@@ -1,2 +1,0 @@
-
-Nonces are to be revealed/injected in the cycle after which they are tied to their block. If you bake a block in cycle 4, and the level % 32 is 0, then you are required to reveal the nonce seed in cycle 5. The question is, within cycle 5, can you reveal at any of the 4096 blocks or must you reveal within the first 4? First 10? In using block explorers, I see most reveals happen before level-in-cycle 4. I tried revealing a nonce about 1/2 way through the cycle and received proto.006-PsCARTHA.nonce.unexpected error.

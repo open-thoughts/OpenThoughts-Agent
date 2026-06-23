@@ -1,2 +1,0 @@
-
-The Tezos documentation all show the storage expression being defined inline when compiling storage. For example, using cameligo: ligo compile storage src/counter.mligo 5 --entry-point main If I try to put the expression '5' in a file, like initStorage.mligo, then using the file name instead, this does not seem to work. Is it possible to define the initial storage in a file then compile storage with that file?

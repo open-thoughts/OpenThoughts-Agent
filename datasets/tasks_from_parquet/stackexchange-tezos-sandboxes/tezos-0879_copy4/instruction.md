@@ -1,2 +1,0 @@
-
-I am translating following code in solidity to smartpy. How do we achieve a variable type of struct in smartPy. Types.AssetTransferDetail[] memory _assetDetails = new Types.AssetTransferDetail[]( _coinNames.length ); for (uint256 i = 0; i These structs are defined in Types.sol library. struct Asset { string coinName; uint256 value; } struct AssetTransferDetail { string coinName; uint256 value; uint256 fee; }

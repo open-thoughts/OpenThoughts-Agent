@@ -1,0 +1,360 @@
+# =============================================================================
+# Qwen3-Coder-30B-A3B-Instruct — CP=2 ring-SDPA CODE-VALIDATION SMOKE (FAST)
+# =============================================================================
+# PURPOSE: a MINUTES-not-hours variant of the proven CP2 rung
+#   (extra/6node_qwen3_30b_a3b_32k_cp2.yaml) whose ONLY job is to drive the
+#   policy/ref FORWARD + BACKWARD through the CP=2 ring-SDPA mesh fast enough to
+#   reach global_step >= 2, so we can definitively verify the two deployed SkyRL
+#   fixes survive a real CP=2 forward AND backward (incl. grad-checkpoint recompute):
+#     * b02d758 — arch-gate CP mask dict (MoE -> attention_mask=None)
+#     * 6a1379f — build cp_position_ids BEFORE the CP context + register in
+#                 _cp_buffers for grad-checkpoint recompute safety
+#   These fixes only get EXERCISED at the gs1 forward+backward — and the
+#   production agentic cp2 run (927538/...) keeps crashing in the ~90-min Daytona
+#   rollout BEFORE ever reaching gs1 (e.g. WorkerCrashedError from a RolloutCoord
+#   ConnectionReset/BadFD cascade — INFRA, not the CP code). This SMOKE decouples
+#   the CP forward/backward validation from that flaky rollout.
+#
+# THIS IS A CODE-VALIDATION SMOKE — NOT a replacement for the production agentic
+# cp2 run, and NOT a controlled-ablation arm. Results are NOT for DB/HF.
+#
+# WHAT IS KEPT UNCHANGED vs the proven CP2 rung (these EXERCISE the fixes):
+#   * Model Qwen3-Coder-30B-A3B-Instruct, 32k / no-YaRN.
+#   * The ENTIRE policy + ref path: EP=4 × FSDP=2 × CP=2 = 16 policy GPUs,
+#     cp_style=ring_sdpa, cp_rotate_method=allgather, attn_backend=sdpa,
+#     flash_attn=false, use_sample_packing=false  (the CP=2 mesh under test).
+#   * gradient_checkpointing=true + use_reentrant=false  (the recompute path that
+#     fix 6a1379f's _cp_buffers registration protects).
+#   * The CP-capable SIF _cp_fixb3.sif + titan022 pydeps + all extra_env.
+#   * vLLM 4×TP=2 engines, mp backend (so the forward/backward mesh is identical).
+#   * 6 nodes / 24 GPU placement (colocate_all=false, strict-spread policy PG).
+#
+# WHAT IS MADE FAST (rollout only — data CONTENT is irrelevant to the sharding/
+# recompute code under test; we only need a tiny batch to fill quickly):
+#   * train_batch_size 64 -> 16, policy_mini_batch_size 64 -> 16, eval_batch_size 16.
+#     Three coupled constraints pin this (NOT 4/4, NOT 16/8, NOT 8/8):
+#       - 4*2//16 floors to 0 (job 929921);
+#       - fully-async asserts train==mini, so 16/8 fails (job 932121);
+#       - train_batch_size >= lcm(DP sizes)=policy_dp_size=16, so 8/8 fails
+#         (job 932194). UNIQUE smallest value clearing all three = 16/16.
+#   * n_samples_per_prompt 8 -> 2  => 16 prompts × 2 = 32 episodes/step (vs 512).
+#   * sampling_params.max_generate_length 4096 -> 512 (short episodes).
+#   * generator.max_turns 999999 -> 6 (cap agent turns so episodes end fast).
+#   * harbor.override_timeout_sec 1800 -> 300, n_concurrent_trials 300 -> 16
+#     (8 episodes fit in one concurrency wave).
+#   * trace_upload.enabled true -> false (don't waste time exporting traces).
+#   * max_steps 80 -> 3, ckpt_interval 1 -> 999 (no checkpoint saves needed).
+#   * hf_save_interval 5 -> 999, hf_hub_repo_id null (no HF), db_reg false.
+#
+# CP G4 divisibility STILL holds: padded seq_len % (2*cp)=4 == 0 regardless of
+# batch size; the shrink touches batch/episode counts, NOT the sequence sharding.
+#
+# Launch (same path; tiny job, fast):
+#   python -m hpc.launch --job_type rl \
+#     --rl_config ./hpc/skyrl_yaml/jupiter/extra/6node_qwen3_30b_a3b_32k_cp2_SMOKE.yaml \
+#     --model_path Qwen/Qwen3-Coder-30B-A3B-Instruct \
+#     --num_nodes 6 --train_data '["DCAgent/exp_rpt_pymethods2test-large"]' \
+#     --time_limit 02:00:00 --reservation reformo \
+#     --experiments_dir /e/data1/datasets/playground/ot-baf \
+#     --job_name rl_30b_a3b_32k_cp2_SMOKE
+# =============================================================================
+
+entrypoint: examples.terminal_bench.entrypoints.main_tbench
+
+# Hydra config groups (+ prefix in CLI)
+config_groups:
+  terminal_bench_config: terminal_bench
+
+# Terminal bench / agentic environment settings
+terminal_bench:
+  trials_dir: null
+
+  harbor:
+    name: terminus-2
+    max_episodes: 999999
+    enable_summarize: false
+    store_all_messages: true
+    trajectory_config:
+      raw_content: true
+    enable_episode_logging: false
+    record_terminal_session: false
+    enable_pane_logging: false
+
+    strict_json_parser: true
+
+    interleaved_thinking: true
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+    # SMOKE: shorter sandbox timeout — tiny episodes finish fast.
+    override_timeout_sec: 300
+
+    override_cpus: 1
+    override_memory_mb: 2048
+    override_storage_mb: 2048
+
+    auto_snapshot: true
+
+    verifier_override_timeout_sec: 120
+
+    max_retries: 3
+    min_wait_sec: 60.0
+    max_wait_sec: 600.0
+    wait_multiplier: 2.0
+
+    exclude_exceptions:
+      - VerifierTimeoutError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - VerifierOutputParseError
+      - VerifierRuntimeError
+
+    # SMOKE: only 8 episodes/step (4 prompts × 2 samples) — 16 concurrency covers
+    # the whole step in one wave.
+    n_concurrent_trials: 16
+
+    log_level: INFO
+
+    enable_reward_shaping: false
+
+    # collect_rollout_details=true → per-token rollout logprobs from vLLM, REQUIRED
+    # for use_tis below (trainer asserts non-null rollout_logprobs when use_tis).
+    collect_rollout_details: true
+
+    enable_error_classification: true
+    mask_exceptions:
+      - DaytonaError
+      - EnvironmentStartTimeoutError
+      - NetworkError
+      - ConnectionError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - AgentEnvironmentTimeoutError
+    default_error_treatment: zero
+    passthrough_exceptions:
+      - AgentTimeoutError
+      - ContextLengthExceededError
+
+  model_info:
+    max_input_tokens: 32767
+    max_output_tokens: 4096
+
+  archiving:
+    enabled: false
+
+  # SMOKE: no trace export (saves time; this run's data is not used).
+  trace_upload:
+    enabled: false
+    repo_org: DCAgent
+    episodes: last
+    dataset_type: SFT
+    cleanup: true
+
+# =============================================================================
+# Trainer configuration  (policy/ref CP path UNCHANGED from the proven CP2 rung)
+# =============================================================================
+trainer:
+  strategy: fsdp2
+  attn_backend: sdpa
+  flash_attn: false
+  gradient_checkpointing: true
+  gradient_checkpointing_use_reentrant: false
+  algorithm:
+    advantage_estimator: rloo_n
+    use_kl_loss: false
+    kl_loss_coef: 0.0
+    eps_clip_low: 0.2
+    eps_clip_high: 0.05
+    loss_reduction: seq_mean_token_sum_norm_global
+    use_tis: true
+    tis_imp_ratio_cap: 2.0
+
+  epochs: 2
+  # SMOKE: 3 steps is enough to validate >= 2 full forward+backward passes.
+  max_steps: 3
+  update_epochs_per_batch: 1
+
+  # SMOKE: small batch so the generation buffer fills fast. The policy DP mesh
+  # here is 16 (policy_world_size=16 / sequence_parallel_size=1). THREE coupled
+  # constraints pin the batch sizes (all in validate_batch_sizes / fully_async):
+  #   (1) fully-async asserts train_batch_size == policy_mini_batch_size
+  #       (fully_async_trainer.py:313) — killed job 932121 (16/8).
+  #   (2) train_batch_size >= lcm of enabled DP sizes = policy_dp_size = 16
+  #       (utils.py:388) — killed job 932194 (8/8: 8 < 16).
+  #   (3) policy_mini_batch_size_per_gpu = mini * n_samples(2) // dp(16) > 0
+  #       and train % mini == 0.
+  # The UNIQUE smallest value satisfying all three is 16: train==mini==16,
+  # 16>=16, 16%16==0, mini_per_gpu = 16*2//16 = 2 (>0, %micro_train(1)==0).
+  # 16 prompts x 2 = 32 episodes/step; still a minutes-scale smoke.
+  train_batch_size: 16
+  policy_mini_batch_size: 16
+  eval_batch_size: 16
+
+  # micro sizes UNCHANGED (these drive the per-GPU CP forward/backward shapes).
+  micro_forward_batch_size_per_gpu: 4
+  micro_train_batch_size_per_gpu: 1
+
+  max_prompt_length: 999999
+
+  use_sample_packing: false
+
+  eval_interval: 999999
+  eval_before_train: false
+  # SMOKE: no checkpoint saves needed — we only need to OBSERVE reaching gs>=2.
+  ckpt_interval: 999
+  resume_mode: latest
+  hf_save_interval: 999
+  hf_hub_repo_id: null
+  hf_hub_private: false
+  hf_hub_revision: main
+
+  enable_db_registration: false
+
+  project_name: OpenThoughts-Agent
+  log_level: INFO
+  tracker_commit_each_step: true
+  logger: console
+
+  run_name: null
+  ckpt_path: null
+  export_path: null
+
+  policy:
+    optimizer_config:
+      lr: 8e-6
+      weight_decay: 0.0
+      adam_betas: [0.9, 0.999]
+      max_grad_norm: 0.9
+    fsdp_config:
+      cpu_offload: true
+      reshard_after_forward: true
+      fsdp_size: 2
+      expert_model_parallel_size: 4
+      context_parallel_size: 2
+      cp_style: ring_sdpa
+      cp_rotate_method: allgather
+      moe_router_replay: false
+      moe_grouped_gemm: true
+      ep_comm_backend: torch
+  ref:
+    model:
+      path: Qwen/Qwen3-Coder-30B-A3B-Instruct
+    fsdp_config:
+      cpu_offload: true
+      reshard_after_forward: true
+      fsdp_size: 2
+      expert_model_parallel_size: 4
+      context_parallel_size: 2
+      cp_style: ring_sdpa
+      cp_rotate_method: allgather
+      moe_router_replay: false
+      moe_grouped_gemm: true
+      ep_comm_backend: torch
+
+  placement:
+    colocate_all: false
+    policy_num_nodes: 4
+    ref_num_nodes: 4
+    policy_num_gpus_per_node: 4
+    ref_num_gpus_per_node: 4
+    policy_strict_spread_pg: true
+    policy_per_gpu_bundles: true
+    policy_force_cvd_mask: true
+
+  fully_async:
+    max_staleness_steps: 16
+    num_parallel_generation_workers: 256
+
+# =============================================================================
+# Generator configuration (vLLM)  — engines UNCHANGED; only sampling shrunk.
+# =============================================================================
+generator:
+  backend: vllm
+  timeout_multiplier: 1.0
+  model_dtype: bfloat16
+
+  inference_engine_tensor_parallel_size: 2
+  num_inference_engines: 4
+
+  inference_engine_expert_parallel_size: 1
+
+  inference_engine_mp_backend: true
+
+  # SMOKE: 2 samples/prompt × 4 prompts = 8 episodes/step.
+  n_samples_per_prompt: 2
+  eval_n_samples_per_prompt: 2
+
+  gpu_memory_utilization: 0.85
+
+  max_num_seqs: 24
+  max_num_batched_tokens: 16384
+
+  enable_prefix_caching: true
+  enable_chunked_prefill: true
+
+  run_engines_locally: true
+  weight_sync_backend: nccl
+  async_engine: true
+  batched: false
+  enable_http_endpoint: true
+  enable_ray_prometheus_stats: false
+  vllm_stats_interval: 1
+  append_eos_token_after_stop_str_in_multi_turn: true
+  # SMOKE: cap agent turns so episodes terminate quickly.
+  max_turns: 6
+
+  sampling_params:
+    # SMOKE: short generations — fills the gen buffer in minutes.
+    max_generate_length: 512
+    temperature: 0.7
+    top_p: 0.95
+    top_k: 20
+
+  engine_init_kwargs:
+    max_model_len: 32768
+    custom_chat_template_chat_completion_path: ./chat_templates/qwen3_thinking_acc.jinja2
+    enable_return_routed_experts: false
+
+# Data paths
+data:
+  train_data: []
+  val_data: []
+
+# K-actor rollout fan-out — ON (same as the proven CP2 rung).
+rollout:
+  fanout:
+    enabled: true
+    num_coordinators: 4
+    cpus_per_coordinator: 8
+
+# =============================================================================
+# Apptainer runtime container  (IDENTICAL to the proven CP2 rung — fixb3 SIF)
+# =============================================================================
+container:
+  sif: /e/scratch/jureap59/feuer1/containers/skyrl_megatron_vllm0202rc0_r3_cp_fixb3.sif
+  binds:
+    - /e/scratch
+    - /e/data1
+  pydeps: /e/scratch/jureap59/feuer1/sif_pydeps_longctx_titan022:/e/scratch/jureap59/feuer1/sif_pydeps
+  extra_env:
+    SKYRL_GDN_MASK_FLA: 1
+    PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    APPTAINERENV_PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    VLLM_USE_FLASHINFER_SAMPLER: 0
+    VLLM_ATTENTION_BACKEND: FLASH_ATTN
+    TRITON_LIBCUDA_PATH: /.singularity.d/libs
+    APPTAINERENV_VLLM_USE_FLASHINFER_SAMPLER: 0
+    APPTAINERENV_VLLM_ATTENTION_BACKEND: FLASH_ATTN
+    APPTAINERENV_TRITON_LIBCUDA_PATH: /.singularity.d/libs
+    NCCL_COLLNET_ENABLE: 0
+    NCCL_NVLS_ENABLE: 0
+    NCCL_P2P_DISABLE: 1
+    NCCL_DEBUG: INFO
+    APPTAINERENV_NCCL_COLLNET_ENABLE: 0
+    APPTAINERENV_NCCL_NVLS_ENABLE: 0
+    APPTAINERENV_NCCL_P2P_DISABLE: 1
+    APPTAINERENV_NCCL_DEBUG: INFO
+    HF_HUB_OFFLINE: 1
+    TRANSFORMERS_OFFLINE: 1
+    APPTAINERENV_HF_HUB_OFFLINE: 1
+    APPTAINERENV_TRANSFORMERS_OFFLINE: 1

@@ -1,0 +1,85 @@
+# Eval harbor config — EXACT eval-team defaults. CANONICAL, cross-cluster.
+#
+# This is THE base agentic-eval config for every Daytona cluster (Iris AND Jupiter;
+# the per-cluster `eval/jupiter/dcagent_eval_config*.yaml` clones were removed in favor
+# of this single source of truth). Faithful port of the canonical eval-team config
+#   eval/configs/dcagent_eval_config.yaml
+# (run with EVAL_N_ATTEMPTS=3, EVAL_AGENT_NAME=terminus-2). It reproduces the scoring the
+# eval team gets on SLURM. The Jupiter listener (eval/jupiter/unified_eval_listener.py)
+# selects THIS file for <=14B models and dcagent_eval_defaults_32b.yaml (identical body,
+# timeout_multiplier 16.0) for 32B-class models.
+#
+# Behavioral defaults:
+#   * timeout_multiplier: 2.0   <- the eval team's REAL agentic-eval setting (NOT
+#     8.0, NOT 1.0). Confirmed from the reference run DCAgent3/g1_diverse_tezos_top4
+#     _10000_8b on terminal_bench_2 (sandbox_jobs.config.timeout_multiplier=2.0) +
+#     the `terminal_bench_2_2.0x` benchmark family. The sbatch *default* is 1.0, but
+#     the listener sets EVAL_TIMEOUT_MULTIPLIER=2.0 for the agentic benchmarks — at
+#     1.0 terminal-bench tasks (median declared agent.timeout_sec 900s) starve and
+#     score ~0. Effective per-task timeout = task `agent.timeout_sec` × 2.0, hard-
+#     capped by agents[0].max_timeout_sec (7200); verifier capped at 14400. swebench
+#     is NOT timeout-bound, so 2.0 is a harmless superset there.
+#   * n_attempts: 3, terminus-2, daytona, retry policy, summarization threshold,
+#     model_info — all identical to eval/configs/dcagent_eval_config.yaml.
+#
+# THE ONE Iris adaptation (everything else is byte-faithful):
+#   * environment.force_build: true   (canonical uses force_build: false + a
+#     prebuilt snapshot injected via EVAL_SNAPSHOT_NAME on the SLURM path). Iris
+#     has no snapshot prebuild and deliberately bypasses snapshot_manager
+#     (eval is the snapshot-cap exception), so harbor must build each task's
+#     sandbox at runtime in the MAIN Daytona org. auto_snapshot is left unset
+#     (canonical default) so runtime builds do NOT create snapshots / hit the cap.
+#
+# model_name is injected at runtime by build_harbor_command (the placeholder is
+# overwritten); --jobs-dir / --dataset(_path) / --n_concurrent come from the
+# Iris launcher. The eval team runs --n-concurrent 128 --n-attempts 3 — match
+# those on the launcher CLI for full parity.
+n_attempts: 3
+timeout_multiplier: 2.0
+orchestrator:
+  type: local
+  n_concurrent_trials: 16
+  quiet: false
+  plain_output: true
+  retry:
+    max_retries: 10
+    exclude_exceptions:
+      - AgentTimeoutError
+      - AgentEnvironmentTimeoutError
+      - BadRequestError
+      - VerifierTimeoutError
+      - SummarizationTimeout
+      - SummarizationTimeoutError
+      - ContextLengthExceededError
+    wait_multiplier: 1.0
+    min_wait_sec: 1.0
+    max_wait_sec: 60.0
+environment:
+  type: daytona
+  force_build: true
+verifier:
+  max_timeout_sec: 14400
+agents:
+  - name: terminus-2
+    model_name: placeholder/override-at-runtime
+    max_timeout_sec: 7200
+    trajectory_config:
+      raw_content: true
+      linear_history: true
+    kwargs:
+      record_terminal_session: false
+      enable_episode_logging: false
+      enable_pane_logging: false
+      collect_rollout_details: false
+      collect_engine_metrics: false
+      proactive_summarization_threshold: 2048
+      metrics_endpoint: https://replace-with-vllm-host/metrics
+      metrics_timeout_sec: 10
+      model_info:
+        max_input_tokens: 32768
+        max_output_tokens: 16384
+        input_cost_per_token: 0
+        output_cost_per_token: 0
+datasets:
+  - path: /replace/with/tasks/path
+tasks: []

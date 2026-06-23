@@ -1,2 +1,0 @@
-
-When starting the node directly from the docker image, I get this error: | Current public chain: 2018-06-30T16:07:32Z-betanet. | Local chain data: 2018-06-30T16:07:32Z-betanet. | Updating the node configuration... | tezos-node: Error: | Ezjsonm.Parse_error(870828711, "JSON.of_buffer expected JSON | text (JSON value)") Container SHA is d272059bf474018d0c39f5a6e60634a95f0c44aa No idea how to debug this.. This is a direct deployment from the image

@@ -17,11 +17,12 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import stat
 import subprocess
 import sys
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Mapping, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from hpc.hf_utils import is_hf_dataset_path
 from hpc.launch_utils import get_daytona_api_key_override
@@ -173,6 +174,22 @@ def build_apptainer_prefix(
     # later. Defaults to offline but honors an explicit host override.
     wandb_mode = os.environ.get("WANDB_MODE", "offline")
     prefix.extend(["--env", f"WANDB_MODE={wandb_mode}"])
+    # Raise Ray's raylet-startup grace window. On busy 6-node GH200 allocations
+    # the raylet (head AND worker) intermittently fails to finish registering
+    # with the local GCS inside Ray's default 30s (`RAY_raylet_start_wait_time_s`),
+    # so `ray start` aborts with "The current node timed out during startup ...
+    # the GCS has become overloaded" → the driver then loops on
+    # "Failed to connect to GCS ... within 5 seconds" until the 600s wait window
+    # expires (job 930367, #232 cp2). This is slow-to-form, NOT unreachable — the
+    # driver runs ON the head node and still can't reach its own 6379. Ray's own
+    # error message recommends raising this config. apptainer passes it via --env
+    # so it reaches the in-SIF `ray start`; host `env KEY=val` prefixes do NOT
+    # cross the container boundary (and the proxychains path drops ray_env_vars
+    # entirely), making this --env injection the only point that reaches every
+    # ray invocation (head, worker, wait/poll scripts) uniformly. Honors an
+    # explicit host override.
+    raylet_wait = os.environ.get("RAY_raylet_start_wait_time_s", "120")
+    prefix.extend(["--env", f"RAY_raylet_start_wait_time_s={raylet_wait}"])
     prefix.append(sif)
     return prefix
 
@@ -426,12 +443,47 @@ def _fix_task_permissions(task_dir: Path, verbose: bool = True) -> None:
     Runs chmod -R a+rX on the directory to make all files readable
     and directories traversable.
 
+    IDEMPOTENCY GUARD (added 2026-06-19): the recursive ``chmod -R a+rX`` over a
+    large task tree (e.g. the 5000-task ``exp_rpt_pymethods2test-large``, ~100K
+    inodes) issues ~100K GPFS metadata WRITES on EVERY launch, even when the tree
+    is already world-readable from a prior successful launch. Under GPFS metadata
+    contention that recursive chmod has wedged the launcher in uninterruptible
+    D-state for 35+ min before ``sbatch`` is ever reached. So we first do a SINGLE
+    cheap ``stat`` of the top-level dir (fast even under contention, ~0.004s) and
+    SHORT-CIRCUIT when its perms already satisfy ``a+rX`` for a directory
+    (group+other readable AND group+other traversable). We only skip when perms are
+    VERIFIED already-correct; any dir that genuinely needs the fix (top-level bits
+    missing, or not yet stat-able) still gets the full recursive chmod. This is a
+    conservative top-level check: if the recursive walk were ever interrupted it
+    could leave inner files unfixed, but in practice the tree is written atomically
+    by extraction and re-chmod'd as a unit, so a correct top-level dir implies a
+    correct tree (and the prior-launch path proves it). NEVER use find/du here.
+
     Args:
         task_dir: Path to task directory.
         verbose: Whether to print status messages.
     """
     if not task_dir.exists():
         return
+
+    # Cheap idempotency probe: a single stat on the top-level dir. The bits
+    # `chmod a+rX` sets on a DIRECTORY are S_IRGRP|S_IXGRP|S_IROTH|S_IXOTH (the
+    # owner already has them post-extraction). If all four are present, the
+    # recursive chmod would be a ~100K-write no-op -> skip it.
+    _RX_BITS = stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH
+    try:
+        mode = task_dir.stat().st_mode
+        if (mode & _RX_BITS) == _RX_BITS:
+            if verbose:
+                print(f"[rl_launch_utils] Permissions already a+rX on top-level "
+                      f"dir, skipping recursive chmod: {task_dir}")
+            return
+    except OSError as e:
+        # stat failed (race / transient FS) -> fall through to the chmod, which
+        # is the safe, correctness-preserving default.
+        if verbose:
+            print(f"[rl_launch_utils] stat probe failed on {task_dir} ({e}); "
+                  f"running recursive chmod to be safe.")
 
     if verbose:
         print(f"[rl_launch_utils] Fixing permissions on: {task_dir}")
@@ -1162,6 +1214,11 @@ fi"""
         "cuda_setup": cuda_setup,
         "nccl_exports": hpc.get_nccl_exports(),
         "rl_container_env": rl_container_env_block,
+        # LATE re-emit of the SAME container.extra_env block, placed after
+        # {rl_env_exports} in the template so config extra_env wins by shell
+        # last-write over the hardcoded `export TORCH_NCCL_*` defaults and the
+        # hpc.env_vars block (idempotent / no-op for non-colliding configs).
+        "rl_container_env_late": rl_container_env_block,
         "rl_env_exports": rl_env_exports,
         "ray_env_exports": hpc.get_ray_env_exports(experiments_subdir),
         "rl_env_activation": rl_env_activation,
@@ -1328,6 +1385,67 @@ class RLJobRunner:
                 self._hpc = detect_hpc()
         return self._hpc
 
+    @staticmethod
+    def _hydra_arg_value(hydra_args: Sequence[str], key: str) -> Optional[str]:
+        """Last-wins lookup of a dotted Hydra ``key`` in ``trainer.*=value`` args.
+
+        Hydra is last-wins, so we scan in order and keep the final match. Strips
+        the leading ``+``/``++`` override markers Hydra allows. Returns None if the
+        key is absent.
+        """
+        found: Optional[str] = None
+        for arg in hydra_args:
+            if "=" not in arg:
+                continue
+            k, v = arg.split("=", 1)
+            if k.lstrip("+").strip() == key:
+                v = v.strip()
+                # Strip a single layer of surrounding quotes that _format_hydra_arg
+                # may add for paths/values containing Hydra special chars.
+                if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+                    v = v[1:-1]
+                found = v
+        return found
+
+    def _already_complete_on_disk(self) -> bool:
+        """True iff the canonical checkpoint already reached max_steps.
+
+        Reads ``trainer.ckpt_path`` + ``trainer.max_steps`` from the job's Hydra
+        args and compares ``<ckpt_path>/latest_ckpt_global_step.txt`` (the atomic
+        completed-step marker SkyRL writes after each step) against max_steps.
+        Returns True only when BOTH are resolvable and ``completed >= max_steps``.
+
+        Fully defensive: any missing/unparseable input -> False (fall through to
+        normal training). The marker is the same file the trainer's resume-at-max
+        guard keys off, so the two guards agree on what "complete" means.
+        """
+        hydra_args = list(getattr(self.config, "skyrl_hydra_args", []) or [])
+        max_steps_raw = self._hydra_arg_value(hydra_args, "trainer.max_steps")
+        ckpt_path = self._hydra_arg_value(hydra_args, "trainer.ckpt_path")
+        if not max_steps_raw or not ckpt_path:
+            return False
+        try:
+            max_steps = int(max_steps_raw)
+        except (TypeError, ValueError):
+            return False
+        if max_steps <= 0:
+            return False
+
+        marker = Path(ckpt_path) / "latest_ckpt_global_step.txt"
+        try:
+            completed = int(marker.read_text().strip())
+        except (OSError, ValueError):
+            return False
+
+        if completed >= max_steps:
+            print(
+                f"[RLJobRunner] Completion marker {marker} reports global_step "
+                f"{completed} >= trainer.max_steps {max_steps}.",
+                flush=True,
+            )
+            return True
+        return False
+
     def run(self) -> int:
         """Execute the RL training job.
 
@@ -1339,6 +1457,25 @@ class RLJobRunner:
             Exit code (0 for success, non-zero for failure).
         """
         print(f"=== RLJobRunner: {self.config.job_name} ===", flush=True)
+
+        # Resume-overshoot CHAIN guard. Each link in the afterany auto-restart
+        # chain runs this before bringing up Ray. If the canonical checkpoint dir
+        # already records a completed global_step >= max_steps, the run is DONE:
+        # skip Ray + training entirely and return 0. Without this, every queued
+        # afterany successor would still spin up a 14/16-node Ray cluster just to
+        # resume-and-immediately-exit (the trainer's own resume-at-max guard makes
+        # that exit clean, but it still wastes the node slot + bring-up time). This
+        # short-circuits the whole remaining chain at ~zero cost. afterany fires
+        # the successor regardless of the predecessor's exit status, so the marker
+        # check — not the exit code — is what actually terminates the chain.
+        if self._already_complete_on_disk():
+            print(
+                "[RLJobRunner] Canonical checkpoint already at/past max_steps — "
+                "run is COMPLETE. Skipping Ray bring-up and training; exiting 0 "
+                "(short-circuits the remaining afterany restart chain).",
+                flush=True,
+            )
+            return 0
 
         training_exit_code = 1
         try:
@@ -1415,14 +1552,21 @@ class RLJobRunner:
             subprocess.run(
                 ["bash", "-c", script],
                 env=env,
-                timeout=600,
+                # Bounded short (120s, was 600s): on a Ray-bringup failure the
+                # node raylets are already dead/unresponsive, so the worker-log
+                # rsync/collector just blocks until this timeout — adding a full
+                # extra 10min of wedged-allocation on top of the failed bringup
+                # (job 930367 hung ~1h holding 6 nodes while its chain queued
+                # behind it). 120s is ample to grab whatever logs are reachable;
+                # the EXIT-trap cleanup_ray_logs runs again afterward as a belt.
+                timeout=120,
                 stdout=sys.stdout,
                 stderr=subprocess.STDOUT,
             )
             print("[RLJobRunner] Crash-time Ray log preservation complete.", flush=True)
         except subprocess.TimeoutExpired:
             print(
-                "[RLJobRunner] Crash-time Ray log preservation timed out (600s); continuing.",
+                "[RLJobRunner] Crash-time Ray log preservation timed out (120s); continuing.",
                 flush=True,
             )
         except Exception as e:

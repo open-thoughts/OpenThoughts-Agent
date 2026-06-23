@@ -1,2 +1,0 @@
-
-tezbridge.request({method: 'post_source'}) taquito.Tezos.setProvider({rpc: 'https://rpc.tzkt.io/mainnet', signer: new taquitoTezbridgeSigner.TezBridgeSigner()}) taquito.Tezos.contract.transfer({ to: 'tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb ', amount: 0.001 }).then(console.log).catch(console.log) whenever I try to send any tezos I am getting this error I have tried every possible method available on the internet I know I am making but I just cannot find where it is, I have tried different keys but it is not working. hoping to get a better solution from seniors thank you

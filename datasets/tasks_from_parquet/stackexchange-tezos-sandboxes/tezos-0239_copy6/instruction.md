@@ -1,2 +1,0 @@
-
-Sometimes while trading, the balance in my tz1 account will be reduce by 0.257 tz. After I successfully traded, my account balance would be out of the currency transferred with the transaction fees, but I would also lose an additional 0.257 tz. account: tz1Nm5kshYha1PaUqaDR4T9HnciyfiBM7rd6 operation hashes: op7cmHet8aMYwK659bGhgmDMQVAWL5d8Q7i7wqVLuvpXQHyDiXd oozEMD8YVuNY7Q3PCSMBeP9YguyKAZsnrjwLw4DKcwdZWYzUhLw

@@ -1,2 +1,0 @@
-
-When I try to type the following Michelson script, I get a type error. parameter unit; storage (big_map (pair string address) (list timestamp)); code {CDR; NIL operation; PAIR}; Ill formed type. At line 2 characters 17 to 37, comparable type expected.Type pair string address is not comparable. According to the Michelson reference , types pair ty1 ty2 , address , and string are comparable. Am I missing something? Is there are way to circumvent this issue?

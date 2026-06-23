@@ -1,2 +1,0 @@
-
-const wallet = await this.getWallet(this.selectedNetwork); // get wallet using DAppClient... const Tezos = new TezosToolkit(this.config.rpc_endpoints[this.selectedNetwork]); Tezos.setProvider({ wallet, }); Tezos.wallet .originate({ // some other code... Hi, I'm trying to use taquito and DAppClient from @airgap/beacon-sdk and keep receiving this error: TypeError: this.walletProvider.mapOriginateParamsToWalletParams is not a function Is there any possible workaround maybe?

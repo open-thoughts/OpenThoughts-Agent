@@ -1,2 +1,0 @@
-
-Running Tezos alphanet branch (commit ea095e5992327716efa4a2d39bcb194df0df1f75) Executing ./tezos-admin-client p2p stat returns: Error: Rpc request failed: - meth: GET - uri: http://localhost:8732/network/points - error: The server failed with an unexpected exception: CalendarLib.Date.Out_of_bounds Other tezos-admin-client commands like ./tezos-admin-client rpc list works fine. Node log shows no errors and are chugging along fine, validating blocks as usual. How can I fix the error and get the list of peers as expected?

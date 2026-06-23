@@ -1,2 +1,0 @@
-
-While testing on smart contract file by adding scenario, @sp.add_test("IntegrationTest") def test(): sc = sp.test_scenario() helper_contract = deploy_helper_contract() sc += helper_contract helper_contract.originatContract() this function originateContract of helper, originates a new contract (contractB) from a smart contract, Now I need to do some test on the originated contract (ContractB) from the test. I have the address of the new originated contract i.e contractB. How do I call the functions of contract B inside test scenario

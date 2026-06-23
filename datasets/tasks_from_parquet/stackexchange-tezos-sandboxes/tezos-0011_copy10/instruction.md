@@ -1,2 +1,0 @@
-
-Situation: The baker is running on a server with terminal only. I manage the server through a SSH authenticated PuTTY connection. I compiled and run KILN with: ./backend -network mainnet and the application is running with the following output: Desired Result: I want to manage the KILN monitor on my local Firefox browser: http://127.0.0.1:8000/ Questions: How do I have to configure PuTTY for this purpose? Is the following config tab the right one?

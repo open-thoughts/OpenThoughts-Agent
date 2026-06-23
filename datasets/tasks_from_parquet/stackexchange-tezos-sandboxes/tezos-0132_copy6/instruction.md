@@ -1,2 +1,0 @@
-
-Im haven't been able to find an explanation of these to parameters that several libraries use when signing the operation: SignedBytes = forgedOpGroup.ToString() + "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", EncodedSignature = "edsigtXomBKi5CTRf5cjATJWSyaRvhfYNHqSUGrn4SdbYRcGwQrUGjzEfQDTuqHhuA8b2d8NarZjz8TRf65WkpQmo423BtomS8Q" Any insight is much appreciated.

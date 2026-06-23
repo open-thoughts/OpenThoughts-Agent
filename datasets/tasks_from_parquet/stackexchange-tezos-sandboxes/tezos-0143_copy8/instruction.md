@@ -1,2 +1,0 @@
-
-I am trying to perform a chain of contract calls with internal transfers. I think my current contracts are very simple, but I run out of gas after only 4 internal transfers: A script or one of its callee took more time than the operation said it would Id : proto.003-PsddFKi3.gas_exhausted.operation Category : temporary When the involved calls will be complex, it won't be possible for me to perform calls between two or three contracts if I keep on getting the gas exhaustion error. What causes this, and is there anything I can do about it?

@@ -1,2 +1,0 @@
-
-I would like to understand why to install a baker and a accuser we need pass the VERSION like that : PROTOCOL="ptmumbai" sudo apt-get install -y tezos-baker-$PROTOCOL sudo apt-get install -y tezos-accuser-$PROTOCOL Why we don't just have tezos-baker and tezos-accuser updated like any other software : apt update && apt upgrade It's a bit annoying to have to install each new version and change it into my Unit Files :/

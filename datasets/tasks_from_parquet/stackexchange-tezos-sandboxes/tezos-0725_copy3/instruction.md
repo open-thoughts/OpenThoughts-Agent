@@ -1,2 +1,0 @@
-
-I'm trying to compile a script locally, it doesn't throw any errors in the online SmartPy terminal, but when I try to compile locally with add_compilation_target and SmartPy CLI I get: "Error in generated Michelson contract" Compilation Target ADMIN_ADDRESS = 'tz1VSUxxxxxCjcjb' // A full local testnet addresss sp.add_compilation_target("playlist_compiled", PlaylistContract(sp.address(ADMIN_ADDRESS))) Compile Command ./SmartPy.sh compile ./contracts/playlist_contract.py ./compilation I'm curious how I might go about debugging an error like that, does anyone have any ideas?

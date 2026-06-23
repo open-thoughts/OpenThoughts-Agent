@@ -1,2 +1,0 @@
-
-In my app on back-end the next code is used to get signer: const { InMemorySigner } = require('@taquito/signer'); const signer = InMemorySigner.fromSecretKey( signingKey, TEZOS_SERVICE_PASSPHRASE ) where TEZOS_SERVICE_PASSPHRASE - some passphrase, that need to be used on front-end to encrypt secret key. According to Taquito documentation https://tezostaquito.io/typedoc/classes/_taquito_signer.inmemorysigner.html , second param is a Passphrase to decrypt the private key if it is encrypted . But how can I encrypt secret key using passphrase on front-end?

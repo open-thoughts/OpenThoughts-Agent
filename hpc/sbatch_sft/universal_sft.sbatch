@@ -74,6 +74,22 @@ elif [ -n "${DCFT:-}" ]; then
 else
   WORKDIR="$PWD"
 fi
+
+# --- WORKDIR sanity guard (HARD FAIL — do not remove) ---
+# If WORKDIR does not point at the OpenThoughts-Agent repo root, every downstream
+# `source "$WORKDIR/hpc/..."` and `python -m hpc....` fails cryptically and the job
+# dies instantly. This happens when a job is submitted from outside the repo with
+# DCFT/DCFT_PRIVATE unset, so the fallback resolves WORKDIR=$PWD (the wrong dir).
+# Fail loudly and immediately instead of running from the wrong place.
+if [ ! -f "$WORKDIR/hpc/shell_utils/triton_cache.sh" ]; then
+  echo "FATAL: WORKDIR='$WORKDIR' is not the OpenThoughts-Agent repo root." >&2
+  echo "       (marker hpc/shell_utils/triton_cache.sh not found under it)." >&2
+  echo "       Submit the job FROM the repo dir with DCFT exported — on Jupiter:" >&2
+  echo "         cd /e/scratch/jureap59/feuer1/OpenThoughts-Agent && export DCFT=\$PWD" >&2
+  echo "       or pass --chdir <repo> to sbatch. Do NOT submit from \$HOME or a scratch subdir." >&2
+  echo "       See .claude/skills/sft-launch-jupiter for the correct launch procedure." >&2
+  exit 1
+fi
 cd "$WORKDIR"
 
 if [ -z "${DCFT:-}" ]; then
@@ -118,16 +134,41 @@ export NUM_GPUS=$((NUM_GPUS_PER_NODE*SLURM_NNODES))
 
 # --- HuggingFace/WandB paths ---
 export HF_HOME="${HF_HOME:-${HF_HUB_CACHE:-/tmp/hf_home}}"
-export WANDB_DIR="${DCFT_WANDB_DIR:-$DCFT/{experiments_dir}/wandb}"
+export WANDB_DIR="${DCFT_WANDB_DIR:-{experiments_dir}/wandb}"
 
 # --- Triton/TorchInductor cache settings (node-local to avoid shared FS issues) ---
 export TRITON_CACHE_VERBOSE=1
 source "$WORKDIR/hpc/shell_utils/triton_cache.sh"
 
 # --- Create experiment directories ---
-mkdir -p "$DCFT/{experiments_dir}"
-mkdir -p "$DCFT/{experiments_dir}/logs"
-mkdir -p "$DCFT/{experiments_dir}/tmp"
+mkdir -p "{experiments_dir}"
+mkdir -p "{experiments_dir}/logs"
+mkdir -p "{experiments_dir}/tmp"
+
+# --- /tmp-exhaustion guard: redirect scratch/cache dirs OFF node-local /tmp ---
+# Some compute nodes ship a tiny node-local /tmp (Leonardo: ~9.6G LV). HF-datasets
+# arrow_writer spill (TMPDIR), Triton/TorchInductor caches, and Ray all default
+# there and can blow it out with OSError [Errno 28] during dataset.map (observed
+# on Leonardo, job 46313225). Redirect them onto the (large) work area under the
+# per-job experiment tmp dir. DSFS (data_shared_file_system=true) serializes the
+# dataset-cache writes to rank-0, so the NFS arrow-cache race noted in
+# jupiter.env is not a concern. Opt out with SFT_KEEP_TMPDIR_LOCAL=1 if a cluster
+# specifically needs node-local TMPDIR.
+_TMPROOT="{experiments_dir}/tmp/${SLURM_JOB_ID:-$$}"
+export TRITON_CACHE_DIR="$_TMPROOT/triton_cache"
+export TORCHINDUCTOR_CACHE_DIR="$_TMPROOT/inductor_cache"
+export RAY_TMPDIR="$_TMPROOT/ray"
+mkdir -p "$TRITON_CACHE_DIR" "$TORCHINDUCTOR_CACHE_DIR" "$RAY_TMPDIR"
+if [ "${SFT_KEEP_TMPDIR_LOCAL:-0}" != "1" ]; then
+  export TMPDIR="$_TMPROOT/tmp"
+  export TMP="$TMPDIR"
+  export TEMP="$TMPDIR"
+  export XDG_CACHE_HOME="$_TMPROOT/xdg_cache"
+  export HF_DATASETS_CACHE="$_TMPROOT/hf_datasets_cache"
+  mkdir -p "$TMPDIR" "$XDG_CACHE_HOME" "$HF_DATASETS_CACHE"
+fi
+echo "[tmpfix] TMPDIR=${TMPDIR:-<node-local>} TRITON_CACHE_DIR=$TRITON_CACHE_DIR RAY_TMPDIR=$RAY_TMPDIR"
+# --- end /tmp-exhaustion guard ---
 
 # --- Supabase environment variables for DB registration ---
 for _supabase_var in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do

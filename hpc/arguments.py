@@ -832,6 +832,30 @@ def _option_strings(field_name: str) -> list[str]:
     return [primary, dashed]
 
 
+def _field_is_bool_typed(field) -> bool:
+    """Return True if a dataclass field is annotated `bool` or `Optional[bool]`.
+
+    Needed because many bool fields default to ``None`` (``Optional[bool]``),
+    so a literal ``isinstance(field.default, bool)`` check misses them. Such a
+    field would otherwise fall through to the ``str`` argparse type, so e.g.
+    ``--overwrite_output_dir true`` would be stored as the *string* ``"true"``
+    and later rejected by LLaMA-Factory's HfArgumentParser
+    ("Some keys are not used by the HfArgumentParser: ['overwrite_output_dir']").
+    """
+    import typing
+
+    ann = field.type
+    # Annotation may be a string under `from __future__ import annotations`.
+    if isinstance(ann, str):
+        return ann in ("bool", "Optional[bool]", "typing.Optional[bool]", "bool | None", "Optional[bool] | None")
+    if ann is bool:
+        return True
+    origin = typing.get_origin(ann)
+    if origin is typing.Union or origin is getattr(__import__("types"), "UnionType", None):
+        return bool in typing.get_args(ann)
+    return False
+
+
 def _add_dataclass_arguments(arg_group, dataclass_type, exclude_fields=None, *, bool_fields: set[str] | None = None):
     """
     Helper function to add arguments from a dataclass to an argument group.
@@ -872,7 +896,11 @@ def _add_dataclass_arguments(arg_group, dataclass_type, exclude_fields=None, *, 
                 default=[],
                 help=help_text,
             )
-        elif isinstance(field.default, bool):
+        elif isinstance(field.default, bool) or _field_is_bool_typed(field):
+            # Covers both literal-bool-default fields AND `Optional[bool]`
+            # fields that default to None. Both must parse via parse_bool_flag
+            # (so `--flag true` becomes the bool True, not the string "true")
+            # and be registered in bool_fields for coerce_str_bool_none.
             kwargs = {
                 "dest": field.name,
                 "type": parse_bool_flag,

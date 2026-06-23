@@ -1,2 +1,0 @@
-
-I missed one of the endorsements due to an invalid signature. Why or how a remote-signer could produce an invalid signature? I am using a remote-signer with an HSM. Remote signer and HSM logs look good (no errors), and it has been working fine on the testnet (delphinet). 008-PtEdo2Zk.baking.endorsement: Error while injecting endorsement for delegate tz2...... : 008-PtEdo2Zk.baking.endorsement: Error: 008-PtEdo2Zk.baking.endorsement: The signer for http://localhost:6732/tz2...... produced an invalid signature

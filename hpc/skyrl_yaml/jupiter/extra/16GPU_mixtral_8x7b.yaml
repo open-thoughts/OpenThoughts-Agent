@@ -1,0 +1,448 @@
+# =============================================================================
+# Mixtral-8x7B-Instruct-v0.1 — agentic RL config for Jupiter (GH200 96GB, 4 GPU/node)
+# =============================================================================
+# Target: mistralai/Mixtral-8x7B-Instruct-v0.1
+#   46.7B total / ~13B activated params. STANDARD Mixtral MoE
+#   (MixtralForCausalLM, transformers 5.10.1) — plain full attention on EVERY
+#   layer (GQA), NO linear-attention / GatedDeltaNet, NO FlashQLA concerns.
+#   32 layers, hidden_size=4096, 32 attn heads / 8 KV heads (GQA), head_dim=128,
+#   8 experts top-2, intermediate_size=14336, vocab=32000,
+#   max_position_embeddings=32768, no sliding window, bf16.
+#
+# This is the CAPABLE NON-QWEN small-MoE counterpart to the
+# Qwen3-Coder-30B-A3B agentic run (job 849580): same agentic terminal_bench +
+# Daytona + TIS setup, a3-hparam-matched (RLOO-N + binary reward + token_mean,
+# lr 8e-6, max_grad_norm 0.9). Mixtral was chosen over OLMoE (which self-killed
+# on an EP=2 distributed-load bug).
+#
+# Launch via the standard path:
+#
+#   python -m hpc.launch \
+#     --job_type rl \
+#     --rl_config ./hpc/skyrl_yaml/jupiter/extra/16GPU_mixtral_8x7b.yaml \
+#     --model_path mistralai/Mixtral-8x7B-Instruct-v0.1 \
+#     --num_nodes 4 \
+#     --train_data '["DCAgent/exp_rpt_pymethods2test-large"]' \
+#     --time_limit 11:59:00 \
+#     --max_restarts 5 \
+#     --experiments_dir /e/data1/datasets/playground/ot-baf \
+#     --job_name mixtral-8x7b
+#
+# -----------------------------------------------------------------------------
+# GPU / NODE SIZING (4 nodes × 4 GH200 = 16 GPUs)  [colocate_all: false]
+# -----------------------------------------------------------------------------
+# Generation (vLLM):  2 engines × TP=4            = 8 GPUs  =  2 nodes
+# Policy/Ref FSDP  :  2 nodes × 4 (EP=1 × FSDP=8/node = FSDP=16) = 8 GPUs = 2 nodes
+#                                                   -------    --------
+#                                          TOTAL =  16 GPUs    4 nodes
+#
+# -----------------------------------------------------------------------------
+# EP×FSDP CHOICE: EP=1 × FSDP=16 (THE SAFE DEFAULT — avoids the EP=2 bug class)
+# -----------------------------------------------------------------------------
+# Mixtral has only 8 experts → divisibility under EP>1 is tight, and the
+# OLMoE failure path was specifically the EP=2 2-D
+# [Shard(0)_ep × Shard(0)_fsdp] expert-DTensor composition mis-reconstructing
+# the fused-expert local shard (RuntimeError "start+length exceeds dimension").
+#
+# EP=1 SIDESTEPS THAT BUG ENTIRELY (verified in fsdp_strategy.py):
+#   * ep_size==1 ⇒ apply_ep is NEVER called (line 294/341); the device mesh is
+#     the unchanged 1-D/2-D FSDP mesh — there is NO "ep" mesh dim and NO 2-D
+#     expert-DTensor composition, so the EP-streamed loader's multi-mesh-dim
+#     _extract_local_shard walk never runs. The byte-identical naive
+#     fsdp2_load_full_state_dict path is used.
+#   * With EP=1, FSDP2 fully_shard flattens each grouped-expert param
+#     (w1/w2/w3 dim-0 = 8 experts) to 1-D and even-pads across fsdp_size — so
+#     there is NO "fsdp_size must divide num_experts" constraint (that
+#     constraint only fires on the EP>1 path, fsdp_utils.py:652
+#     `ep_size > 1 and fsdp_size > 1`). FSDP=16 over 8 experts is therefore
+#     fine (flat numel chunk, not dim-0 chunk).
+#
+# MEMORY MATH (46.7B, full-fidelity Adam, bf16-mixed):
+#   bf16 weights  : 46.7e9 × 2 B =  93 GB
+#   fp32 grads    : 46.7e9 × 4 B = 187 GB
+#   Adam m,v      : 46.7e9 × 8 B = 374 GB
+#   fp32 master   : 46.7e9 × 4 B = 187 GB
+#                          TOTAL ≈ 841 GB sharded state.
+#   Over FSDP=16 → ~52.5 GB/GPU sharded state. cpu_offload: true moves
+#   params+optimizer into the GH200 coherent LPDDR; the 841 GB total spreads
+#   across 2 policy nodes' LPDDR (2 × 480 = 960 GB) with ~120 GB headroom,
+#   leaving HBM almost entirely for the active shard + 32k-ctx activations +
+#   gradient checkpointing.
+#   (EP=1×FSDP=8 on ONE node is INFEASIBLE: 841 GB total state >> 480 GB
+#   single-node LPDDR, and 105 GB/GPU sharded state > 96 GB HBM. → 2 nodes.)
+#
+# vLLM memory (per TP=4 engine, 4 GPUs):
+#   93 GB bf16 weights / 4 = ~23 GB/GPU. At gpu_memory_utilization 0.85 on 94 GB
+#   that leaves ~58 GB/GPU for KV — ample for 32k context. Mixtral is denser
+#   per-token than the 3B-active Qwen3-Coder (13B active), so TP=4 (vs TP=2) is
+#   the safer choice for KV headroom at 32k. GQA: 32 attn heads / 4 = 8/GPU;
+#   8 KV heads / 4 = 2 KV/rank (valid GQA).
+# =============================================================================
+
+entrypoint: examples.terminal_bench.entrypoints.main_tbench
+
+# Hydra config groups (+ prefix in CLI)
+config_groups:
+  terminal_bench_config: terminal_bench
+
+# Terminal bench / agentic environment settings
+terminal_bench:
+  trials_dir: null
+
+  harbor:
+    name: terminus-2
+    max_episodes: 999999
+    enable_summarize: false
+    store_all_messages: true
+    trajectory_config:
+      raw_content: true
+    enable_episode_logging: false
+    record_terminal_session: false
+    enable_pane_logging: false
+
+    strict_json_parser: true
+
+    # Mixtral-Instruct is NOT a thinking model — no enable_thinking / interleaved
+    # thinking. Use its native chat template (no qwen3 thinking template).
+    interleaved_thinking: false
+
+    override_timeout_sec: 1800
+
+    override_cpus: 1
+    override_memory_mb: 2048
+    override_storage_mb: 2048
+
+    auto_snapshot: true
+
+    verifier_override_timeout_sec: 120
+
+    max_retries: 3
+    min_wait_sec: 60.0
+    max_wait_sec: 600.0
+    wait_multiplier: 2.0
+
+    exclude_exceptions:
+      - VerifierTimeoutError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - VerifierOutputParseError
+      - VerifierRuntimeError
+
+    n_concurrent_trials: 300
+
+    log_level: INFO
+
+    enable_reward_shaping: false
+
+    # collect_rollout_details=true → Harbor stores per-token rollout logprobs from
+    # vLLM. REQUIRED for use_tis below (trainer asserts non-null rollout_logprobs
+    # when use_tis=true). TIS corrects the vLLM↔FSDP rollout-vs-train gap here;
+    # R3 router-replay is OFF.
+    collect_rollout_details: true
+
+    enable_error_classification: true
+    mask_exceptions:
+      - DaytonaError
+      - EnvironmentStartTimeoutError
+      - NetworkError
+      - ConnectionError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - AgentEnvironmentTimeoutError
+    default_error_treatment: zero
+    passthrough_exceptions:
+      - AgentTimeoutError
+      - ContextLengthExceededError
+
+  # 768-token buffer below max_model_len=32768.
+  model_info:
+    max_input_tokens: 32767
+    max_output_tokens: 4096
+
+  archiving:
+    enabled: false
+
+  trace_upload:
+    enabled: true
+    repo_org: DCAgent
+    episodes: last
+    dataset_type: SFT
+    cleanup: true
+
+# =============================================================================
+# Trainer configuration
+# =============================================================================
+trainer:
+  strategy: fsdp2
+  gradient_checkpointing: true
+  gradient_checkpointing_use_reentrant: false
+  algorithm:
+    advantage_estimator: rloo_n
+    use_kl_loss: false
+    kl_loss_coef: 0.0
+    eps_clip_low: 0.2
+    eps_clip_high: 0.05
+    loss_reduction: token_mean
+    # Truncated Importance Sampling ON. cap=2.0 standard truncation. REQUIRES
+    # collect_rollout_details=true (above). This is the rollout-vs-train
+    # correction lever (R3 router-replay is OFF — see fsdp_config).
+    use_tis: true
+    tis_imp_ratio_cap: 2.0
+
+  epochs: 2
+  max_steps: 80
+  update_epochs_per_batch: 1
+
+  train_batch_size: 64
+  policy_mini_batch_size: 64
+  eval_batch_size: 64
+
+  micro_forward_batch_size_per_gpu: 4
+  micro_train_batch_size_per_gpu: 1
+
+  max_prompt_length: 999999
+
+  eval_interval: 999999
+  eval_before_train: false
+  ckpt_interval: 5
+  resume_mode: latest
+  hf_save_interval: 5
+  hf_hub_repo_id: null
+  hf_hub_private: false
+  hf_hub_revision: main
+
+  enable_db_registration: false
+
+  project_name: OpenThoughts-Agent
+  log_level: INFO
+  tracker_commit_each_step: true
+  logger: console
+
+  run_name: null
+  ckpt_path: null
+  export_path: null
+
+  policy:
+    optimizer_config:
+      lr: 8e-6
+      weight_decay: 0.0
+      adam_betas: [0.9, 0.999]
+      max_grad_norm: 0.9
+    fsdp_config:
+      cpu_offload: true
+      reshard_after_forward: true
+      # EP=1 × FSDP=16 = 16 policy GPUs (2 nodes). EP=1 ⇒ apply_ep is never
+      # called and the device mesh has NO "ep" dim → the OLMoE EP=2
+      # 2-D-composition load bug cannot occur. FSDP2 flattens the 8-expert
+      # grouped params and even-pads over fsdp_size, so there is no
+      # divisibility constraint. moe_grouped_gemm = fused grouped-GEMM expert
+      # FFN (REQUIRED: only the grouped weight-sync path produces per-expert
+      # vLLM-loadable names; the ungrouped path raises KeyError at weight-sync).
+      # The Mixtral train-forward bare-tensor contract + always-renorm router
+      # are handled in the shim (MarinSkyRL penfever/working 3e35592).
+      fsdp_size: 16
+      expert_model_parallel_size: 1
+      moe_router_replay: false
+      moe_grouped_gemm: true
+      ep_comm_backend: torch
+  ref:
+    # INERT (use_kl_loss=false → SkyRL builds no RefWorker, path never loaded).
+    model:
+      path: mistralai/Mixtral-8x7B-Instruct-v0.1
+    fsdp_config:
+      cpu_offload: true
+      reshard_after_forward: true
+      fsdp_size: 16
+      expert_model_parallel_size: 1
+      moe_router_replay: false
+      moe_grouped_gemm: true
+      ep_comm_backend: torch
+
+  # Model placement (async training, disaggregated).
+  # Policy+Ref SHARE 2 nodes / 8 GPUs (FSDP-sharded, time-share devices).
+  # The 2 generation nodes (2 TP=4 engines) are allocated separately.
+  # These hardcoded values OVERRIDE the launcher's num_nodes derivation.
+  # --num_nodes 4 must still be passed for the SLURM allocation.
+  placement:
+    colocate_all: false
+    policy_num_nodes: 2
+    ref_num_nodes: 2
+    policy_num_gpus_per_node: 4
+    ref_num_gpus_per_node: 4
+    # Reserve the 2 policy nodes (STRICT_SPREAD) BEFORE the vLLM inference
+    # placement group, so policy claims its 2 dedicated nodes first and the
+    # 2 TP=4 engines are forced onto the disjoint remaining 2 nodes. Prevents
+    # the two PACK placement groups racing → policy FSDP worker on a
+    # vLLM-occupied GPU → init-OOM.
+    policy_strict_spread_pg: true
+    # One {GPU:1,CPU:1} bundle PER policy GPU (2 nodes × 4 = 8 bundles ==
+    # world_size) so each policy actor pins to its distinct physical GPU.
+    policy_per_gpu_bundles: true
+    # Each policy actor MASKS CUDA_VISIBLE_DEVICES to its single Ray-assigned
+    # physical GPU + forces CUDA_DEVICE_ORDER=PCI_BUS_ID before CUDA init.
+    policy_force_cvd_mask: true
+
+  # Fully async generation.
+  fully_async:
+    max_staleness_steps: 16
+    num_parallel_generation_workers: 256
+
+# =============================================================================
+# Generator configuration (vLLM)
+# =============================================================================
+generator:
+  backend: vllm
+  timeout_multiplier: 1.0
+  model_dtype: bfloat16
+
+  # TP=4 per engine: 32 attn heads / 4 = 8/GPU; 8 KV heads / 4 = 2 KV/rank
+  # (valid GQA). 2 engines × TP=4 = 8 GPUs = 2 nodes.
+  inference_engine_tensor_parallel_size: 4
+  # 2 TP=4 engines = 8 inference GPUs = 2 inference nodes. Set EXPLICITLY (not
+  # null) so the launcher does NOT derive it (4*4//4 = 4 would be WRONG — 2 of
+  # the 4 nodes are policy-only). 2 is the correct disaggregated value.
+  num_inference_engines: 2
+
+  inference_engine_expert_parallel_size: 1
+
+  # mp executor backend — no Ray Compiled-DAG. Requires colocate_all=false.
+  inference_engine_mp_backend: true
+
+  n_samples_per_prompt: 8
+  eval_n_samples_per_prompt: 8
+
+  gpu_memory_utilization: 0.85
+
+  max_num_seqs: 24
+  max_num_batched_tokens: 16384
+
+  enable_prefix_caching: true
+  enable_chunked_prefill: true
+
+  run_engines_locally: true
+  weight_sync_backend: nccl
+  async_engine: true
+  batched: false
+  enable_http_endpoint: true
+  enable_ray_prometheus_stats: false
+  vllm_stats_interval: 1
+  append_eos_token_after_stop_str_in_multi_turn: true
+  max_turns: 999999
+
+  sampling_params:
+    max_generate_length: 4096
+    temperature: 0.7
+    top_p: 0.95
+    top_k: 20
+
+  engine_init_kwargs:
+    # 32768 = the model's native max_position_embeddings. No YaRN needed.
+    max_model_len: 32768
+    # AGENTIC chat template. Mixtral-Instruct's STOCK [INST] template
+    # (tokenizer_config.json) ENFORCES strict user/assistant alternation via
+    # `raise_exception(...)` and supports ONLY user/assistant roles. That breaks
+    # the SkyRL agentic pipeline: get_response_ids_and_loss_mask_from_messages ->
+    # encode_messages_subset re-encodes ONE message at a time appended to a fixed
+    # base [system, user]; a `user` turn then yields [user, user] -> the stock
+    # alternation assert raises (`conversation roles must alternate ...`). This is
+    # exactly the TemplateError that killed job 852666 at step 2 (the agentic
+    # terminus-2 multi-turn trajectory's env-observation `user` turns trip it).
+    #
+    # mistral_agentic.jinja2 is a RELAXED [INST] template: keeps Mixtral's native
+    # `[INST]…[/INST]` + ` content</s>` format (best cold-start fidelity — IDENTICAL
+    # to stock on clean alternation, verified) but (a) DROPS the strict-alternation
+    # assert, (b) MERGES consecutive same-role turns, (c) serializes tool/observation
+    # text on the user side (no v3 [TOOL_CALLS] special tokens — Mixtral's v1 vocab
+    # lacks them). Loss-mask validated: only ` content</s>` per assistant turn is
+    # masked-1 (gen_prompt prefix ` [/INST]` matches by construction), INST markers
+    # masked-0, one EOS per assistant turn -> TIS aligns vLLM logprobs exactly.
+    #
+    # This SINGLE key drives BOTH the vLLM serving side
+    # (vllm_engine.py OpenAIServingChat custom_chat_template) AND the training-side
+    # tokenization (terminal_bench_generator.py reads it into
+    # custom_chat_template_content, passed to encode_messages_subset) -> no
+    # train/serve template mismatch.
+    custom_chat_template_chat_completion_path: chat_templates/mistral_agentic.jinja2
+    # R3 routed_experts capture OFF (paired with moe_router_replay=false). TIS
+    # handles the rollout-vs-train correction.
+    enable_return_routed_experts: false
+
+# Data paths
+data:
+  train_data: []
+  val_data: []
+
+# K-actor rollout fan-out — ON (breaks the single-event-loop GIL ceiling).
+rollout:
+  fanout:
+    enabled: true
+    num_coordinators: 4
+    cpus_per_coordinator: 8
+
+# =============================================================================
+# Apptainer runtime container
+# =============================================================================
+# vLLM 0.20.2rc0 SIF (supports MixtralForCausalLM natively — verified in
+# registry). Requires the three SIF env fixes carried in extra_env below
+# (VLLM_USE_FLASHINFER_SAMPLER=0, VLLM_ATTENTION_BACKEND=FLASH_ATTN,
+# TRITON_LIBCUDA_PATH=/.singularity.d/libs) and HF-offline on compute nodes.
+# The gmr_fix / capturer_fix single-file bind mounts are R3-capture patches;
+# HARMLESS with capture OFF. SKYRL_GDN_MASK_FLA is irrelevant here (no
+# GatedDeltaNet) but harmless.
+container:
+  sif: /e/scratch/jureap59/feuer1/containers/skyrl_megatron_vllm0202rc0_r3.sif
+  binds:
+    - /e/scratch
+    - /e/data1
+    # NOTE: the gmr_fix / capturer_fix R3-capture single-file binds are
+    # DELIBERATELY OMITTED for this SIF. In the 0.20.2rc0 SIF vLLM lives at
+    # /opt/vllm_build/vllm/ (NOT /usr/local/lib/python3.12/dist-packages/vllm/).
+    # Binding a file into the non-existent dist-packages/vllm/... path makes
+    # apptainer CREATE an empty dist-packages/vllm/ namespace dir that SHADOWS
+    # the real /opt/vllm_build/vllm → `import vllm` resolves to the empty
+    # namespace → `cannot import name 'SamplingParams' from 'vllm' (unknown
+    # location)` and the run dies at inference-engine setup (job 852262).
+    # R3 capture is OFF here (enable_return_routed_experts=false,
+    # moe_router_replay=false) so these patches are inert anyway — drop them.
+  pydeps: /e/scratch/jureap59/feuer1/sif_pydeps
+  extra_env:
+    SKYRL_GDN_MASK_FLA: 1
+    PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    APPTAINERENV_PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    # --- vLLM 0.20.2rc0 SIF env fixes (REQUIRED on this SIF, not model-specific) ---
+    VLLM_USE_FLASHINFER_SAMPLER: 0
+    VLLM_ATTENTION_BACKEND: FLASH_ATTN
+    TRITON_LIBCUDA_PATH: /.singularity.d/libs
+    APPTAINERENV_VLLM_USE_FLASHINFER_SAMPLER: 0
+    APPTAINERENV_VLLM_ATTENTION_BACKEND: FLASH_ATTN
+    APPTAINERENV_TRITON_LIBCUDA_PATH: /.singularity.d/libs
+    # --- Cross-node NCCL fix for the 0.20.2rc0 SIF (job 852308 died at
+    # fsdp_strategy.py:435 torch::cuda::nccl::scatter with "NCCL Error 2/3"
+    # on the 2-node IB policy state-dict load). Root-caused via 2-node smokes:
+    #   * SHARP/NVLS disable (option A, job 852358): scatter still FAILED
+    #     (Error 3) with collnet/nvls confirmed OFF → NOT SHARP/NVLS.
+    #   * NCCL_NET_PLUGIN=none (Test 1, job 852368): dropped the HPC-X
+    #     libnccl-net.so, forced NCCL built-in IB transport — scatter STILL
+    #     FAILED Error 3 → NOT the HPC-X plugin either. It's the NCCL-2.28.9
+    #     core point-to-point/IB path in this SIF (baked SIF runs NCCL 2.27.7
+    #     fine on the identical fabric).
+    #   * NCCL_P2P_DISABLE=1 (Test 2, job 852369): cross-node all_reduce AND
+    #     scatter both PASSED on all 8 ranks → THE FIX. Routes the scatter
+    #     P2P via SHM+net instead of the broken direct-P2P path.
+    # Keep the SHARP/NVLS disables (harmless) + DEBUG=INFO (surfaces recurrence).
+    # Perf caveat: P2P_DISABLE forgoes direct GPU-to-GPU P2P for collectives;
+    # acceptable for a 2-policy-node FSDP run (state-dict load + grad sync),
+    # and it is correctness-safe. Config-local (this SIF only). ---
+    NCCL_COLLNET_ENABLE: 0
+    NCCL_NVLS_ENABLE: 0
+    NCCL_P2P_DISABLE: 1
+    NCCL_DEBUG: INFO
+    APPTAINERENV_NCCL_COLLNET_ENABLE: 0
+    APPTAINERENV_NCCL_NVLS_ENABLE: 0
+    APPTAINERENV_NCCL_P2P_DISABLE: 1
+    APPTAINERENV_NCCL_DEBUG: INFO
+    # --- HF offline on compute nodes (model pre-staged to HF cache) ---
+    HF_HUB_OFFLINE: 1
+    TRANSFORMERS_OFFLINE: 1
+    APPTAINERENV_HF_HUB_OFFLINE: 1
+    APPTAINERENV_TRANSFORMERS_OFFLINE: 1

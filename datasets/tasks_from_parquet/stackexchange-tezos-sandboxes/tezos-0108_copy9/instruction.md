@@ -1,2 +1,0 @@
-
-I am trying to write some game on tezos via ReasonML, stuck with pattern matching on tuples, looks like it does not work let tmp = switch (players) { | (Some(p), None) => let storage = storage.playerO = Some(Current.source()); ([], storage); | (None, Some(_)) => let storage = storage.playerX = Some(Current.source()); ([], storage); | (_, _) => failwith("No empty slots") }; I'm getting "Bad pattern" compile error. But it seems like valid Reason syntax.

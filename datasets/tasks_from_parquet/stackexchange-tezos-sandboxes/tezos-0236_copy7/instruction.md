@@ -1,2 +1,0 @@
-
-I'm trying to typecheck a script, but sometimes get the following error: $ tezos-client typecheck script helloTezos.tz Error: Unrecognized command. Try using the man command to get more information. This appears to be the case whenever my local tezos-node process is still warming up or in some other strange state. The error message is misleading! Why is a network connection needed at all for type checking? I built tezos according to the following instructions: http://tezos.gitlab.io/mainnet/introduction/howtoget.html#build-from-sources

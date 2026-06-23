@@ -1,2 +1,0 @@
-
-I created a new account and funded it. Then I had to perform a reveal operation to get an opportunity to make transfers. It succeeded and account became revealed (explorer api returned is_revealed = true) But after sending funds I still receive is_revealed = false and I need to do another reveal operation. Why? What's wrong? Account - https://tzstats.com/tz1dG8jzk8jgSpA3z6CwTz7jCJ2yFMHLCuqN API call - https://api.tzstats.com/explorer/account/tz1dG8jzk8jgSpA3z6CwTz7jCJ2yFMHLCuqN

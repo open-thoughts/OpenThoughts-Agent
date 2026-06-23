@@ -1,2 +1,0 @@
-
-In looking at the Granadanet contract storage , I can see the amount of tzBTC, Tez, and LQT tracked in/by the CPMM. Here are those values as of writing this: tokenPool 45805 xtzPool 111379958864916 lqtTotal 51959 Based on these numbers, is it possible to calculate the amount of Tez and tzBTC that a single LQT token is worth? I ask because I'm currently adding liquidity and removing liquidity on Granadanet, with no way of really understanding how many LQT I should be receiving, or how many Tez and tzBTC I should be getting back when I remove liquidity.

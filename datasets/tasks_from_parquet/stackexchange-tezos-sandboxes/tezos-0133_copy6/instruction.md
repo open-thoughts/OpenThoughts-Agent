@@ -1,2 +1,0 @@
-
-I am having some troubles connecting either one of these two wallets to a local node on the same machine. The correct ports are listening (netstat -tulpn). The setup of TLS looks good, for example I get the correct response when poking the tezos node with: ./tezos-client -port 1234 -S get balance for xyz In config.json I tried different flavors of "listen-addr" (both in "rpc" and "p2p"), 127.0.0.1, localhost, ::1, 0.0.0.0 + port numbers, nothing seems to work. Perhaps it is the self-signed TLS certificate or the location of the files, any idea?

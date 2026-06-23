@@ -1,2 +1,0 @@
-
-How can I delete the head block stored in tezos-node storage? I did something dumb - I modified the Octez code and then ran the modified tezos-node while pointing at the directory I use for my archive node. The modified tezos-node updated the head but it saved it with bad metadata, which means the hash-chain is broken and so the chain can't grow. Is it possible to just delete the last block in the chain, as stored on disk? I looked at the commands for tezos-admin-client but didn't find anything. Thanks!

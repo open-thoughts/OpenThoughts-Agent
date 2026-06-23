@@ -1,2 +1,0 @@
-
-To learn Pytezos I am trying to buy NFT - from Tezzardz collection on objkt.com using Pytezos. How can I specify which Tezzard # I want to buy in a code? Is there anything else I need to know? test = pytezos.using('mainnet').contract('KT1LHHLso8zQWQWg1HUukajdxxbkGfNoHjh6') initial_storage = {} pytezos.origination(script = test.script(initial_storage), balance = 200).autofill().sign().inject() Where do I specify that i want: Tezzard #3890

@@ -1,2 +1,0 @@
-
-I'm trying to deploy a contract directly as specified in Liquidity docs , but the CLI fails with: Failure: edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh is not a valid private key I have tried with a combination of different private keys / sources, without any luck. Does anyone know how to deploy a Liquidity contract without forging a local operation (through the Liquidity CLI). Github issue

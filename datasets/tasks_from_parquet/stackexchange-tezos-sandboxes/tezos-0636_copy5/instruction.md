@@ -1,2 +1,0 @@
-
-I have a token contract (let's say it TC ) and creating a contract Wallet . Now, is it possible for a user to call Wallet 's entrypoint deposit which will do an inter-contract call to TC 's transfer entrypoint to transfer some of the user's token to the Wallet ? Since TC will check that the sender is the owner of those tokens, it'll require keeping the sender the same when doing the inter-contract call.

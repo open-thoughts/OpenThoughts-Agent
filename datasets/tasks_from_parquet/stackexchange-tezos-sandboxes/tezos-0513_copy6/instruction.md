@@ -1,2 +1,0 @@
-
-I just installed Tezos Wallet v.2.2.9 on my Ledger Nano S and I would like to export an extended public key (xpub) from this wallet through Ledger Live. But I would like this xpub to generate addresses for the ECDSA curve, so addresses that start with tz2 . How do I achieve that? Currently I am only able to export compressed, single-use public keys, the ones that start with 02 or 03 . And the Tezos addresses that it generates all start with tz1 , meaning that they are derived through ed25519 and not ECDSA secp256k1, as I would like.

@@ -1,2 +1,0 @@
-
-In most blockchains, it's possible to chain several outgoing transactions for an account. In Tezos we've tried to do the same, but got errors like: Netezos.Rpc.InternalErrorException: [{"kind":"temporary","id":"proto.008-PtEdo2Zk.contract.counter_in_the_future","contract":"tz1Ywh6HfQoXnjeoN1GduTydLY73oj9DAgFw","expected":"958117","found":"958118"}] It looks like the node is not able to chain several transactions depends on each other in the mempool. Do we do something wrong or it's normal behaviour of the node? What are the best practices to do this?

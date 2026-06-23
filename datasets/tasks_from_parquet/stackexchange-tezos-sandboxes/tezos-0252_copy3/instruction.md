@@ -1,2 +1,0 @@
-
-hello i m transfer tezos in alphnet. using nodejs sdk of sotez. here i have request :- await sotez.importKey('ed###PRIVATE_KEY###3r'); sotez.transfer({to: 'tz1PwpmDDgak6AZVhPujQBNjc4k1PsUm5q1D',amount: '1000000',fee: '1278',}).then(result => console.log(result)).catch(function(e){console.log(e)}) here i got response :- https://alphanet.tzscan.io/ooicWu5cMBqSLDSwRD5BAK4mpmm9LMpxEcBhY22qoUHnH2BpWSL which reveal my address successfully but does not perform transfer operation. how can i solved this any one have any idea ??

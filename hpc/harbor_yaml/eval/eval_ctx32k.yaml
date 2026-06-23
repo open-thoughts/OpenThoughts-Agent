@@ -49,11 +49,6 @@ verifier:
   override_timeout_sec: null
   max_timeout_sec: null
   disable: false
-metrics:
-- type: mean-drop-ei
-  kwargs: {}
-- type: accuracy-drop-ei
-  kwargs: {}
 agents:
 - name: terminus-2
   import_path: null

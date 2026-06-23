@@ -1,2 +1,0 @@
-
-The following contract (Hic Et Nunc Marketplace V1) contains the deprecated instruction SUB on type mutez : https://github.com/hicetnunc2000/objkt-swap/blob/master/michelson/objkt_swap_v1.tz I want to deploy this contract out of curiosity. How do I patch it properly so that I can deploy the contract to e.g. Ghostnet? Although I attempted replacing the deprecated instructions with SUB_MUTEZ , I still haven't been able to deploy the contract. This boils down to me not fully understanding which SUB instructions are the ones that need to be replaced.

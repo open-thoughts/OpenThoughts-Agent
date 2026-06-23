@@ -1,2 +1,0 @@
-
-I was trying to connect eztz-cli to my locally running containerized (via docker) tezos node. These are the steps I followed: Start the node with rpc enabled by running ./alphanet.sh start --rpc-port 6160 Set the provider by running eztz provider localhost:6160 After this, when I run commands like eztz balance *some account address here* or eztz freeAccount main account1 , it returns Error: Error: Protocol not supported. I have tried digging into the source code of eztz-cli and eztz, but couldn't find the root cause. Any help is appreciated.

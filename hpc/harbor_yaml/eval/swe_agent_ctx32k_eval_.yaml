@@ -49,11 +49,6 @@ verifier:
   override_timeout_sec: 1800
   max_timeout_sec: 900
   disable: false
-metrics:
-- type: mean-drop-ei
-  kwargs: {}
-- type: accuracy-drop-ei
-  kwargs: {}
 agents:
 - name: swe-agent
   import_path: null

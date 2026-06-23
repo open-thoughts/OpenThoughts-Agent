@@ -1,2 +1,0 @@
-
-I'm following the official docs in the Tezos repo about how to generate a new wallet via a connected ledger device. I have the ledger open to the correct screen and unlocked. However when I run tezos-client list connected ledgers I see nothing. I have also tried running this command as root, and I still see nothing. I am using the public mainnet node provided by smartpy, and I'm on the latest MacOS version (11.2.3 (20D91)). My ledger firmware is also up to date. Ledger Live also works. Is using a ledger with a public node possible?

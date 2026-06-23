@@ -1,2 +1,0 @@
-
-I would like to know if there is some way of testing for error raised with failwith in ligo using the testing framework? There doesn’t seem to be any documented try-catch mechanism yet, or am I mistaken ? Here is a simplified version of the code I want to test: type identity_card = { first_name: string; last_name: string; validators: address set; } type t = (address, identity_card) map let find (trombi:t) (user_address:address) = match Map.find_opt user_address trombi with Some card -> card |None -> failwith("not found")

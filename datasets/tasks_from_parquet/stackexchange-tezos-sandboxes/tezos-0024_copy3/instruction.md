@@ -1,2 +1,0 @@
-
-If i host my own node, e.g. like TezBox does, what's the best practice regarding accessibility of certain RPC endpoints? TzScan already restricts certain calls, as described here . Tezos docs advise as following: The RPC interface must be enabled in order for the clients to communicate with the node, but is should not be publicly accessible on the internet. With the new memory management update , additional RPC endpoints will be available, and they might posses a danger if exposed publicly without knowing.

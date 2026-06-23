@@ -104,7 +104,13 @@ class RayClusterConfig:
     ray_env_vars: str = ""  # Space-separated KEY=value pairs for Ray workers
     wait_for_cluster_script: str = "scripts/ray/wait_for_cluster.py"
     poll_interval: int = 10
-    startup_timeout: int = 600
+    # Driver-side wait window for the full cluster to register all GPUs/nodes.
+    # Raised 600 -> 1200 for 6-node GH200 RL: with RAY_raylet_start_wait_time_s
+    # bumped to 120s (see build_apptainer_prefix), a slow head/worker raylet
+    # registration can legitimately push first-contact past the old 600s cliff.
+    # The driver still polls on poll_interval and returns as soon as the cluster
+    # is ready, so this only extends the patience ceiling, not the happy path.
+    startup_timeout: int = 1200
     # Memory configuration (bytes). If None, Ray auto-detects (which can cause OOM).
     # Set explicitly to limit Ray to the SLURM allocation minus headroom.
     memory_per_node: Optional[int] = None  # Total memory Ray can use per node

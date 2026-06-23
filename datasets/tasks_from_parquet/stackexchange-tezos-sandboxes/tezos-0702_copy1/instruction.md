@@ -1,2 +1,0 @@
-
-I have one contract which creates and stores another contract, so in the creator contract I have something like: children=sp.map ( tkey=sp.TNat, tvalue=sp.TAddress ), Which is basically a map where the address of all the created children are stored. Now the problem comes when I want to get a children and interact with it (read data/execute a function). I've tried using the sp.contract() function but I can't seem to get it working. Any example code snippets or advice? Thanks in advance.

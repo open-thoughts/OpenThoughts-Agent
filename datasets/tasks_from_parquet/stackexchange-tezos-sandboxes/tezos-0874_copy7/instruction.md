@@ -1,2 +1,0 @@
-
-I am fetching an event using Taquito's PollingSubscribeProvider and the result is: {"opHash":"onqeD75WQfWb2BHiqQBh4Z1yfwY131rHVRX9mNUC8GPkW3iDbTS","blockHash":"BL3F9vav793Ugq93udXfwC1n8By9aJ6rE29Jny2Nq5sBDPUZRt7","level":60209,"kind":"event","source":"KT1BZDmdBFZsZ3bgX81WR8jS5jV1He8AecB3","nonce":1,"type":{"prim":"address"},"tag":"account_added","payload":{"bytes":"00006b82198cb179e8306c1bedd08f12dc863f328886"},"result":{"status":"applied","consumed_milligas":"1000000"}} How do I decode the bytes to get the expecte public key hash? Thanks

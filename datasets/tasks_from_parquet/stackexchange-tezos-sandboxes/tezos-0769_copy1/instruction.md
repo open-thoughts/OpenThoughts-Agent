@@ -1,2 +1,0 @@
-
-tezos-client --endpoint https://edonet-tezos.giganode.io/ config update throws error Failed to acquire the protocol version from the node Rpc request failed: - meth: GET - uri: https://edonet-tezos.giganode.io//chains/main/blocks/head/protocols - error: Unable to connect to the node: "TLS to non-TCP currently unsupported: host=edonet-tezos.giganode.io endp=(Unknown "name resolution failed")" How can I get around this?

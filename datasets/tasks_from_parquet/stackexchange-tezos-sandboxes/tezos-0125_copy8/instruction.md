@@ -1,2 +1,0 @@
-
-This is just for tezos-node on alphanet, I've recently noticed that the number of peers doesn't go past 5 resulting in the node taking forever to sync and goes down to 0 once the node is synced, resulting in validator failure, even when increasing the number of peers in the config file, the validator crashes and fails once the node catches up. The specific error shows: node.validator.bootstrap_pipeline: I/O error node.validator.bootstrap_pipeline: Unexpected error (validator): Error:

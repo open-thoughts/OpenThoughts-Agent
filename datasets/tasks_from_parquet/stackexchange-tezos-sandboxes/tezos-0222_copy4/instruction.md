@@ -1,2 +1,0 @@
-
-With the example below, is it possible to get liquidity to check that the type of the contract C matches C_intf ? contract type C_intf = sig type storage val%entry check_balance : nat -> _ end contract C = struct type storage = unit let%init storage = () let%entry check_balance (bal : nat) storage = failwith "bouh" end type storage = address let%entry main (some_c_contract : C_intf.instance) _ = failwith "hello"

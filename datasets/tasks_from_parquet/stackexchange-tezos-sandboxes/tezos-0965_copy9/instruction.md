@@ -1,2 +1,0 @@
-
-I would like to edit some of the configuration options for a rollup-node while it's running. Fore example I would like to add "log-kernel-debug": true to the config of a running rollup-node and start capturing the kernel.log. I've tried the following command octez-smart-rollup-node-PtMumbai config update --log-kernel-debug . This produces an error "Unexpected command line option --log-kernel-debug."

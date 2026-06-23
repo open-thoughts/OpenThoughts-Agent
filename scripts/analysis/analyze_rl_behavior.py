@@ -111,31 +111,72 @@ def _build_steps(args: argparse.Namespace) -> List[Step]:
     # Gated on --llm-judge because it costs API money. Runs AFTER behavioral_delta
     # in execution order (the orchestrator runs steps in append order); uses the
     # same baseline/post-RL pair the resolver chose.
+    #
+    # TWO complementary probes (each `--llm-judge-max-pairs` tasks):
+    #   1. MOST-CHANGED (behavior-delta) → Q1_llm_judge_most_changed/ — the
+    #      tasks whose behavior shifted most. Biased toward where the policy
+    #      changed; answers "when behavior changed, was it for the better?"
+    #   2. RANDOM (uniform, without replacement, DISJOINT from #1 via its
+    #      selected_tasks.json) → Q1_llm_judge_random/ — answers "did behavior
+    #      change in general?" The disjoint random draw is the unbiased control
+    #      for the most-changed sample's selection bias.
     if args.baseline_eval and args.post_rl_eval and args.llm_judge:
-        llm_md = out / "Q1_llm_judge_diff" / "report.md"
+        mc_md = out / "Q1_llm_judge_most_changed" / "report.md"
         steps.append(
             Step(
-                name="Q1.llm_judge_diff",
+                name="Q1.llm_judge_most_changed",
                 description=(
-                    f"LLM judge ({args.llm_judge_model}) pairwise behavioral comparison; "
-                    f"max {args.llm_judge_max_pairs} pairs"
+                    f"LLM judge ({args.llm_judge_model}) — {args.llm_judge_max_pairs} "
+                    f"MOST-behaviorally-changed pairs (selection-biased)"
                 ),
                 question="Q1",
-                output_marker=llm_md,
+                output_marker=mc_md,
                 runner=_module_runner(
                     "scripts.analysis.llm_judge_diff",
                     [
                         "--before", args.baseline_eval,
                         "--after", args.post_rl_eval,
-                        "--output", str(llm_md),
+                        "--output", str(mc_md),
+                        "--selection", "behavior-delta",
                         "--max-pairs", str(args.llm_judge_max_pairs),
                         "--model", args.llm_judge_model,
                         "--max-concurrent", str(args.llm_judge_concurrent),
                         *(["--max-rows", str(args.max_rows)] if args.max_rows else []),
                     ],
                 ),
-                # Optional in the sense that an API failure shouldn't fail
-                # the whole pipeline — the cheaper analyses are still useful.
+                optional=True,
+            )
+        )
+        # Random control: disjoint from the most-changed set (excludes its
+        # selected_tasks.json). Runs after #1 in append order, so that file
+        # exists; if #1 was skipped/never-run the exclude file is simply absent
+        # (no exclusion) and this is a plain uniform sample.
+        rand_md = out / "Q1_llm_judge_random" / "report.md"
+        steps.append(
+            Step(
+                name="Q1.llm_judge_random",
+                description=(
+                    f"LLM judge ({args.llm_judge_model}) — {args.llm_judge_max_pairs} "
+                    f"RANDOM pairs (uniform, disjoint from most-changed; 'changed in general?')"
+                ),
+                question="Q1",
+                output_marker=rand_md,
+                runner=_module_runner(
+                    "scripts.analysis.llm_judge_diff",
+                    [
+                        "--before", args.baseline_eval,
+                        "--after", args.post_rl_eval,
+                        "--output", str(rand_md),
+                        "--selection", "random",
+                        "--seed", "0",
+                        "--exclude-tasks-file",
+                        str(out / "Q1_llm_judge_most_changed" / "selected_tasks.json"),
+                        "--max-pairs", str(args.llm_judge_max_pairs),
+                        "--model", args.llm_judge_model,
+                        "--max-concurrent", str(args.llm_judge_concurrent),
+                        *(["--max-rows", str(args.max_rows)] if args.max_rows else []),
+                    ],
+                ),
                 optional=True,
             )
         )
@@ -456,8 +497,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--llm-judge-max-pairs",
         type=int,
-        default=30,
-        help="Max pair judgments (largest-behavioral-delta first; default 30)",
+        default=20,
+        help="Pairs judged PER probe (default 20). Applied to BOTH the most-changed "
+             "and the random-control judge runs, so total GPT-5 pairs ≈ 2× this.",
     )
     parser.add_argument(
         "--llm-judge-concurrent",

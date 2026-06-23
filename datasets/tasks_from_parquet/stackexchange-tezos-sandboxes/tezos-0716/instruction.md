@@ -1,2 +1,0 @@
-
-I am writing a smart contract which allows the delegate to be changed. I also want incoming payments to be permissioned. Ideally, I want to update the incoming payment whitelist with the baker's address at the same time the delegate is changed. But changing the delegate requires a TKeyHash while sp.sender is of type TAddress . How can I compare, or convert, a TKeyHash to TAddress and the reverse? I have tried casting with sp.address(baker_key_hash) or sp.key_hash(baker_address) but that gives an error.

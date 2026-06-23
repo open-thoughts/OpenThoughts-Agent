@@ -1,2 +1,0 @@
-
-Could you please сlarify regarding the edge_of_baking_over_staking parameter? Are bakers able to set this percentage manually, are there any limitations for bakers on the percentage or is it set automatically? This part of an article just sounds confusing in that it's not clear how rewards coming from stakers will be divided: "It is not possible for a public baker to freeze their 15% edge. It is always unfrozen. Likewise, they may not decide to do different things with the rewards coming from their own state vs their stakers; it is all divided in the same fashion."

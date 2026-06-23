@@ -1,2 +1,0 @@
-
-Endorser and accuser work fine, but baker gets this error: /usr/local/bin/tezos-baker-005-PsBabyM1 --chain main --base-dir "/var/run/te zos/client" run with local node "/var/run/tezos/node/data" "baker" Waiting for the node to be synchronized with its peers... Node synchronized. Baker started. Fatal error: No such file or directory I checked and /var/run/tezos/client and /var/run/tezos/node/data exist. I can't figure out what "file or directory" is the baker talking about. Edit: I am using this repository to run Tezos on Kubernetes.

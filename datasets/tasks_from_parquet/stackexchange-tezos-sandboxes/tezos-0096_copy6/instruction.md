@@ -1,2 +1,0 @@
-
-I'm setting up a Linux Tezos baking node with Ledger Nano S. The node is running and synced, but list connected ledgers will not show that the Ledger is connected. Both the wallet and baking apps are installed from Ledger Live. The firmware on the Nano S is the newest. Linux shows the USB with lsusb , and dmesg shows all the details of the Ledger, but list connected ledgers finds no Nano S. I have modified my udev rules to include the correct group for my user account. But the Tezos client still doesn't detect the Ledger Nano S.

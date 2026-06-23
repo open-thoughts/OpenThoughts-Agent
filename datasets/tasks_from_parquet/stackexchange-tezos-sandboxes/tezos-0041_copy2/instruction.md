@@ -1,2 +1,0 @@
-
-I have the following contract: parameter (pair :doc (string %name) (string %sig)); storage (list (pair :doc (string %name) (string %sig))); code { DUP ; DIP { CDR @storage_slash_1 } ; CAR @parameter_slash_2 ; SWAP ; SWAP ; CONS ; NIL operation ; PAIR }; How can I call this contract with an doc type as parameter? All the example I find use a single string or int as parameter. I have been trying: tezos-client transfer 0 from yolo to docs --arg '{ name = "test"; sig = "abcd" }' But I guess that is how liquidity expresses parameters?

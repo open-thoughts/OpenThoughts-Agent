@@ -1,2 +1,0 @@
-
-Is there a more sensible way to convert an int to a string in Cameligo? Alternatively, is there a way to concatenate an int or nat with a string? type lookup = (int, string) map let lookup: lookup = Map.literal[(0, "0"); (1, "1"); (2, "2"); (3, "3"); (4, "4"); (5, "5"); (6, "6"); (7, "7"); (8, "8"); (9, "9")] let digitToStr (key: int): string = match Map.find_opt key lookup with Some str -> str | None -> (failwith "Not found": string) let rec intToStr ((x, str): int * string) : string = if (x

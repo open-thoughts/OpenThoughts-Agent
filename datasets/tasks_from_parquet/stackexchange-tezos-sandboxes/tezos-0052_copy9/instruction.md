@@ -1,2 +1,0 @@
-
-I used below command to start my node container in private mode: ./mainnet.sh start --private-mode --no-bootstrap-peers --bootstrap-threshold=1 --connections 1 --peer public-node-ip Node got started in private mode, but now it is not able to connect to public node ip and also when I stop and start my container using the below command, the private mode is not getting removed. ./mainnet.sh stop ./mainnet.sh start How do I connect to the peer node while still in private mode, or how do I remove the private mode so that my baker doesn't stop functioning for now?

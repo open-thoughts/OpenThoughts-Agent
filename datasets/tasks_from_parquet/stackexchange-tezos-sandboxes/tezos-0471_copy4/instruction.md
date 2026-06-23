@@ -1,2 +1,0 @@
-
-From my understanding, getBalance, getAllowance, getTotalSupply & getAdministrator entrypoint requires another contract to read the values. How will the entry point of the second contract look like for getBalance for example @sp.entry_point def getBalance(self, params): sp.transfer(sp.as_nat(self.data.balances[params.arg.owner].balance), sp.tez(0), sp.contract(sp.TNat, params.target).open_some())

@@ -1,2 +1,0 @@
-
-I'm trying to update my node to the latest version but I'm stuck with the following error message on my Ubuntu 18.04 box: File "none", line 1: Error: Files vendors/ocplib-resto/lib_resto-cohttp/resto_cohttp.cmxa and /home/test/tezos/_opam/lib/cohttp-lwt-unix/cohttp_lwt_unix.cmxa make inconsistent assumptions over implementation Cohttp_lwt_unix__Client Makefile:20: recipe for target 'all' failed make: *** [all] Error 1 Any idea where I missed something?

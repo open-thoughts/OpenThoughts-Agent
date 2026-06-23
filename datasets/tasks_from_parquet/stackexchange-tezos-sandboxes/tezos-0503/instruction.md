@@ -1,2 +1,0 @@
-
-For a research project, I'm trying to implement my own signer, such that I can run tezos-client import secret key ALIAS "http://..." and then I can use tezos-client to transfer and tezos-baker to bake. What API does my server need to implement in order for this to work? I've seen a few projects that intend to do this like https://github.com/tacoinfra/remote-signer and I'm trying to understand if the API they supply is what I need: POST /keys/ GET /keys/ GET /authorized_keys Thanks

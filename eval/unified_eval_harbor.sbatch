@@ -948,7 +948,8 @@ if [ "${EVAL_FORCE_FRESH:-false}" != "true" ] && [ -d "$EXISTING_JOB_DIR" ] && [
         --filter-error-type DaytonaRateLimitError \
         --filter-error-type CancelledError \
         --filter-error-type AgentEnvironmentTimeoutError \
-        --filter-error-type SandboxBuildFailedError
+        --filter-error-type SandboxBuildFailedError \
+        --filter-error-type VerificationNotCompletedError
 else
     echo "Starting new job"
 

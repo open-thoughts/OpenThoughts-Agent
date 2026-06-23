@@ -1,2 +1,0 @@
-
-If you look at the documentation for .../preapply/block , you see two parameters: sort , and timestamp But there is no explanation for what these do. The RPC help does not even mention them: $ ./tezos-client rpc list /chains/main/blocks/head/helpers/preapply/block Available services: - POST /chains/main/blocks/head/helpers/preapply/block Simulate the validation of a block that would contain the given operations and return the resulting fitness and context hash. Can someone explain what these two parameters mean?

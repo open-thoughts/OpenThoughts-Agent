@@ -1,2 +1,0 @@
-
-Want to implement mappings like this in smartpy : // Mapping from token ID to owner mapping (uint256 => address) private _tokenOwner; // Mapping from token ID to approved address mapping (uint256 => address) private _tokenApprovals; // Mapping from owner to number of owned token mapping (address => Counters.Counter) private _ownedTokensCount; // Mapping from owner to operator approvals mapping (address => mapping (address => bool)) private _operatorApprovals;

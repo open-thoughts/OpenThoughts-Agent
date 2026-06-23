@@ -1,2 +1,0 @@
-
-To pack an address with the /pack_data we pass the following: const packedData = await axios.post( `${nodeURL}/chains/main/blocks/head/helpers/scripts/pack_data`, { data: { string: "tz1SaUEpoM8ME55RdMbNifypEqETodYKyNBD" }, type: { prim: 'address' }, gas: '800000' }, { headers: { 'Content-Type': 'application/json' } } ) What about packing a map, for example: const myMap = { fieldOne: 2, fieldTwo: "tz1SaUEpoM8ME55RdMbNifypEqETodYKyNBD" } Thank you.

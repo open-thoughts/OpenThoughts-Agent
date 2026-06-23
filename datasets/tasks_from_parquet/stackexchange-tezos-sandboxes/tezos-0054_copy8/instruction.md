@@ -1,2 +1,0 @@
-
-According to grammar present in Michelson specification , there are string constants for types signature , key , key_hash . What is the precise format of these strings? Specifically: Suppose I have a key edpktieBMrR9Df3dqzZAJpDZBXb1h188fyrQyRJcm5RH2WpbvMVR8b . It's a ed25519 public key which is 32 bytes. How do I convert this string to bytes? Same question about signature and key_hash . Which hash algorithm is used to compute key_hash ? Which data is hashed? 32 bytes of the public key?

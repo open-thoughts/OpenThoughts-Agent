@@ -34,7 +34,19 @@ else
     exit 1
 fi
 
-TUNNEL_PORT="${TUNNEL_PORT:-27003}"
+# SOCKS5 tunnel port. Default to a per-job port derived from SLURM_JOB_ID so that
+# concurrent jobs (e.g. parallel HF uploads) don't collide on one fixed port — a fixed
+# 27003 default previously caused two simultaneous uploads to fail with "address already
+# in use" (ExitOnForwardFailure). Outside SLURM, fall back to 27003. Override explicitly
+# with TUNNEL_PORT=<port> if needed.
+if [ -z "${TUNNEL_PORT:-}" ]; then
+    if [ -n "${SLURM_JOB_ID:-}" ]; then
+        # range 20000-28999 (array elements get distinct SLURM_JOB_IDs → distinct ports)
+        TUNNEL_PORT=$(( 20000 + SLURM_JOB_ID % 9000 ))
+    else
+        TUNNEL_PORT=27003
+    fi
+fi
 
 # SSH key for intra-cluster tunneling (cert-based, no passphrase)
 SSH_KEY="${SSH_KEY:-${HOME}/.ssh/leonardo_daytona}"

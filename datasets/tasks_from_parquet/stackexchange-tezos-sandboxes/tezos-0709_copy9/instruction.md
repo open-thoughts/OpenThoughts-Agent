@@ -1,2 +1,0 @@
-
-I recently started getting "too few connections" errors on my full node running the latest 10.x release, after not having issues for months. I thought it might have something to do with the 11.x upgrade, so I upgraded to 11.0 but I'm getting the same issues. Any ideas what might be going on? Here's the error I'm getting: Here's my config: FYI, I double-checked and my listen-addr (port 9733) is open. Thanks!

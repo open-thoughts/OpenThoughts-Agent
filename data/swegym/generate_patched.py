@@ -135,12 +135,124 @@ def get_specs(repo: str, version: str) -> dict:
     based on the original SWE-Bench-Fork specifications.
     """
     repo = repo.lower()
-    
+
     # 1. Determine Python Version and Install Command
     py_v = "3.9"
     install_cmd = "pip install --prefer-binary -e ."
-    
-    if "moto" in repo: 
+    # Per-repo flag: whether the GLOBAL `cython<3` PIP_CONSTRAINT applied in
+    # ensure_dependencies() should be neutralized for this repo. cython<3 is
+    # required for some legacy repos (conan, dvc, old pandas <2) but is FATAL
+    # to the modern meson-python build used by pandas>=2.0 / modin>=2.x.
+    needs_modern_cython = False
+    # Per-repo flag: skip the trailing `pip install pytest>=8` override in the
+    # test-script template so repo-specific pytest pins (e.g. dvc's pytest<8)
+    # survive.
+    repo_pins_pytest = False
+    # Per-repo flag (round-3 / v5): gate OFF the SHARED ensure_dependencies()
+    # generic `requirements-dev.txt` + `requirements.txt` install step. That
+    # generic step is the SOLE source of the multi-GB torch + 18x nvidia-cuda +
+    # triton bloat that overflows Daytona's HARD 10 GB per-sandbox disk cap for
+    # pandas (which has NO torch dep) and MONAI. When True, the template skips
+    # the generic dev/runtime-deps install entirely and relies on the repo's
+    # own explicit `install_cmd` to pull exactly what the F2P/P2P tests need.
+    skip_generic_dev_deps = False
+    # Per-repo memory override (MB) baked into task.toml [environment].memory_mb.
+    # Daytona allows >10 GB MEMORY (only DISK is hard-capped at 10 GB). modin's
+    # Ray backend OOMs at the default 2 GB; give it 8 GB.
+    override_memory_mb = None
+
+    if "pandas" in repo:
+        # pandas: biggest single failure cluster in v3 (11/21). No branch
+        # previously -> fell through to generic + global cython<3, which breaks
+        # the pandas>=2.0 meson build.
+        try:
+            v_float = float(version)
+        except Exception:
+            v_float = 2.0
+        if v_float >= 2.2:
+            py_v = "3.11"
+        elif v_float >= 2.0:
+            py_v = "3.10"
+        else:  # 1.x
+            py_v = "3.9"
+        # pandas has NO torch dependency — the torch+CUDA bloat that overflowed
+        # the 10 GB disk in v4 was dragged in PURELY by the generic
+        # requirements-dev.txt install. Gate that off and install ONLY the
+        # minimal build deps + the handful of libs the F2P/P2P tests import
+        # (hypothesis/pytest-asyncio + pytz/python-dateutil are pandas runtime
+        # test deps; openpyxl/xlrd/etc. are NOT installed — those tests skip
+        # cleanly when the optional dep is absent). This drops pandas's
+        # footprint to ~1-2 GB, well under the 10 GB cap.
+        skip_generic_dev_deps = True
+        # Minimal test-runtime deps the pandas suite needs to import/collect.
+        test_deps = (
+            '"pytest>=7" "pytest-xdist" "hypothesis>=6" "pytest-asyncio" '
+            '"pytz" "python-dateutil"'
+        )
+        # CRITICAL: with --no-build-isolation the build uses the ENV's setuptools.
+        # pandas's setup.py imports `pkg_resources` at build time; setuptools>=81
+        # removed pkg_resources -> `ModuleNotFoundError: No module named
+        # 'pkg_resources'` (this was the v5-run-1 failure for ALL 11 pandas tasks,
+        # AFTER the disk overflow was fixed). Pin setuptools<81 (still ships
+        # pkg_resources) in the build-dep line.
+        build_setuptools = '"setuptools<81" "wheel"'
+        if v_float >= 2.0:
+            # meson-python build system: install build deps with NO build
+            # isolation, and do NOT constrain cython<3. NO requirements-dev.txt
+            # (it pulls torch+CUDA -> 10 GB disk overflow).
+            needs_modern_cython = True
+            install_cmd = (
+                f'python -m pip install {build_setuptools} "meson-python" "ninja" "cython>=3" "versioneer[toml]" "numpy"; '
+                f'python -m pip install --prefer-binary {test_deps}; '
+                'python -m pip install --prefer-binary -e . --no-build-isolation'
+            )
+        else:
+            # pandas 1.x: legacy setuptools build; cython<3 + numpy<1.24 OK.
+            # NO requirements-dev.txt.
+            install_cmd = (
+                f'python -m pip install {build_setuptools} "cython<3" "numpy<1.24"; '
+                f'python -m pip install --prefer-binary {test_deps}; '
+                'python -m pip install --prefer-binary -e . --no-build-isolation'
+            )
+    elif "modin" in repo:
+        # modin: 2 failures in v3, no branch previously. modin>=2.x pulls
+        # pandas>=2.x and uses the same meson build constraints.
+        py_v = "3.9"
+        try:
+            v_float = float(version)
+        except Exception:
+            v_float = 0.0
+        # modin pins a specific compatible pandas internally via its own
+        # setup; install with the .[all] extra. modin's pandas dep build is
+        # the meson path for pandas 2.x, so do not force cython<3.
+        # Round-3/v5: modin v0.23 BUILT + RAN fine in v4 but Ray-OOM'd at the
+        # 2 GB default mem -> bump memory to 8 GB (Daytona allows >10 GB MEMORY;
+        # only DISK is hard-capped). Also gate off the generic dev-deps install
+        # to keep the install lean and under the 10 GB disk cap.
+        needs_modern_cython = True
+        skip_generic_dev_deps = True
+        override_memory_mb = 8192
+        install_cmd = (
+            'python -m pip install "setuptools<81" "wheel" "meson-python" "ninja" "cython>=3"; '
+            'python -m pip install --prefer-binary "pytest>=7" "pytest-xdist"; '
+            'python -m pip install --prefer-binary -e ".[all]" --no-build-isolation || '
+            'python -m pip install --prefer-binary -e "."'
+        )
+    elif "mypy" in repo:
+        # mypy: 1 failure (0.800). 0.8x era predates pytest>=8; use py3.8 and
+        # the repo's own test-requirements; do NOT force pytest>=8.
+        try:
+            v_float = float(version)
+        except Exception:
+            v_float = 0.8
+        py_v = "3.8" if v_float < 0.9 else "3.9"
+        repo_pins_pytest = True
+        install_cmd = (
+            'python -m pip install -r test-requirements.txt || true; '
+            'python -m pip install -r mypy-requirements.txt || true; '
+            'python -m pip install --prefer-binary -e .'
+        )
+    elif "moto" in repo:
         try:
             v_float = float(version)
             if v_float >= 5.0: py_v = "3.12"
@@ -149,11 +261,15 @@ def get_specs(repo: str, version: str) -> dict:
         except:
             py_v = "3.10"
         install_cmd = "make init"
-    elif "conan" in repo: 
+    elif "conan" in repo:
         py_v = "3.10"
+        # conan is a legacy repo that genuinely needs cython<3 (kept global).
         # Authors' approach: force cython<3 for legacy compatibility
         install_cmd = "echo 'cython<3' > /tmp/constraint.txt; export PIP_CONSTRAINT=/tmp/constraint.txt; python -m pip install -r conans/requirements.txt; python -m pip install -r conans/requirements_server.txt; python -m pip install -r conans/requirements_dev.txt"
     elif "dvc" in repo:
+        # dvc explicitly pins pytest<8 in its install_cmd below; do NOT let the
+        # template clobber it with pytest>=8.
+        repo_pins_pytest = True
         try:
             v_float = float(version)
             if v_float >= 1.0: py_v = "3.9"
@@ -164,10 +280,46 @@ def get_specs(repo: str, version: str) -> dict:
         install_cmd = 'python -m pip install --upgrade pip wheel GitPython; python -m pip install \"cython<3.0.0\" && python -m pip install --no-build-isolation pyyaml==5.4.1; python -m pip install git+https://github.com/iterative/mock-ssh-server.git || true; python -m pip install -r tests/requirements.txt || true; python -m pip install -r test-requirements.txt || true; python -m pip install -e \".[tests,dev,all_remotes,all,testing]\";'
         # DVC legacy pins
         install_cmd += ' python -m pip install \"numpy<=1.20\"; python -m pip install \"pytest<8\";'
-    elif "monai" in repo: 
-        py_v = "3.8"
-        # Authors' approach: remove git links and install pinned setuptools
-        install_cmd = "sed -i '/^git+https:\\/\\/github.com\\/Project-MONAI\\//d' requirements-dev.txt; python -m pip install types-pkg-resources==0.1.3 pytest; pip install -r requirements-dev.txt; python setup.py develop;"
+    elif "monai" in repo:
+        # MONAI: per-version py + torch pin. v3 hardcoded py3.8 + latest torch
+        # for ALL versions, breaking the old-API v0.5/v0.7 import/collection.
+        try:
+            v_float = float(version)
+        except Exception:
+            v_float = 1.1
+        if v_float >= 1.0:
+            py_v = "3.9"
+            torch_pin = '"torch>=1.13,<2.1" "torchvision"'
+        elif v_float >= 0.6:
+            py_v = "3.8"
+            torch_pin = '"torch==1.9.*" "torchvision==0.10.*"'
+        else:  # v0.5 and older
+            py_v = "3.8"
+            torch_pin = '"torch==1.8.*" "torchvision==0.9.*"'
+        # Round-3/v5: MONAI genuinely needs torch, but the FULL requirements-dev.txt
+        # pulls the CUDA torch build (18x nvidia-cuda-* + triton, multi-GB) and
+        # overflowed the 10 GB disk cap in v4. Install the CPU-ONLY torch wheel
+        # (~200 MB vs multi-GB CUDA) from the PyTorch CPU index + monai + pytest,
+        # and gate OFF the generic requirements-dev.txt install. The oracle gate
+        # has gpu=0, so CPU torch is correct anyway. This aims to fit MONAI under
+        # 10 GB; if even CPU torch + monai + numpy/scipy can't fit, MONAI stays
+        # the residual drop (do NOT balloon).
+        skip_generic_dev_deps = True
+        # CPU-only torch index keeps torch at the ~200 MB CPU wheel instead of
+        # the multi-GB +cuXXX build.
+        cpu_torch_index = "--index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple"
+        install_cmd = (
+            # MONAI setup.py imports pkg_resources at build time; setuptools>=81
+            # removed it (-> ModuleNotFoundError). Pin setuptools<81 (ships
+            # pkg_resources). `python setup.py develop` also needs setuptools.
+            'python -m pip install "setuptools<81" "wheel"; '
+            "python -m pip install types-pkg-resources==0.1.3 pytest; "
+            f"python -m pip install --prefer-binary {cpu_torch_index} {torch_pin}; "
+            # MONAI's own minimal deps (numpy already pulled by torch); install the
+            # package editable WITHOUT the heavy requirements-dev.txt doc/CI stack.
+            "python -m pip install --prefer-binary numpy; "
+            "python setup.py develop;"
+        )
     elif "hydra" in repo: 
         py_v = "3.8"
         install_cmd = "pip install --prefer-binary -r requirements/dev.txt && pip install --prefer-binary -e ."
@@ -218,7 +370,11 @@ def get_specs(repo: str, version: str) -> dict:
     return {
         "python": py_v,
         "pre_install": apt_map.get(py_v, []),
-        "install": install_cmd
+        "install": install_cmd,
+        "needs_modern_cython": needs_modern_cython,
+        "repo_pins_pytest": repo_pins_pytest,
+        "skip_generic_dev_deps": skip_generic_dev_deps,
+        "override_memory_mb": override_memory_mb,
     }
 
 
@@ -277,7 +433,43 @@ RUN /bin/bash -c "source /opt/miniconda3/bin/activate && \\
 RUN echo "source /opt/miniconda3/bin/activate && conda activate testbed" >> /root/.bashrc
 """
 
-TASK_TOML_CONTENT = """\
+# Repos whose install is heavy (compiled / large dep tree) or whose test suites
+# are large -> the verifier needs a longer timeout to fit compile + test run.
+HEAVY_VERIFIER_REPOS = ("pandas", "monai", "dvc", "modin")
+
+# Cap on the pass-to-pass list size. v3 had tasks gating on thousands of P2P
+# tests (swegym-1556: 3376) which time out the verifier. We keep a
+# representative prefix so the gate is still meaningful but runnable.
+MAX_P2P_TESTS = 100
+
+
+def _verifier_timeout_for(repo: str) -> float:
+    repo_l = (repo or "").lower()
+    if any(name in repo_l for name in HEAVY_VERIFIER_REPOS):
+        return 1800.0
+    return 600.0
+
+
+def _render_task_toml(row: Dict[str, str]) -> str:
+    repo = row.get("repo", "")
+    verifier_timeout = _verifier_timeout_for(repo)
+    specs = get_specs(repo, row.get("version", "unknown"))
+
+    # Per-task [environment] section. Round-3/v5: modin's Ray backend OOMs at
+    # the default 2 GB; bake an 8 GB memory override (Daytona allows >10 GB
+    # MEMORY; only DISK is hard-capped at 10 GB, which we never exceed). The
+    # override flows EnvironmentConfig.memory_mb -> harbor base env -> Daytona
+    # Resources(memory=...). DISK is intentionally NOT overridden (>10 GB is a
+    # hard vendor cap; the slim installs are designed to fit the default).
+    override_memory_mb = specs.get("override_memory_mb")
+    environment_block = ""
+    if override_memory_mb:
+        environment_block = f"""
+[environment]
+memory_mb = {override_memory_mb}
+"""
+
+    return f"""\
 version = "1.0"
 
 [agent]
@@ -295,8 +487,8 @@ tags = [
 
 [verifier]
 restart_environment = false
-timeout_sec = 600.0
-"""
+timeout_sec = {verifier_timeout}
+{environment_block}"""
 
 
 def _normalize_tests(raw: Optional[Sequence[str]]) -> List[str]:
@@ -474,6 +666,53 @@ def _render_test_script(row: Dict[str, str], pass_tests: Sequence[str], fail_tes
     version = row.get("version", "unknown")
     specs = get_specs(repo, version)
 
+    # Scope the cython<3 constraint per-repo. It is required for some legacy
+    # repos but FATAL to the modern meson build (pandas>=2.0 / modin>=2.x).
+    if specs.get("needs_modern_cython"):
+        cython_constraint_block = (
+            'log "Skipping cython<3 constraint (repo needs modern cython/meson build)"'
+        )
+    else:
+        cython_constraint_block = (
+            'echo "cython<3" > /tmp/constraint.txt\n'
+            "            export PIP_CONSTRAINT=/tmp/constraint.txt"
+        )
+
+    # Only force pytest>=8 if the repo doesn't pin its own pytest version.
+    if specs.get("repo_pins_pytest"):
+        pytest_install_block = (
+            'log "Respecting repo pytest pin (skipping pytest>=8 override)"'
+        )
+    else:
+        pytest_install_block = (
+            'pip install "pytest>=8.0.0" "pytest-xdist>=3.5.0" || true'
+        )
+
+    # Round-3/v5: gate OFF the SHARED generic requirements-dev.txt + requirements.txt
+    # install for repos whose recipe builds explicitly. That generic step is the
+    # SOLE source of the multi-GB torch+CUDA+triton bloat that overflows Daytona's
+    # HARD 10 GB per-sandbox disk cap (pandas has NO torch dep; MONAI uses CPU torch
+    # via its own recipe). When skipped, the repo's own install_cmd pulls exactly
+    # what the F2P/P2P tests import.
+    if specs.get("skip_generic_dev_deps"):
+        generic_deps_block = (
+            'log "Skipping generic requirements-dev.txt / requirements.txt '
+            '(repo recipe installs deps explicitly; avoids torch/CUDA disk overflow)"'
+        )
+    else:
+        generic_deps_block = dedent(
+            """\
+            if [ -f requirements-dev.txt ]; then
+                log "Installing requirements-dev.txt"
+                pip install --prefer-binary -r requirements-dev.txt || true
+            fi
+
+            if [ -f requirements.txt ]; then
+                log "Installing requirements.txt"
+                pip install --prefer-binary -r requirements.txt || true
+            fi"""
+        ).replace("\n", "\n            ")
+
     return dedent(
         f"""\
         #!/usr/bin/env bash
@@ -517,24 +756,18 @@ def _render_test_script(row: Dict[str, str], pass_tests: Sequence[str], fail_tes
 
         ensure_dependencies() {{
             log \"Installing base Python tooling\"
-            
-            # Authors' approach: Use PIP_CONSTRAINT to force cython<3 for legacy compatibility
-            # This fixes the 'AttributeError: build_ext object has no attribute cython_sources' error
-            echo \"cython<3\" > /tmp/constraint.txt
-            export PIP_CONSTRAINT=/tmp/constraint.txt
+
+            # PIP_CONSTRAINT cython<3 is scoped PER-REPO (legacy repos need it;
+            # it is fatal to the modern meson build used by pandas>=2.0/modin>=2.x).
+            {cython_constraint_block}
 
             # Use prefer-binary to avoid building from source where possible (fixes PyYAML/Cython issues)
             pip install --prefer-binary --upgrade pip setuptools wheel
 
-            if [ -f requirements-dev.txt ]; then
-                log \"Installing requirements-dev.txt\"
-                pip install --prefer-binary -r requirements-dev.txt || true
-            fi
-
-            if [ -f requirements.txt ]; then
-                log \"Installing requirements.txt\"
-                pip install --prefer-binary -r requirements.txt || true
-            fi
+            # Generic dev/runtime deps install is gated per-repo (skipped for
+            # repos whose recipe installs explicitly, to avoid torch/CUDA disk
+            # overflow on the 10 GB cap).
+            {generic_deps_block}
 
             log \"Running repo-specific install...\"
             {specs['install']}
@@ -547,7 +780,7 @@ def _render_test_script(row: Dict[str, str], pass_tests: Sequence[str], fail_tes
                 sed -i 's/re._pattern_type/type(re.compile(\"\"))/g' \"$SURE_OLD_PY\" || true
             fi
 
-            pip install \"pytest>=8.0.0\" \"pytest-xdist>=3.5.0\" || true
+            {pytest_install_block}
         }}
 
         run_test_group() {{
@@ -674,6 +907,11 @@ def generate_tasks(args: argparse.Namespace) -> Tuple[Path, Dict[str, object]]:
         pass_tests = _normalize_tests(row.get("PASS_TO_PASS"))
         fail_tests = _normalize_tests(row.get("FAIL_TO_PASS"))
 
+        # Subset giant pass-to-pass gates so the verifier doesn't time out on
+        # multi-thousand-test runs (e.g. swegym-1556 had 3376 P2P tests).
+        if len(pass_tests) > MAX_P2P_TESTS:
+            pass_tests = pass_tests[:MAX_P2P_TESTS]
+
         instruction_content = _render_instruction(row, pass_tests, fail_tests)
         dockerfile_content = _render_dockerfile(row)
         solution_content = _render_solution_script(row, row.get("test_patch", ""), row.get("patch", ""))
@@ -702,7 +940,7 @@ def generate_tasks(args: argparse.Namespace) -> Tuple[Path, Dict[str, object]]:
             test_sh_content=test_sh_content,
             test_py_content=test_py_content,
             dockerfile_content=dockerfile_content,
-            task_toml_content=TASK_TOML_CONTENT,
+            task_toml_content=_render_task_toml(row),
         )
 
         _write_tests_config(task_dir, row, pass_tests, fail_tests)

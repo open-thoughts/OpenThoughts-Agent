@@ -1,0 +1,2 @@
+laion/loopshape-30-8B
+penfever/stageD-thinkbudget-80-8B

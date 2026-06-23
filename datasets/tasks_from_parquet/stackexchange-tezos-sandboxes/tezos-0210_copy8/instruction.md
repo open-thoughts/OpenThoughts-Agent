@@ -1,2 +1,0 @@
-
-I just received the new Ledger Nano X yesterday. Currently the CLI client does not seem to recognise it. When I enter tezos-client list connected ledgers , I receive the following message: No device found. Make sure a Ledger Nano S is connected and in the Tezos Wallet app”. The device works fine though with TezBox. Is there a way to fix this without an update for the tezos-wallet and/or Ledger app?

@@ -1,2 +1,0 @@
-
-Within my smartpy contract, I want to convert from one type into another using sp.pack() and sp.unpack . Below is an example of the method I am trying to use, converting a string to bytes. myString = sp.local("myString", "dummyString") packedString = sp.pack(myString.value) myBytes = sp.unpack(packedString, t = sp.TBytes) The problem is the type of the output I get is sp.TOption(sp.TBytes) when what I wanted was just sp.TBytes What else should I do to make sure the type isn't sp.TOption ?

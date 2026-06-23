@@ -164,6 +164,19 @@ echo "Starting vLLM server for model: $MODEL"
 source "$DCFT/eval/build_vllm_cmd.sh"
 build_vllm_cmd "$PYTHON_BIN" "$MODEL" "$GPU_MEMORY_UTIL"
 
+# ==============================================================================
+# Build model_info for hosted_vllm (harbor #339 hard-requires it; see Jupiter
+# sbatch for the full rationale). Derived from served context + output budget;
+# costs zeroed (self-hosted). Passed below as an --agent-kwarg.
+# ==============================================================================
+MI_MAX_MODEL_LEN="${EVAL_VLLM_MAX_MODEL_LEN:-32768}"
+MI_MAX_OUTPUT="${EVAL_MAX_OUTPUT_TOKENS:-16384}"
+if [ "$MI_MAX_OUTPUT" -ge "$MI_MAX_MODEL_LEN" ] 2>/dev/null; then
+    MI_MAX_OUTPUT=$(( MI_MAX_MODEL_LEN / 2 ))
+fi
+MODEL_INFO_JSON="{\"max_input_tokens\":${MI_MAX_MODEL_LEN},\"max_output_tokens\":${MI_MAX_OUTPUT},\"input_cost_per_token\":0,\"output_cost_per_token\":0}"
+echo "[model_info] $MODEL_INFO_JSON"
+
 env TORCHDYNAMO_DISABLE=1 \
     TMPDIR="/tmp" \
     TRITON_CACHE_DIR="/tmp/triton_cache_${USER}" \
@@ -379,6 +392,7 @@ else
         --env "daytona" \
         --agent-kwarg "api_base=http://localhost:8000/v1" \
         --agent-kwarg "key=fake_key" \
+        --agent-kwarg "model_info=$MODEL_INFO_JSON" \
         --n-attempts 3 \
         --job-name "$RUN_TAG" \
         --config "$HARBOR_CONFIG" \

@@ -1,2 +1,0 @@
-
-I've created a node that runs well with these steeps : git clone -b mainnet https://gitlab.com/tezos/tezos.git cd tezos git checkout mainnet git rev-parse HEAD cd sh Updating ~/.profile.) opam switch 4.06.1 opam update eval $(opam env) cd tezos make build-deps eval $(opam env) make ./tezos-node identity generate ./tezos-node config init ./tezos-node config update --rpc-addr=127.0.0.1:8732 The node runs good as a full node or private one. But when I try to vote I can't do it because tezos-client gives me a syntax error because it doesn't recognize the commands.

@@ -1,2 +1,0 @@
-
-I have been baking for over 30 days, but my baker logs always show the following: client.nonce_revelation: Nothing to reveal for block BLjjy3pgs8pN Apr 15 05:23:46 xxxx /var/log/tezos/tezos_baking.log[8263]: Apr 15 05:23:46 - client.baking: No slot found at level 395863 (max_priority = 64) Does this mean that there is a problem with my baking setup? Currently, I have no reward for baking. Can someone help check my address? https://tzscan.io/tz1e2meErj7eEfXwqr7bDK6N1YatmLaugfMp?default=baking

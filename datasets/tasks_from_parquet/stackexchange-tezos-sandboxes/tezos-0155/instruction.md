@@ -1,2 +1,0 @@
-
-I am installing Tezos on a Windows 10 Linux Subsystem (Ubuntu 18.04) following the official Tezos instructions . Everything works correctly until the command make build-deps which produces the following error output: : not foundnstall_build_deps.sh: 2: ./scripts/install_build_deps.sh: : not foundnstall_build_deps.sh: 5: ./scripts/install_build_deps.sh: /version.shnstall_build_deps.sh: 6: .: Can't open /mnt/d/development/blockchain/tezos/source/Tezos_original/tezos/scripts/ Makefile:82: recipe for target 'build-deps' failed make: *** [build-deps] Error 2#

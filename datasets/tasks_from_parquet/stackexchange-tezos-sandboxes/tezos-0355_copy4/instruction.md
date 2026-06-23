@@ -1,2 +1,0 @@
-
-I was trying to send xtz to Binance. At first, I tried to send from Tezbox, it says the transaction was successful. However my xtz are not deposited yet (after hours). I checked the transaction history, there is no such sending transaction. Then I tried again to send from Galleon, it prompts proto.005-PsBabyM1.contract.previously_revealed_key error. It seems my xtz are stuck in the wallet, can any guru help?

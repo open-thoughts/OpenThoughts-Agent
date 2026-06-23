@@ -1,2 +1,0 @@
-
-I've configured Taquito to use the BeaconWallet this way: const wallet = new BeaconWallet(options) await wallet.requestPermissions({ network: { type: 'edonet' } }) this.Tezos.setProvider({ wallet }) It connects to the wallet. When I try to call a contract, I'm getting the error: UnconfiguredSignerError, No signer has been configured. . How do I set the Beacon Wallet to be the signer? I'm using the Temple Wallet browser extension.

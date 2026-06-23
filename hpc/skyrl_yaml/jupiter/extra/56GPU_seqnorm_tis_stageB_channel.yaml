@@ -1,0 +1,381 @@
+# =============================================================================
+# Stage-B token-reward-channel e2e ablation (2026-06-14)
+# =============================================================================
+# This config IS the symclip base (56GPU_seqnorm_tis_untrunc_symclip.yaml) with
+# exactly ONE behavioral change: the Stage-B per-token shaping CHANNEL is turned
+# ON, carrying ZEROS (no-op). Span tagging is on. The reward OUTCOME is left
+# untouched (enable_reward_shaping stays false -> pure binary RLOO-N), because
+# the channel-fill in terminal_bench_generator is gated solely on
+# enable_token_reward_channel, independent of enable_reward_shaping.
+#
+#   symclip base (job 856272):    channel OFF  -> pure RLOO-N
+#   this run:                     channel ON (zeros) + span tags -> still pure RLOO-N
+#   => expected: trains IDENTICALLY to the channel-off baseline, with NO
+#      distributed/keyset/all_reduce mismatch. This is the production e2e proof
+#      that the Stage-B channel infra is distributed-safe before C/D add real
+#      shaping (the bug class unit tests miss: TIS/log-ratio all_reduce keyset
+#      deadlocks).
+#
+# Channel gates (3, all must be set):
+#   harbor.reward_shaping.enable_token_reward_channel: true   (generator-side)
+#   harbor.reward_shaping.enable_span_tagging:         true   (F4 span tags)
+#   trainer.algorithm.enable_token_reward_channel:     true   (trainer-side pull)
+# Everything else (untrunc sampling, symmetric clip 0.2/0.2, seqnorm, TIS,
+# lr 8e-6, 14 nodes, batch sizes, placement) is byte-identical to symclip.
+# Runs off SkyRL feuer/loop-reward (merged current w/ penfever/working).
+# =============================================================================
+entrypoint: examples.terminal_bench.entrypoints.main_tbench
+
+# Hydra config groups (+ prefix in CLI)
+config_groups:
+  terminal_bench_config: terminal_bench
+
+# Terminal bench / agentic environment settings
+terminal_bench:
+  # trials_dir: Directory for Harbor trial artifacts (derived from experiments_dir if null)
+  trials_dir: null
+
+  # Harbor configuration - schema-driven mapping to TrialConfig
+  harbor:
+    # Agent settings
+    name: terminus-2
+    max_episodes: 999999
+    enable_summarize: false
+    store_all_messages: true
+    trajectory_config:
+      raw_content: true
+    enable_episode_logging: false
+    record_terminal_session: false
+    enable_pane_logging: false
+
+    # Strict JSON parser
+    strict_json_parser: true
+
+    # Interleaved Thinking Settings
+    interleaved_thinking: true
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+    # 2026-05-27: 1800 → 900. The boundary-hugging a3 datasets (stack-junit,
+    # nemotron, methods2test) hit the 1800s agent-timeout wall on ~70-95% of
+    # trials (GLM-4_7-swesmith can't finish these in 1800s), so every group
+    # waited ~1800s for its slowest sample → generation buffer crawled (5/64
+    # in 4h19) and chains never reached training step 1. Halving to 900s
+    # ~2× the valid-group yield. Tradeoff: lower solve-rate on the hardest
+    # tasks (they fail faster) — acceptable vs. TIMEOUT-at-step-0. Fast-task
+    # chains (e2egit, median 7 turns / <900s) are unaffected. See
+    # agent_logs/2026-05-27_rl_chains_stuck_step0.md. AgentTimeoutError stays
+    # PASSTHROUGH (standing pref — partial trajectory+reward is meaningful).
+    override_timeout_sec: 900
+
+    # Environment settings
+    override_cpus: 1
+    override_memory_mb: 2048
+    override_storage_mb: 2048
+
+    # ==========================================================================
+    # AUTO SNAPSHOT: Reduce Daytona rate limits with hash-based snapshot caching
+    # ==========================================================================
+    # When true, automatically creates a snapshot from the Dockerfile on first use,
+    # then reuses it for all subsequent sandboxes with the same Dockerfile content.
+    # Snapshots are named: harbor__<sha256[:12]>__snapshot
+    auto_snapshot: true
+
+    # Verifier settings
+    verifier_override_timeout_sec: 120
+
+    # Retry settings
+    max_retries: 3
+    min_wait_sec: 60.0
+    max_wait_sec: 600.0
+    wait_multiplier: 2.0
+
+    exclude_exceptions:
+      - VerifierTimeoutError
+      - VerifierRuntimeError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - VerifierOutputParseError
+
+    # 3x base (300 → 900): triple Daytona concurrency for higher throughput.
+    # Mirrors ALCC/56GPU_base.yaml — per-job sandbox count; doesn't affect
+    # the cross-cluster RUNNING-RL cap (≤ 6) which is about job count, not
+    # sandboxes-per-job.
+    # NOTE (2026-05-27): a temporary 900→500 walk-back was tried to mitigate
+    # the FD-exhaustion / uv__epoll_ctl_prep SIGABRT but REVERTED — the real
+    # fix is porting harbor's terminus-2 FD-taming features from
+    # penfever/temp-override into penfever/otagent-latest (that branch had the
+    # issue tamed at full concurrency). See agent_logs/2026-05-27_rl_chains_stuck_step0.md.
+    # 2026-05-28: 900 → 675 (-25%). Fresh a3 chains (#12/#13) abort with a
+    # driver SIGABRT that is NOT FD exhaustion (fd-monitor showed 1.6% of the
+    # 131072 limit) — suspected host-memory OOM from too many concurrent
+    # never-completing trials piling up resident state in skyrl_entrypoint on
+    # hard datasets. Cutting concurrent trial count reduces that resident
+    # memory. Paired with num_parallel_generation_workers -25%. See
+    # agent_logs/2026-05-28_fresh_a3_chain_crash_not_fd.md.
+    n_concurrent_trials: 675
+
+    # Logging settings
+    log_level: INFO
+
+    # Reward shaping OUTCOME stays disabled (pure binary RLOO-N) — the Stage-B
+    # channel does NOT need this on (channel-fill is gated independently on
+    # enable_token_reward_channel). Keeping it false keeps the outcome reward
+    # byte-identical to the symclip base.
+    enable_reward_shaping: false
+    # Stage-B token-reward CHANNEL gates (generator side). Channel ships ZEROS
+    # (no-op) + F4 span tags; threaded GeneratorOutput -> collate -> batch.
+    enable_token_reward_channel: true
+    enable_span_tagging: true
+
+    # TIS variant (2026-06-07): request + store per-token rollout logprobs from
+    # vLLM. REQUIRED for trainer.algorithm.use_tis (the trainer asserts non-null
+    # rollout_logprobs when use_tis=true). Only difference vs the TIS-off base.
+    collect_rollout_details: true
+
+    # RLOO-N error classification
+    enable_error_classification: true
+    mask_exceptions:
+      - DaytonaError
+      - EnvironmentStartTimeoutError
+      - NetworkError
+      - ConnectionError
+      - RewardFileNotFoundError
+      - RewardFileEmptyError
+      - AgentEnvironmentTimeoutError
+      - ContextLengthExceededError
+    default_error_treatment: zero
+    # NOTE (2026-05-27): AgentTimeoutError / ContextLengthExceededError moved
+    # OUT of passthrough_exceptions into zero_exceptions. Passthrough routed
+    # these soft-limit trials through the *normal* (live-trajectory) path in
+    # terminal_bench_generator._process_trial_result, keeping the trial's
+    # dangling vLLM ObjectRefs + orphaned litellm async-callback closures
+    # alive in the training batch. That fed Ray's distributed-refcount race
+    # (reference_count.cc:1619 → SIGABRT / WorkerCrashedError) that killed the
+    # nemotron-junit chain (litellm +1 32769 VLLMValidationError +
+    # ContextLengthExceeded on near-budget prompts). Both mask + zero take the
+    # EARLY-RETURN path (response_ids=[0]) which never consumes rollout_details,
+    # so no dangling refs enter training. 2026-05-27: ContextLengthExceededError
+    # moved to mask_exceptions (above) — excluded from the RLOO-N baseline, since
+    # GLM-4_7-swesmith ~32k prompts overflow routinely and we don't want hard
+    # zeros dragging the baseline. AgentTimeoutError stays PASSTHROUGH (partial trajectory+reward is
+    # meaningful signal; infrequent vs ContextLengthExceeded so low refcount risk). Belt-and-suspenders w/ the _harbor_compat rollback_hook that
+    # already truncates these trials' dangling prompt-without-response.
+    passthrough_exceptions:
+      - AgentTimeoutError
+    zero_exceptions: []
+
+  # Model info for Harbor's hosted_vllm validation
+  model_info:
+    # Lowered 32767 -> 32000 (2026-05-27). Harbor's litellm token counter is
+    # +2 below vLLM's actual BPE tokenization on near-budget prompts (litellm
+    # +1 plus chat-template/special-token drift), so a 32767-capped prompt
+    # tokenizes to 32769 at the vLLM serving layer and is rejected with
+    # `VLLMValidationError: 32769 input tokens ... context length is only
+    # 32768`. vLLM returns this as an ErrorResponse (handled, not an engine
+    # crash), but harbor's litellm then retries the *deterministically*
+    # over-budget request (max_retries=3, exp backoff) across n_concurrent
+    # trials. On a boundary-heavy task distribution (e.g. nemotron-junit: 111+
+    # such overflows per chain link) the accumulating open sockets exhaust the
+    # skyrl_entrypoint actor's file descriptors -> libuv uv__epoll_ctl_prep
+    # aborts -> SIGABRT in the uvloop event loop -> ray.WorkerCrashedError kills
+    # the chain before training step 1 (job a3-rl ...nemotron-junit #11,
+    # chain 521442-448). A 768-token buffer below max_model_len=32768 ensures
+    # harbor truncates before vLLM ever rejects, eliminating the retry storm.
+    # Cost is ~2.3% usable context for all a3 chains; chains that don't hug the
+    # boundary (e2egit reached step 68 fine at 32767) are unaffected.
+    max_input_tokens: 32000
+    max_output_tokens: 4096
+
+  archiving:
+    # Enable trial archiving callback
+    enabled: false
+
+  # Post-training trace upload to HuggingFace
+  trace_upload:
+    enabled: true
+    repo_org: DCAgent
+    episodes: last
+    dataset_type: SFT
+    cleanup: true
+
+# Trainer configuration
+trainer:
+  strategy: fsdp2
+  algorithm:
+    advantage_estimator: rloo_n
+    use_kl_loss: false
+    kl_loss_coef: 0.0
+    eps_clip_low: 0.2
+    # ABLATION (2026-06-13): SYMMETRIC clip 0.2/0.2 — the hero run's config edge.
+    # Per JUDGE_VS_EVAL_DISCONNECT.md + HERO_LEARNED_BEHAVIORS.md, the survivors'
+    # tight asymmetric upper clip (0.05) damps the upper-tail policy updates that
+    # let the hero ramp the tool/action axis enough to LEARN the edit→test→iterate
+    # loop that crosses tasks fail→pass. Restoring 0.2/0.2 gives that headroom back
+    # (the lever the analysis flagged as eval-moving). Was 0.05; sole change vs the
+    # seqnorm+TIS+untrunc base besides the untrunc sampling below.
+    eps_clip_high: 0.2
+    # RLOO-n sequence-level-normalized objective (treatment arm1). Global
+    # length-unbiased normalizer: Z = global_num_seqs * max_seq_len, computed
+    # once per step via a single all_reduce in the policy ppo_train driver and
+    # threaded through reduce_loss. The policy term is NOT divided again by
+    # accumulation_steps (already globally normed); KL/entropy terms still are.
+    # global_loss_denom is set programmatically in the driver — the yaml only
+    # needs to carry the loss_reduction selector.
+    loss_reduction: seq_mean_token_sum_norm_global
+    # TIS variant (2026-06-07): Truncated Importance Sampling. Bounds the
+    # off-policy ratio clamp(exp(old_log_probs - rollout_logprobs), max=cap).
+    # cap=2.0 is the standard truncation. REQUIRES collect_rollout_details=true
+    # (harbor block). Only difference vs the TIS-off base.
+    use_tis: true
+    tis_imp_ratio_cap: 2.0
+    # Stage-B token-reward CHANNEL gate (trainer side). With this true the trainer
+    # pulls token_level_shaping + response_span_tags off the GeneratorOutput and
+    # sets them on the TrainingInputBatch; the channel is ZEROS in Stage B so the
+    # advantage/loss are byte-identical to channel-off (pure RLOO-N). Must be set
+    # together with the harbor-side gate above.
+    enable_token_reward_channel: true
+
+  # Training loop settings
+  epochs: 2
+  max_steps: 80
+  update_epochs_per_batch: 1
+
+  # Batch sizes
+  train_batch_size: 64
+  policy_mini_batch_size: 64
+  eval_batch_size: 64
+
+  # Micro batch sizes (micro1x4 variant)
+  micro_forward_batch_size_per_gpu: 4
+  micro_train_batch_size_per_gpu: 1
+
+  max_prompt_length: 999999
+
+  # Evaluation and checkpointing
+  eval_interval: 999999
+  eval_before_train: false
+  # Resumable checkpointing
+  ckpt_interval: 2
+  resume_mode: latest
+  # HF upload-ready checkpoints
+  hf_save_interval: 5
+  # HuggingFace Hub upload (set via CLI: trainer.hf_hub_repo_id=org/repo)
+  hf_hub_repo_id: null
+  hf_hub_private: false
+  hf_hub_revision: main
+
+  # Database registration (auto-registers trained model to Supabase)
+  # Requires KEYS env var pointing to Supabase credentials file
+  enable_db_registration: false
+
+  # Logging
+  project_name: OpenThoughts-Agent
+  log_level: INFO
+  tracker_commit_each_step: true
+  logger: console
+
+  # Paths
+  run_name: null
+  ckpt_path: null
+  export_path: null
+
+  # Policy optimizer
+  # max_grad_norm=0.9 mirrors 24GPU_base — guardrail against grad-norm spikes
+  # entering correlation-mode-collapse territory (>1.0). 0.9 is just above the
+  # natural healthy peak observed on this dataset+base (‖g‖ peak ~0.81).
+  policy:
+    optimizer_config:
+      lr: 8e-6
+      weight_decay: 0.0
+      adam_betas: [0.9, 0.999]
+      max_grad_norm: 0.9
+    fsdp_config:
+      cpu_offload: false
+      reshard_after_forward: true
+      fsdp_size: 4
+  # Reference model
+  ref:
+    fsdp_config:
+      cpu_offload: false
+      reshard_after_forward: true
+      fsdp_size: 4
+
+  # Model placement (async training) - 8 shared GPUs for policy/ref
+  placement:
+    colocate_all: false
+    policy_num_nodes: 2
+    ref_num_nodes: 2
+    policy_num_gpus_per_node: 4
+    ref_num_gpus_per_node: 4
+
+  # Fully async generation (settings from v2_maxconcurrent)
+  fully_async:
+    max_staleness_steps: 16
+    # Setting conservatively to 1 / 2 of total concurrency
+    # 2026-05-28: 450 → 338 (-25%), paired with n_concurrent_trials 900→675,
+    # to cut driver memory pressure (suspected OOM on fresh hard-dataset a3
+    # chains). See agent_logs/2026-05-28_fresh_a3_chain_crash_not_fd.md.
+    num_parallel_generation_workers: 338
+
+# Generator configuration
+generator:
+  backend: vllm
+  timeout_multiplier: 1.0
+  model_dtype: bfloat16
+
+  inference_engine_tensor_parallel_size: 1
+  # 3x base (16 → 48): triple vLLM engines to lift gen throughput above training rate.
+  # Goal: build a real surplus of completed groups so the trainer never waits on gen.
+  # Layout: 48 engines × TP=1 + 8 GPUs for policy/ref = 56 GPUs total = 14 nodes.
+  num_inference_engines: 48
+
+  n_samples_per_prompt: 8
+  eval_n_samples_per_prompt: 8
+
+  # Jupiter-specific gpu_memory_utilization: 0.75 (vs ALCC's 0.85).
+  # GH200's 96 GB HBM has more headroom than ALCC's A100-80, but Jupiter
+  # also runs hosted_vllm in the same Ray cluster as the engines and we
+  # keep 0.75 across all jupiter yamls for consistency / fragmentation
+  # safety. Bump to 0.85 only if KV-cache pressure justifies it.
+  gpu_memory_utilization: 0.75
+
+  max_num_seqs: 24
+  # Jupiter-specific 65536 (vs ALCC's 16384) — matches the existing
+  # 24GPU_base.yaml on Jupiter; larger batched-token budget keeps the
+  # engine fed when many concurrent requests arrive in bursts.
+  max_num_batched_tokens: 65536
+
+  enable_prefix_caching: true
+  enable_chunked_prefill: true
+
+  run_engines_locally: true
+  weight_sync_backend: nccl
+  async_engine: true
+  batched: false
+  enable_http_endpoint: true
+  enable_ray_prometheus_stats: false
+  vllm_stats_interval: 1
+  append_eos_token_after_stop_str_in_multi_turn: true
+  max_turns: 999999
+
+  sampling_params:
+    max_generate_length: 4096
+    # UNTRUNC base (from explore-tis-untrunc, the judge-winner @70%): untruncated
+    # sampling support — temp 1.0, top_p 1.0, top_k -1 (no nucleus / top-k cut).
+    # explore-tis-untrunc applied this via CLI override and never committed a yaml;
+    # baked in here so both intervention ablations share the winning exploration knob.
+    temperature: 1.0
+    top_p: 1.0
+    top_k: -1
+
+  engine_init_kwargs:
+    max_model_len: 32768
+    # Interleaved thinking chat template: preserves <think> blocks on ALL
+    # historical assistant turns (stock Qwen3 template strips them).
+    custom_chat_template_chat_completion_path: chat_templates/qwen3_thinking_acc.jinja2
+
+# Data paths
+data:
+  train_data: []
+  val_data: []

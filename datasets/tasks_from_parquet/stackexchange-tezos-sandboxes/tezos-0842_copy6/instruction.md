@@ -1,2 +1,0 @@
-
-Hey below function is used to originate a dummy contract address. As tezos doesn't provide transaction hash or block hash. I am planning to use dummy contract address as a seed and then generate a random number . @sp.entry_point def generate_address(self): # Generate the address but don't append the operation contract = sp.create_contract_operation(sp.Contract(), sp.unit, sp.tez(0), None); self.data.address = sp.some(sp.pack(contract.address)) I believe the above address cannot be manipulated externally or by any means? Or is this a bad idea?

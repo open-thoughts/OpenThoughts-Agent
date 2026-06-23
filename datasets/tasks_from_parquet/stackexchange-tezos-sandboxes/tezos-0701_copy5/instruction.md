@@ -1,2 +1,0 @@
-
-I setup an archive node, the node already fully synced, and I call baking_rights rpc, but it returns "401 Unauthorized". curl -v 'http://localhost:8732/chains/main/blocks/1/helpers/baking_rights?all=true&cycle=0&max_priority=63' * Trying 127.0.0.1... * TCP_NODELAY set * Connected to localhost (127.0.0.1) port 8732 (#0) > GET /chains/main/blocks/1/helpers/baking_rights?all=true&cycle=0&max_priority=63 HTTP/1.1 > Host: localhost:8732 > User-Agent: curl/7.61.1 > Accept: */* > I didn't found any documents about rpc authorizing. Tezos-node version is 10.2. What did I miss?

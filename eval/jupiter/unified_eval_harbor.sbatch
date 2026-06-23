@@ -25,7 +25,9 @@
 #   EVAL_N_CONCURRENT       (default: 128)
 #   EVAL_GPU_MEMORY_UTIL    (default: 0.95)
 #   EVAL_DAYTONA_THRESHOLD  (default: 3)
-#   EVAL_HARBOR_CONFIG      (default: $DCFT/eval/jupiter/dcagent_eval_config.yaml)
+#   EVAL_HARBOR_CONFIG      (fallback default: $DCFT/hpc/harbor_yaml/eval/dcagent_eval_defaults.yaml;
+#                            the listener normally sets this per-model — 8B-class ->
+#                            dcagent_eval_defaults.yaml, 32B-class -> dcagent_eval_defaults_32b.yaml)
 #   EVAL_DB_JOB_ID          (optional, pre-created Pending job ID)
 # ==============================================================================
 
@@ -45,7 +47,9 @@ RUN_TAG_ARG="${4:-}"
 N_CONCURRENT="${EVAL_N_CONCURRENT:-128}"
 GPU_MEMORY_UTIL="${EVAL_GPU_MEMORY_UTIL:-0.95}"
 DAYTONA_ERROR_THRESHOLD="${EVAL_DAYTONA_THRESHOLD:-999999}"
-HARBOR_CONFIG="${EVAL_HARBOR_CONFIG:-$DCFT/eval/jupiter/dcagent_eval_config.yaml}"
+# NOTE: $DCFT is defined further below, so inline its default here too (else an omitted
+# --harbor-config expands to a bad absolute path '/eval/jupiter/...' → FileNotFoundError).
+HARBOR_CONFIG="${EVAL_HARBOR_CONFIG:-${DCFT:-/e/scratch/jureap59/$USER/OpenThoughts-Agent}/hpc/harbor_yaml/eval/dcagent_eval_defaults.yaml}"
 DB_JOB_ID="${EVAL_DB_JOB_ID:-}"
 
 # Strip slashes and special chars for file-safe names
@@ -340,11 +344,42 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "Starting vLLM server for model: $MODEL"
+
+# Restore CUDA toolkit (nvcc) for inductor-AOT compile + flashinfer JIT.
+# The hpc.launch path gets this via `module load nvidia-compilers/25.9-CUDA-13`; the standalone
+# eval path must set it explicitly, else vLLM's aot_compile and flashinfer's runtime JIT both fail
+# ("Could not find nvcc and default cuda_home='/usr/local/cuda' doesn't exist"). The module exports
+# CUDA_HOME on compute nodes; the explicit fallback makes it robust if the module's init doesn't.
+module load GCC/14.3.0 nvidia-compilers/25.9-CUDA-13 2>/dev/null || true
+export CUDA_HOME="${CUDA_HOME:-/e/software/default/stages/2026/software/CUDA/13}"
+export PATH="$CUDA_HOME/bin:$PATH"
+echo "CUDA_HOME=$CUDA_HOME ; nvcc=$(command -v nvcc || echo MISSING)"
+
 source "$DCFT/eval/build_vllm_cmd.sh"
 build_vllm_cmd "$PYTHON_BIN" "$MODEL" "$GPU_MEMORY_UTIL"
 
-env TORCHDYNAMO_DISABLE=1 \
-    TMPDIR="/tmp" \
+# ==============================================================================
+# Build model_info for hosted_vllm (harbor #339 hard-requires it: terminus-2's
+# LiteLLM init calls validate_hosted_vllm_model_config, which raises
+# "hosted_vllm models require `model_info` specifying token limits and costs."
+# when model_info is absent — killing every trial before any vLLM POST).
+# We derive it from the served vLLM context (EVAL_VLLM_MAX_MODEL_LEN, default
+# 32768) + the LLM-call output budget (EVAL_MAX_OUTPUT_TOKENS, default 16384):
+#   max_input_tokens  = served context (full window available to the prompt)
+#   max_output_tokens = output budget, clamped < served context
+#   *_cost_per_token  = 0 (self-hosted → pricing irrelevant)
+# Passed below as an --agent-kwarg so EVERY hosted_vllm agentic eval is covered.
+# ==============================================================================
+MI_MAX_MODEL_LEN="${EVAL_VLLM_MAX_MODEL_LEN:-32768}"
+MI_MAX_OUTPUT="${EVAL_MAX_OUTPUT_TOKENS:-16384}"
+# Clamp output budget to stay strictly below the served context.
+if [ "$MI_MAX_OUTPUT" -ge "$MI_MAX_MODEL_LEN" ] 2>/dev/null; then
+    MI_MAX_OUTPUT=$(( MI_MAX_MODEL_LEN / 2 ))
+fi
+MODEL_INFO_JSON="{\"max_input_tokens\":${MI_MAX_MODEL_LEN},\"max_output_tokens\":${MI_MAX_OUTPUT},\"input_cost_per_token\":0,\"output_cost_per_token\":0}"
+echo "[model_info] $MODEL_INFO_JSON"
+
+env TMPDIR="/tmp" \
     TRITON_CACHE_DIR="/tmp/triton_cache_${USER}" \
     TORCH_COMPILE_CACHE_DIR="/tmp/torch_cache_${USER}" \
     TORCHINDUCTOR_CACHE_DIR="/tmp/torchinductor_${USER}" \
@@ -424,6 +459,7 @@ declare -A BENCHMARK_NAME_MAP=(
     ["DCAgent_dev_set_71_tasks"]="dev_set_71_tasks"
     ["DCAgent2_terminal_bench_2"]="terminal_bench_2"
     ["DCAgent_swebench_verified_eval_set"]="swebench-verified-random-100-folders"
+    ["DCAgent2_swebench-verified-random-100-folders"]="swebench-verified-random-100-folders"
     ["DCAgent2_bfcl-parity"]="bfcl-parity"
 )
 BENCHMARK_NAME="${BENCHMARK_NAME_MAP[$SAFE_REPO]:-$SAFE_REPO}"
@@ -527,7 +563,8 @@ if [ -d "$RUN_DIR" ] && [ -f "$RUN_DIR/config.json" ]; then
         -p "$RUN_DIR" \
         --filter-error-type EnvironmentStartTimeoutError \
         --filter-error-type DaytonaError \
-        --filter-error-type DaytonaRateLimitError
+        --filter-error-type DaytonaRateLimitError \
+        --filter-error-type VerificationNotCompletedError
 else
     echo "Starting new job"
     proxied $WRAPPER_DIR/harbor jobs start \
@@ -538,8 +575,10 @@ else
         --env "daytona" \
         --agent-kwarg "api_base=http://localhost:8000/v1" \
         --agent-kwarg "key=fake_key" \
+        --agent-kwarg "model_info=$MODEL_INFO_JSON" \
         --n-attempts 3 \
         --job-name "$RUN_TAG" \
+        --jobs-dir "$EVAL_JOBS_DIR" \
         --config "$HARBOR_CONFIG" \
         $EXTRA_HARBOR_ARGS
 fi

@@ -1,2 +1,0 @@
-
-in smartpy def aa(self) { value_in_func = "1234" msg = "abc" + value_in_func hex_string = msg.encode("utf-8") thingToSign = sp.bytes("0x" + hex_string.hex()) } This is working well, But value = "1234" def aa(self, value) { msg = "abc" + value hex_string = msg.encode("utf-8") thingToSign = sp.bytes("0x" + hex_string.hex()) } is NOT working. Error: call () missing 1 positional argument: arg I don't know the difference between the two. what's difference? I checked sp.verify(value_in_func == value), this is true.

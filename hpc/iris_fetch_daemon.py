@@ -115,6 +115,42 @@ WATCHDOG_HANG_SECONDS = int(os.environ.get("OT_AGENT_WATCHDOG_HANG_SECONDS", "72
 # Empty = police every registered RUNNING job; else only job_names with this prefix.
 WATCHDOG_PREFIX = os.environ.get("OT_AGENT_WATCHDOG_PREFIX", "")
 
+# --- iris local-tunnel port reservation -------------------------------------
+# iris's SSH controller tunnel picks a LOCAL forward port via
+# iris.cluster.providers.types.find_free_port(start=10000): it scans 10000
+# upward and SKIPS any port whose /tmp/iris/port_<N> lockfile names a LIVE pid
+# (os.kill(pid, 0) succeeds) WITHOUT binding the socket. The daemon shells out
+# to `iris job logs`, so without intervention its tunnel grabs 10000 and holds
+# it 24/7 — colliding with other apps that need 10000 (e.g. step-ca's OIDC
+# listener during `step ssh certificate`, which binds 127.0.0.1:10000).
+#
+# Fix (no marin/iris source edit): at startup the daemon writes its own live pid
+# into the lockfiles for RESERVED_LOCAL_PORTS, so every iris find_free_port scan
+# on this host (the daemon's own `iris job logs` AND the monitor cron's
+# `iris query`/`iris job logs`) skips them and lands on 10001+. The lockfile is
+# advisory only — it does NOT bind the socket, so step-ca (or anything else) can
+# still use the reserved port normally. Re-asserted each poll (self-healing).
+IRIS_PORT_LOCK_DIR = Path(os.environ.get("IRIS_PORT_LOCK_DIR", "/tmp/iris"))
+RESERVED_LOCAL_PORTS = [
+    int(p) for p in os.environ.get("OT_AGENT_RESERVED_LOCAL_PORTS", "10000").split(",") if p.strip()
+]
+
+
+def reserve_iris_local_ports() -> None:
+    """Steer iris's local-tunnel port scan away from RESERVED_LOCAL_PORTS.
+
+    Writes ``/tmp/iris/port_<N> = os.getpid()`` (this daemon's live pid) for each
+    reserved port. iris.find_free_port treats a lockfile naming a live pid as
+    in-use and skips it, so iris tunnels on this host avoid the reserved ports
+    and leave them free for other apps. Does NOT bind the socket. Best-effort.
+    """
+    try:
+        IRIS_PORT_LOCK_DIR.mkdir(parents=True, exist_ok=True)
+        for port in RESERVED_LOCAL_PORTS:
+            (IRIS_PORT_LOCK_DIR / f"port_{port}").write_text(str(os.getpid()))
+    except OSError as e:
+        _log(f"could not reserve iris local ports {RESERVED_LOCAL_PORTS}: {e}", err=True)
+
 
 # ---------------------------------------------------------------------
 # Small helpers
@@ -500,7 +536,8 @@ def poll_once() -> None:
 def run_loop(interval: int, once: bool) -> int:
     """Main daemon entry. ``--once`` returns after a single pass."""
     ensure_local_paths(PATHS.home, PATHS.state, PATHS.logs)
-    _log(f"started interval={interval}s once={once} db={DB_PATH}")
+    reserve_iris_local_ports()
+    _log(f"started interval={interval}s once={once} db={DB_PATH} reserved_ports={RESERVED_LOCAL_PORTS}")
 
     stop_flag = {"set": False}
 
@@ -512,6 +549,7 @@ def run_loop(interval: int, once: bool) -> int:
     signal.signal(signal.SIGINT, _on_signal)
 
     while not stop_flag["set"]:
+        reserve_iris_local_ports()  # self-heal: re-assert before each poll's iris calls
         try:
             poll_once()
         except Exception as e:

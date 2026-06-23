@@ -1,2 +1,0 @@
-
-I've set up a full mainnet node on a VPS. The RPC port of the node (8733) is not exposed to the Internet, but I can access it from my local machine via an SSH port forward: ssh remote-note -L8733:localhost:8732 Accessing http://localhost:8733 works well from my local machine, both using tezos-client as well as accessing the RPC endpoints from a web browser. However when I try to configure a Temple wallet on the same machine to use the same node URL, it gives me an error: Invalid RPC: Cannot get chain id

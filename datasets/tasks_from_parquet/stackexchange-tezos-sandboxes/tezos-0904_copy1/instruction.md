@@ -1,2 +1,0 @@
-
-This address came to my attention recently: tz1Ke2h7sDdakHJQh8WX4Z372du1KChsksyU ( tzstats ) It is an old address (first seen Apr 18, 2020), is advertised as a Burn/Zero address, and funds are regularly sent there by a DEX. My question is that, unlike other burn addresses (such as tz1burnburnburnburnburnburnburjAYjjX ), this one just looks like a regular address. What properties of this address make it a verifiable burn address? i.e. provably impossible for someone to hold a corresponding private key

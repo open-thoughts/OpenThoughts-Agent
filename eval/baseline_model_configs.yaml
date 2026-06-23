@@ -11,6 +11,14 @@
 #
 # Pattern configs (under "patterns") are matched when no exact model name is found.
 # Each pattern entry has a "match" regex and the same config fields as a model entry.
+#
+# timeout_multiplier (Harbor agentic-eval timeout scaling):
+#   The listener auto-derives this from the model-name size token when not set
+#   here: <=~14B -> 2x (8B-class), ~30-40B -> 16x (32B-class; a 32B agentic
+#   rollout decodes ~16x slower). Out-of-band sizes (e.g. 1.5B*, 80B) and names
+#   with NO size token leave it unset (harbor default) and log a warning — set
+#   one here explicitly for those. A per-model "timeout_multiplier" below always
+#   wins over the size-based default. (*1.5B is covered by the <=14B 2x branch.)
 
 models:
   "NovaSky-AI/SA-SWE-32B":

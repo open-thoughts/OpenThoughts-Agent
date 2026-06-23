@@ -1,2 +1,0 @@
-
-How can we generate the protocol hash from a folder without a node? I know we can do the following: tezos-protocol-compiler -hash-only path/to/dir/ But I want to know how I can compute this manually (so we can develop tools to do this). I assume we take a hash of the contents of the folder (or maybe tar the folder first) and then base58c encode it. If anyone has more details on this, please shed some light!

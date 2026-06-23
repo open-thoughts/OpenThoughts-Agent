@@ -1,2 +1,0 @@
-
-I would like to find out if the smart contract's code size/storage or an operation's parameters helps to derive to the cost. Is there a formula to calculate the cost of the operation to be invoking a smart contract? How does it derive to this value on estimate transfer using taquito, which is pretty expensive for an operation. { burnFeeMutez: 0, minimalFeeMutez: 23843, suggestedFeeMutez: 23943, usingBaseFeeMutez: 23843, totalCost: 23843 }

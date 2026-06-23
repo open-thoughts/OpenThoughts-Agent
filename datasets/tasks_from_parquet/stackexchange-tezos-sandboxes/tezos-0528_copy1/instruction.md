@@ -1,2 +1,0 @@
-
-I get an http error 'Key not found' The contract is a harbinger (coinbase carthage) storage contract. What is the correct 'get' param ? Tezos.contract.at('KT1P7D7jt3PfjMpsEKPyao1kHQR93t7XR5zh') .then( myContract => { return myContract.storage() .then ( myStorage => { //When called on a bigMap, the get method returns a promise return myStorage['oracleData'].get({ 0 : 'XTZ-USD' }) }).then (valueBigMap => { println( The value associated with the specified key of the bigMap is ${valueBigMap}. ); }) }) .catch(error => println( Error: ${JSON.stringify(error, null, 2)} ));

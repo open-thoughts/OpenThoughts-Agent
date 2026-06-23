@@ -1,2 +1,0 @@
-
-In the list of possible errors in RPC: http://tezos.gitlab.io/api/errors.html#michelson-parsing-macros , there are timestamp_add and timestamp_sub errors, that could happen in arithmetic instructions involving timestamp. Do anyone know what is the value that could cause those overflow and underflow? Code related to this error, could be this one: https://gitlab.com/tezos/tezos/-/blob/master/src/proto_006_PsCARTHA/lib_protocol/time_repr.ml

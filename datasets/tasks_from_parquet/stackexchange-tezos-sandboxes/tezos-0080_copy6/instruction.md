@@ -1,2 +1,0 @@
-
-I'm building a smart contract that is sort of an index of signed documents (pointing to ipfs for the actual docs). What if I want to add some functionality to my app down the road and need to upgrade the contract? I understand I need to make a new contract, but how about transferring the current state of the old contract to the new? Would it cost a lot of XTZ to initialize a new contract with a big state? Is there another approach for achieving this?

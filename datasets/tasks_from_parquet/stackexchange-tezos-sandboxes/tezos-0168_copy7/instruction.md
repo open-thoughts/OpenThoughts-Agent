@@ -1,2 +1,0 @@
-
-I am trying to build Tezos from sources, alphanet. When doing make build-deps here is the error I get: [ERROR] The sources of the following couldn't be obtained, aborting: - hidapi.1.0-1: Bad checksum I've been getting this since 2 or 3 days. Commands I tried: sudo apt-get update sudo apt-get dist-upgrade git fetch origin git reset --hard origin/alphanet git clean -dxf opam update opam upgrade But it's still giving me the same error. Any idea why?

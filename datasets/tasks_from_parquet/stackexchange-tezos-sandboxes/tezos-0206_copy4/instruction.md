@@ -1,2 +1,0 @@
-
-Imagine there is a smart contract which calls other smart contracts using TRANSFER_TOKENS and in the end lots of operations are created. Are these operations baked in a block atomically? I mean, is it assured all of them are registered in the same block or fail entirely? Or they can be separated into more than one blocks (therefore some may fail later)? If it is atomic, if a contract creates a too huge list of operations for one block, the contract call will never succeed. Is it correct? Is there a specification explains the semantics of this call chain?

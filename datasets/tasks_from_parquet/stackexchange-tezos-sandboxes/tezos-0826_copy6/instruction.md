@@ -1,2 +1,0 @@
-
-I'm using the fa2_nft_minimal.py smart contract that has the following entry point for minting: @sp.entry_point def mint_many(self, to_, metadata): token_id = sp.compute(self.data.next_token_id) self.data.token_metadata[token_id] = sp.record( token_id=token_id, token_info=sp.map({"": metadata},{"": metadata}, {"": metadata}) ) self.data.ledger[token_id] = to_ self.data.next_token_id += 1 enter preformatted text here How do I update the contract so it can mint several NFTs in only one operation?

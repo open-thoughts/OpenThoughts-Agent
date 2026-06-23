@@ -460,11 +460,20 @@ class _SnapshotManager:
 # -----------------------------------------------------------------------------
 
 def _discover_hash_to_env_dir(resolved_data_paths: List[str]) -> Tuple[Dict[str, Path], Any]:
-    """Run task discovery + analysis; returns (hash_to_env_dir, stats)."""
+    """Run task discovery + analysis; returns (hash_to_env_dir, stats).
+
+    Task enumeration uses harbor's authoritative ``get_task_configs`` path (via
+    ``count_snapshots_from_tasks.load_tasks_from_local_dataset``) — the SAME
+    routine the standalone snapshot-count tool uses and that the Harbor job
+    itself uses at runtime to decide which tasks to run/snapshot. We deliberately
+    do NOT use the naive ``discover_task_dirs`` filesystem walk here: it keys on a
+    literal ``instruction.md`` and silently drops tasks with other valid layouts
+    (e.g. multi-step tasks), so its count diverges from the real snapshot count.
+    """
     try:
         from scripts.harbor.count_snapshots_from_tasks import (
-            discover_task_dirs,
             get_snapshot_env_dirs,
+            load_tasks_from_local_dataset,
         )
         from harbor.utils.container_cache import analyze_task_dockerfiles
     except ImportError as exc:
@@ -473,7 +482,12 @@ def _discover_hash_to_env_dir(resolved_data_paths: List[str]) -> Tuple[Dict[str,
             "(pip install -e /path/to/harbor) and the repo root is on PYTHONPATH"
         ) from exc
 
-    task_dirs = discover_task_dirs(resolved_data_paths)
+    task_dirs: List[Path] = []
+    for data_path in resolved_data_paths:
+        root = Path(data_path)
+        if not root.is_dir():
+            continue
+        task_dirs.extend(load_tasks_from_local_dataset(dataset_path=root.expanduser().resolve()))
     if not task_dirs:
         return {}, None
     stats = analyze_task_dockerfiles(task_dirs)

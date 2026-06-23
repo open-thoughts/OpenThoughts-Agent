@@ -1,2 +1,0 @@
-
-My node is stuck, and I'm trying to find if there are invalid blocks, but the command is unrecognized: root@tezos-public ./alphanet.sh client list rejected blocks Error: Unrecognized command. Did you mean one of the following? However, I can run other commands: root@tezos-public ./alphanet.sh client list known addresses bob: tz1.... alice: tz1... Any ideas? Thanks in advance. Update: I have noticed it should be tezos-admin-client , but in alphanet.sh I don't see any mention to that. Should I execute the command somewhere else?

@@ -637,7 +637,7 @@ harbor jobs start -p $DATASET_PATH --n-concurrent 128 --agent terminus-2 \
   --model "hosted_vllm/$MODEL" --env daytona \
   --agent-kwarg "api_base=http://localhost:8000/v1" \
   --agent-kwarg "key=fake_key" --n-attempts 3 \
-  --job-name "$RUN_TAG" --config eval/jupiter/dcagent_eval_config.yaml
+  --job-name "$RUN_TAG" --config hpc/harbor_yaml/eval/dcagent_eval_defaults.yaml
 
 # Resume (retry transient errors only)
 harbor jobs resume -p "$EXISTING_JOB_DIR" \
@@ -1359,7 +1359,7 @@ The sbatch script explicitly `unset PYTHONPATH` before setting its own. If you s
 | Path | Description |
 |------|-------------|
 | `eval/jupiter/unified_eval_harbor.sbatch` | Main Slurm eval script |
-| `eval/jupiter/dcagent_eval_config.yaml` | Harbor job config (jobs_dir, retry, agent settings) |
+| `hpc/harbor_yaml/eval/dcagent_eval_defaults.yaml` | Canonical Harbor job config (8B-class, timeout_multiplier 2.0); `_32b.yaml` variant (16.0) for 32B-class. The listener selects by model size. |
 | `eval/jupiter/snapshot_download.py` | HF dataset download helper |
 | `eval/jupiter/unified_eval_listener.py` | Auto-submit daemon (polls DB for new models) |
 | `/e/scratch/jureap59/etash/run_commercial_evals.sh` | Commercial model eval (GAIA+FinanceAgent) |
@@ -1395,37 +1395,20 @@ The sbatch script explicitly `unset PYTHONPATH` before setting its own. If you s
 | `eval/jupiter/dcagents-leaderboard/` | DB utilities (unified_db/) |
 | `~/secrets.env` | API keys (Daytona, OpenAI, HF, Supabase) |
 
-### Harbor Config (dcagent_eval_config.yaml)
+### Harbor Config (canonical: `hpc/harbor_yaml/eval/dcagent_eval_defaults.yaml`)
 
-```yaml
-jobs_dir: /e/data1/datasets/playground/mmlaion/shared/guha1/eval_jobs
-n_attempts: 3
-timeout_multiplier: 1.0
-orchestrator:
-  type: local
-  n_concurrent_trials: 16
-  quiet: false
-  retry:
-    max_retries: 3
-    exclude_exceptions:
-      - AgentTimeoutError
-      - EnvironmentStartTimeoutError
-      - SandboxBuildFailedError
-      - VerifierTimeoutError
-    wait_multiplier: 1.0
-    min_wait_sec: 1.0
-    max_wait_sec: 60.0
-environment:
-  type: daytona
-  force_build: false
-  delete: false
-  kwargs:
-    auto_snapshot: true
-agents:
-  - name: terminus-2
-    trajectory_config:
-      raw_content: true
-      linear_history: true
-```
+The per-cluster `eval/jupiter/dcagent_eval_config*.yaml` clones were removed in favor of a single
+cross-cluster source of truth under `hpc/harbor_yaml/eval/`:
 
-Note: `n_concurrent_trials: 16` in the config is overridden by `--n-concurrent` on the CLI (128 for Slurm, 32 for commercial). The config's `exclude_exceptions` list prevents retries for non-transient errors.
+- **`dcagent_eval_defaults.yaml`** — 8B-class default (`timeout_multiplier: 2.0`).
+- **`dcagent_eval_defaults_32b.yaml`** — byte-identical except `timeout_multiplier: 16.0`, for 32B-class.
+
+`unified_eval_listener.py` **selects** the config by the model's parameter-count size token in the HF
+name (largest `\dB` token wins, so MoE `…-30b-a3b` → 30B → 32B band → `_32b.yaml`); out-of-band sizes
+(1.5B / 80B) and names with no size token fall back to the base default. The timeout multiplier lives IN
+the config file (not inferred at runtime). An explicit `--harbor-config` / preset `harbor_config` overrides
+the size selection for every model, and a per-model `timeout_multiplier` in `eval/baseline_model_configs.yaml`
+overrides the config's value. See the §3b "Timeout multiplier policy" in the `eval-agentic-launch` skill.
+
+Note: `n_concurrent_trials` in the config is overridden by `--n-concurrent` on the CLI (128 for Slurm,
+32 for commercial). The config's `exclude_exceptions` list prevents retries for non-transient errors.

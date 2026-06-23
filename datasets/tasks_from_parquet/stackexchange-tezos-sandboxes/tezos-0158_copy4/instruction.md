@@ -1,2 +1,0 @@
-
-Where can I find a list of trustworthy peer node hostnames and/or ip addresses? The only list I have is just the TF nodes which gives me a total of 6 nodes. I have my expected number of connections set to 40 (seems reasonable?), but currently am only connected to 23 and keep seeing warnings: p2p.maintenance: Too few connections (23) Things are still working, but I'm just wondering where or how to find trusted nodes. Is using just the TF nodes sufficient? I'd rather have a more diverse (more decentralized) list of peers.

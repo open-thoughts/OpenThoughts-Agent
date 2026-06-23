@@ -1,2 +1,0 @@
-
-I am using the tezos-sandbox cli and trying out packing/unpacking data. I want to try doing the equivalent of sp.unpack(x, t = …​) , specifying a type to unpack into, using the command tezos-client unpack michelson data 0x050a0000002071f0fcd58b7d488e6bf571facc72baf5ce2ef2bb79e2fd97d2e82fdb9c351f1c I was expecting something like tezos-client unpack michelson data 0x050a... of type mutez or something like that?

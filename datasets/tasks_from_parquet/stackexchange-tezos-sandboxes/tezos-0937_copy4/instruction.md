@@ -1,2 +1,0 @@
-
-I have a function on my contract that calls the fa2 contract burn method of singleAsset provided by the fa2 library. @sp.entry_point def burn_test2(self,fa2_address, value): burn_args_type = sp.TList(sp.TRecord(from_=sp.TAddress, token_id=sp.TNat, amount=sp.TNat)) burn_entry_point = sp.contract(burn_args_type, fa2_address, "burn").open_some() burn_args = [sp.record(from_=sp.self_address, token_id=sp.nat(0), amount=value)] sp.transfer(burn_args, sp.tez(0), burn_entry_point) Am i doing something wrong here ?

@@ -1,2 +1,0 @@
-
-I'm extending the smartpy FA2 template # FA2 = sp.import_script_from_url("https://smartpy.io/dev/templates/FA2.py") class TezosLandNft(FA2.FA2): ... which has the following offchain views defined # ex: class FA2_token_metadata(FA2_core): @sp.offchain_view(pure = True) def token_metadata(self, tok): ... However, when querying for these views using taquito, none of the offchain_views are appearing const token_contract = await Tezos.wallet.at(WALLET_ADDRESS, compose(tzip12, tzip16)); const views = await token_contract.tzip16().metadataViews() # views === {}

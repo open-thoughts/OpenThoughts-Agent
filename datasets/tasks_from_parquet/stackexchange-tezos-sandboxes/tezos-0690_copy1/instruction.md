@@ -1,2 +1,0 @@
-
-I am trying to execute this line sp.amount == sp.utils.nat_to_mutez(x) * self.data.y where x is the parameter of an entry point function. These are the following types: sp.amount: sp.TMutez , x: sp.TNat y: sp.TMutez . Even using the sp.utils.nat_to_mutez(x) , I still get the following error: Error: Type Error (sp.mul(params, sp.mutez(1)) : sp.TMutez), (self.data.y : sp.TMutez) cannot be multiplied (sp.mul(params, sp.mutez(1)) * self.data.y : sp.TMutez) (__main__, line 87)

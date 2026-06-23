@@ -421,3 +421,10 @@ hpc/dotenv/jupiter_eval_data_org.env
 # Build outputs that don't belong in git; regenerate locally via the converters.
 data/nemotron_gym/output/*.parquet
 data/nemotron_gym/output_v2/
+
+# Claude untracked privileged values
+.claude/secret.md
+
+# Track the .claude experiments ops doc (override the broad `experiments/` ignore above)
+!.claude/ops/experiments/
+!.claude/ops/experiments/**

@@ -1,2 +1,0 @@
-
-I've a simple contract deployed on Tezos sandbox ( https://assets.tqtezos.com/docs/setup/2-sandbox/ ) and I'm using Taquito in frontend to call this contract. Earlier, I deployed the contract to global testnet and used the key to set provider (using InMemorySigner ), but what should I give as key if I'm using a sandbox running on my localhost? I tried giving some random key but it gave me server error. (Also, any way to see some kind of logs from the server, ie, deployed sandbox to see what exactly went wrong?)

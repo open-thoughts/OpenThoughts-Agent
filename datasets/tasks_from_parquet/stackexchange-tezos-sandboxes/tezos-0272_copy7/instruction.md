@@ -1,2 +1,0 @@
-
-I want to use the ledger verbose signing feature recently described in this post: https://medium.com/@obsidian.systems/verbose-signing-how-to-confirm-any-tezos-operation-on-your-ledger-device-c41bd4d45ab6 Specifically I want to use it to sign a batch of transfer transactions from the CLI tezos-client. When I add the --verbose-signing flag, I see the Blake hash, but it is only for one transfer transaction. How do I combine transfer transactions? Other batch payment tools create JSON for an rpc call for which --verbose-signing does not appear to be an option.

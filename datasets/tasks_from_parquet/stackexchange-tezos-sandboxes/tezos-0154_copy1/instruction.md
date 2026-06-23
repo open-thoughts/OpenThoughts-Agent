@@ -1,2 +1,0 @@
-
-For my baking operation, I have set up a remote signer and SSH tunneled it to my baking server on port 7878. I have also set up tezos-signer with --require-authentication . On my baking server, I'm now trying to add it with the recommended command: ./tezos-client import secret key my_signer tcp://localhost:7878/tz1abcdef123456789 tezos-client just hangs and does not give me the prompt back unless I press Ctrl + C . How can I even start debugging this?

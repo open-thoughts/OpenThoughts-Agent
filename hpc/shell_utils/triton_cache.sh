@@ -14,6 +14,7 @@
 #   TRITON_CACHE_DIR         - Node-local Triton kernel cache
 #   TRITON_CACHE_MANAGER     - Triton cache manager class
 #   TORCHINDUCTOR_CACHE_DIR  - Node-local TorchInductor cache
+#   FLASHINFER_WORKSPACE_BASE - Node-local flashinfer JIT cache (GPFS race fix)
 # ==============================================================================
 
 setup_triton_cache() {
@@ -31,10 +32,21 @@ setup_triton_cache() {
     mkdir -p "$inductor_base" 2>/dev/null || true
     export TORCHINDUCTOR_CACHE_DIR="$inductor_base"
 
+    # flashinfer JIT cache → node-local too. Default is $HOME/.cache/flashinfer on shared
+    # GPFS; concurrent multi-cell vLLM launches race to JIT-build the SAME sampling.so into
+    # the SAME path, and a worker that dlopen()s a half-built .so dies with
+    # "symbol lookup error: ... undefined symbol: _Z..top_p_sampling_from_probs...", crashing
+    # the whole engine at CUDA-graph profiling (~40min healthcheck timeout). Node-local
+    # isolation eliminates the cross-job/cross-worker race. (Diagnosed 2026-06-17, Lever-2 pilot.)
+    local flashinfer_base="/tmp/flashinfer_${user}_${job_id}"
+    mkdir -p "$flashinfer_base" 2>/dev/null || true
+    export FLASHINFER_WORKSPACE_BASE="$flashinfer_base"
+
     # Print status if verbose
     if [[ "${TRITON_CACHE_VERBOSE:-0}" == "1" ]]; then
         echo "[triton_cache] Triton cache: $TRITON_CACHE_DIR"
         echo "[triton_cache] TorchInductor cache: $TORCHINDUCTOR_CACHE_DIR"
+        echo "[triton_cache] flashinfer workspace: $FLASHINFER_WORKSPACE_BASE"
     fi
 }
 

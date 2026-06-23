@@ -1,2 +1,0 @@
-
-I try to fetch a list of addresses with expired date by appending the address to list(address). However when doing map iteration, it encounters a persistent error says 'not True'. Hope someone can guide a bit here. Thanks in advance! Below is part of the code: function checkPoint (var s : contract_storage) : contract_storage is begin function iter_op (const m : register) : list(address) is block { const removing_list : list(address) = list []; function iterated (const i : address; const j : counter) : list(address) is if j.maturityTime

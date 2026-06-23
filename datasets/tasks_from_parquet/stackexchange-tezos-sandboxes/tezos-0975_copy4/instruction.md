@@ -1,2 +1,0 @@
-
-I need a simple API that provides historical XTZ price against fiat currencies like USD and EUR, or other cryptocurrencies like BTC. Ideally I just need to compose an HTTP GET request with a date/time and the pair (i.e. XTZ/EUR) and get back the price at that moment in time. The source of the data should be from a well established exchange (Binance, Coinbase, etc) or an oracle like Chainlink or Harbinger.

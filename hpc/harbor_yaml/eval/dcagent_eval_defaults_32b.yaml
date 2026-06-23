@@ -1,0 +1,63 @@
+# Eval harbor config — 32B-class variant of dcagent_eval_defaults.yaml.
+#
+# This is dcagent_eval_defaults.yaml with EXACTLY ONE change: timeout_multiplier
+# 2.0 -> 16.0. A 32B model decodes its agentic rollout ~16x slower than an 8B, so
+# at the 2x default a 32B starves on terminal-bench tasks (declared agent.timeout_sec
+# median 900s) and scores ~0. Everything else is byte-identical to the defaults — keep
+# the body in sync with dcagent_eval_defaults.yaml; only the timeout_multiplier differs.
+#
+# Selected automatically by eval/jupiter/unified_eval_listener.py for 32B-class models
+# (param-count size token in the ~28-42B band); <=14B models get dcagent_eval_defaults.yaml.
+#
+# Runtime-injected (placeholders overwritten by the launcher CLI): agents[0].model_name
+# (<- --model), datasets[0].path (<- -p), --jobs-dir, --n-concurrent; model_info token
+# limits come from the served vLLM max_model_len via --agent-kwarg model_info=... .
+n_attempts: 3
+timeout_multiplier: 16.0
+orchestrator:
+  type: local
+  n_concurrent_trials: 16
+  quiet: false
+  plain_output: true
+  retry:
+    max_retries: 10
+    exclude_exceptions:
+      - AgentTimeoutError
+      - AgentEnvironmentTimeoutError
+      - BadRequestError
+      - VerifierTimeoutError
+      - SummarizationTimeout
+      - SummarizationTimeoutError
+      - ContextLengthExceededError
+    wait_multiplier: 1.0
+    min_wait_sec: 1.0
+    max_wait_sec: 60.0
+environment:
+  type: daytona
+  force_build: true
+verifier:
+  max_timeout_sec: 14400
+agents:
+  - name: terminus-2
+    model_name: placeholder/override-at-runtime
+    max_timeout_sec: 7200
+    trajectory_config:
+      raw_content: true
+      linear_history: true
+    kwargs:
+      record_terminal_session: false
+      enable_episode_logging: false
+      enable_pane_logging: false
+      collect_rollout_details: false
+      collect_engine_metrics: false
+      proactive_summarization_threshold: 2048
+      metrics_endpoint: https://replace-with-vllm-host/metrics
+      metrics_timeout_sec: 10
+      model_info:
+        max_input_tokens: 32768
+        max_output_tokens: 16384
+        input_cost_per_token: 0
+        output_cost_per_token: 0
+datasets:
+  - path: /replace/with/tasks/path
+tasks: []

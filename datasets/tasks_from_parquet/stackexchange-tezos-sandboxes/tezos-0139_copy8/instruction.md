@@ -1,2 +1,0 @@
-
-I have an issue to request the Cycle Number from this API . I don't understand how to use the map to get the data from the last cycle only. const ul2 = document.getElementById('Cycle'); const url2 = 'https://api6.tzscan.io/v3/rolls_history/tz1NortRftucvAkD1J58L32EhSVrQEWJCEnB?number=1&page=0'; fetch(url2) .then((resp) => resp.json()) .then(function(data){ data.map( let span = document.createElement('span'); span.innerHTML = `${data.cycle}`; ul2.appendChild(span) }) .catch(function(error) { console.log(error); }); https://codepen.io/anon/pen/aMXeYJ

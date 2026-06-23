@@ -1,2 +1,0 @@
-
-How do I extract the storage data of a deployed smart contract? I am trying to read the storage data from the "free Ledger Nano S" contract KT1BRudFZEXLYANgmZTka1xCDN5nWTMWY7SZ from the Tezos Foundation, because I am interested in how it works. The contract code is pretty straight forward. TzScan for example doesn't show the storage data, all it shows is Unit which in this case is not useful. The solution from an old question How to get smart-contract storage data? doesn't work anymore.

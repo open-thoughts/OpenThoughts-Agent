@@ -1,2 +1,0 @@
-
-I have a Ledger device, Ledger Live and the Tezbox App installed on my Mac. When I originally installed things, everything was working fine. Now things aren't working. When I connect the Ledger to my Mac by opening Ledger Live and then opening the Tezbox App, I can see my funds just fine. But when I try to transfer funds from my Ledger kt1 account in the Tezbox app to another tz1 address I see the error Operation Failed! Hardware device error I haven't changed anything. Not sure what the error is or how to fix it. Has anyone else encountered this problem. How do I fix it?

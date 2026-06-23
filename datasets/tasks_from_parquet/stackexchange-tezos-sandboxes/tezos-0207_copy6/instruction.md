@@ -1,2 +1,0 @@
-
-When we try to run a smart contract using tezos-client , it estimates the gas cost and predicts the final output of the contract. It simulates the contract execution under the current block-chain, input parameters including the argument, transfer amount and the counter of the caller's account, therefore it seems to me that the simulation is quite accurate for simple contract calls. But since it calls itself a simulation, it may fail to predict the outcome. In which situation the simulator fails to predict the execution of a transfer?

@@ -1,2 +1,0 @@
-
-I want to fetch operation detail by hash through rpc or rest api. And I don't seed any rpc interface implemented this feature at http://tezos.gitlab.io/api/rpc.html# . I see conseilJS has this function. But its' api is const url = `${serverInfo.url}/v2/data/${platform}/${network}/${entity}`; , I can't find this method at tezos document. So, what rpc interface dose conseilJs use to get operation by hash?

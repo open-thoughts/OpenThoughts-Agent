@@ -1,2 +1,0 @@
-
-I try to convert a "key_hash" to "address" data type. In OCaml syntax like: let key_h = (addr : key_hash) in and ReasonML syntax like: let key_h = (addr : key_hash); have the same error: Type error: Unexpected type in annotated expression. Expected type: address Actual type: key_hash I found this advice, but it doesn't solve my problem... Can I solve this directly? Or only work around? Thanks in advance!

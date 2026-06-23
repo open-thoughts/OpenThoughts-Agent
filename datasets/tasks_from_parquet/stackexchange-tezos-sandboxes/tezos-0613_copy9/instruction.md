@@ -1,2 +1,0 @@
-
-I have created an encrypted keypair using the tezos CLI using tezos-signer gen keys alias I was not given any mnemonic words, only a password that I had to set. I would like to use this address on a software wallet like Galleon, is it possible? if so, do i need to retrieve the mnemonic from that address to be able to restore it? if so, should I use pytezos from baking-bad ? https://github.com/baking-bad/pytezos Has anybody already done that while being in the same situation as I am? Many thanks!

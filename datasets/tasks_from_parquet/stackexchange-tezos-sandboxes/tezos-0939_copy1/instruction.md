@@ -1,2 +1,0 @@
-
-I have a problem to install liquidity. I tried what is displayed on https://liquidity-lang.org/doc/installation/index.html But it raises the error : m@samsung:~/liquidity$ make build-deps opam switch create . 4.07.1 --no-install opam: unknown option `--no-install'. Usage: opam switch [OPTION]... [COMMAND] [ARG]... Try `opam switch --help' or `opam --help' for more information. Makefile:70 : la recette pour la cible « _opam » a échouée make: *** [_opam] Erreur 1 Could you just make an apt repository for liquidity ?

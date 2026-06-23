@@ -1,2 +1,0 @@
-
-I’m running a test sandbox locally. Anyone know an easy way to make my sandbox RPC service add a Access-Control-Allow-Origin: * header so that I can avoid CORS errors while testing locally? rpc.tzbeta.net seems to add the header, so I can access it from my web app just fine, but it isn’t currently running the latest proposal code, so I can’t use it for testing. One option for testing would be a proxy , but if there is a way to tell the RPC service to do it for me, that would be ideal.

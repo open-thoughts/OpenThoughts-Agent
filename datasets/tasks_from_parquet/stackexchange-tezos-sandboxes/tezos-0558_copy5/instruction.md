@@ -1,2 +1,0 @@
-
-req passed to _verifySigPersonalSign will be of type ERC import smartpy as sp ERC = sp.TRecord(sender=sp.TAddress,to=sp.TAddress,deadline=sp.TTimestamp) class StoreValue(sp.Contract): @sp.entry_point def _verifySigPersonalSign(self,params): req=params.req sp.verify(sp.now But I am getting this error in the last line of code Error: Error in Scenario Literal format error: (timestamp(attr(attr(params 39)req 40)deadline 41)) How to resolve this?

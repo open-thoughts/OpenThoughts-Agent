@@ -1,2 +1,0 @@
-
-Is it possible to pack a javascript object with specific types for its properties that can be unpacked in a smart contract (for example Bytes.unpack in ligo)? I've come to the same point as the example above, but when I try to pack an object instead of the single address mentioned above I get stuck.We need to pack offchain and be able to extract some of these values in a smart contract.Ie: In JS: { address: 'tz1...', timestamp: '...', } This gets packed and sent as a param to the SC. In SC we unpack as address and timestamp. Question from Dev Slack.

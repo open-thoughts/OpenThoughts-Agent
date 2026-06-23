@@ -1,2 +1,0 @@
-
-I have set up my tezos services to be controlled by systemd using etomknudsen's scripts . The output from those services gets logged by journald with double timestamps since both the tezos applications and journald itself each add a timestamp. For tezos-node a typical log line looks like this: Mar 18 08:44:58 baker.example.com tezos-node[27442]: Mar 18 08:44:58 - validator.chain(1): Pushed: 2019-03-18T13:44:58Z, Treated: 2019-03-18T13:44:58Z, Completed: 2019-03-18T13:44:58Z Can I change the configuration so that only one timestamp appears in each log line?

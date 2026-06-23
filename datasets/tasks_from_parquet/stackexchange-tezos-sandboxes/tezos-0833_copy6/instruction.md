@@ -1,2 +1,0 @@
-
-import smartpy as sp def logic(data): t = sp.TRecord(x=sp.TNat, y=sp.TNat, z=sp.TNat) unpacked = sp.unpack(data, t).open_some(message="Can't unpack!!") sp.result(unpacked.x + unpacked.y) i_need_this = sp.build_lambda(logic) How will I be able to convert SmartPy functions into Michelson code? Context : I need this lambda in michelson so that I am able to pass it as an argument to an entrypoint in typescript (with taquito).

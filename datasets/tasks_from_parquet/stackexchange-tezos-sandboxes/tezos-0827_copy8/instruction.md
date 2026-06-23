@@ -1,2 +1,0 @@
-
-i'm trying to use the pytezos.crypto.key library. But i miss something giving the Key object my public key as an argument. Here my code : encoded_key=pytezos.crypto.encoding.base58_encode(bytearray(b'edpkvFujbm3Xiamfxceg4GbsUBHzvqLZQmZvddg7xcFFvFQBEjeHTp'),b"edpk") pytezos.crypto.key.Key.from_encoded(encoded_key) Any ideas please ? I got this error but i followed all the instructions from the docs... ValueError: Invalid encoding, prefix or length mismatch.

@@ -1,2 +1,0 @@
-
-I am stuck when getting Tezos from faucet https://faucet.tzalpha.net/ : ./tezos-client activate account bob with tz1YdaJWrDdHz4qfVEhPEs7f5EBy4DE2Fzv1.json Disclaimer: ... Error: Unrecognized command. Try using the man command to get more information. Seems like tezos-client activate command do not exist... I build from source yesterday with doc https://tezos.gitlab.io/introduction/howtoget.html Thanks for your help.

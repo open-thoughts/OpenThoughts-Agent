@@ -1,2 +1,0 @@
-
-https://smartpy.io/demo/index.html?template=FA1.2.py&source=post_page--------------------------- This is the token contract link. It is deployed on the https://babylonnet.SmartPy.io node with the contract address as KT1WYnCtS6ofvSgXNFKDNGqvgWushAEnZWWh Below is the link to the complete result of the contract deployment. https://anotepad.com/notes/8k64a72p Below is the result of the transaction which calls the getBalance function. https://anotepad.com/notes/44giwqrn

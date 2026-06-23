@@ -1,2 +1,0 @@
-
-I'm trying to call a mint entrypoint that requires tez to be sent along with the contract call. I'm not sure how I would do that and I can't find any examples. This is the entrypoint schema: "mint": { "issuer_address": "address", "issuer_id": "nat" } From what I've learned so far, my call would look something like this: c.methods.mint(issuer, id) I've found examples for transferring tez, but I'm not sure how to combine the transactions. Do they need to be batched? This is my first foray into taquito and I'm a hobby dev with a lot of learning to do :)

@@ -1,2 +1,0 @@
-
-While checking my node, I saw this error appearing. Baking ops are working so not sure if this is anything to worry about but wanted to ask around to see what this could mean. Anyone? Apr 10 20:40:35 - p2p.io-scheduler: Unexpected error in connection (pop: 622664, io_scheduler(read)): Apr 10 20:40:35 - p2p.io-scheduler: Error: Apr 10 20:40:35 - p2p.io-scheduler: Unix error in read: Invalid argument Apr 10 20:40:35 - p2p.io-scheduler:

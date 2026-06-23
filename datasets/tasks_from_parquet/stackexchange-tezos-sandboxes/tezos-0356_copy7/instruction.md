@@ -1,2 +1,0 @@
-
-I am using the taquito library to interact with a smart contract that I have uploaded to carthagenet. However, I am facing an issue in retrieving the value of a bigmap property in my smart contract storage with pair datatype as the key. I have tried the following method and it doesn't work. // agreements is a property in my storage with bigmap datatype const bigMapValue = await storage.agreements.get({0:userAddr, 1: senderAddr}); The error that was thrown Unable to encode big map key: TypeError: this.bigMap.KeySchema.ToBigMapKey is not a function

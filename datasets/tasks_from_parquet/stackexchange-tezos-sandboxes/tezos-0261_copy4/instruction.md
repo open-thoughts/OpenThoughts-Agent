@@ -1,2 +1,0 @@
-
-I recently had to reboot my machine, and upon restarting the tezos services (using the alphanet.sh start command) it automatically pulled an updated image wiping out my previous context which meant it had to bootstrap again. Is this the expected behavior whenever a new docker image is used? Can I prevent the script from automatically downloading the updated image so I can at least try to backup the context before it wipes all of the data?

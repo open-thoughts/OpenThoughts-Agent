@@ -1,2 +1,0 @@
-
-I used below command to start my private node: ./mainnet.sh start --private-mode --no-bootstrap-peers --bootstrap-threshold=1 --connections 1 --peer=`public_node_ip`:9732 My public_node is already running with connections to its peers. Now my private node logs just shows "incoming connection rejected due to untrusted source" and my private node just does not connect to the public node. I even checked the config.json file, my public_node_ip was there against "bootstrapped-peers" key. What else I should do to connect my private node to my public node?

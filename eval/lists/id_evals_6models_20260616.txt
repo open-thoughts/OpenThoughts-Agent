@@ -1,0 +1,6 @@
+laion/lrboost-80-8B
+laion/loopshape-30-8B
+laion/symclip-30-8B
+laion/swesmith-coldstart-complete-lt32k-2ep-8B
+laion/stageB-channel-80-8B
+penfever/stageD-thinkbudget-80-8B

@@ -48,9 +48,16 @@ build_vllm_cmd() {
         --served-model-name "$model"
         --tensor-parallel-size "$tp"
         --gpu-memory-utilization "$gpu_mem_util"
-        --swap-space "$swap_space"
         --disable-custom-all-reduce
     )
+
+    # --swap-space was REMOVED from `vllm serve` in recent vLLM (e.g. Jupiter's nightly
+    # 0.1.devNNNNN rejects it: "unrecognized arguments: --swap-space" → instant vLLM death).
+    # Only pass it if the installed vLLM still accepts it (probe cached per build; bounded by argparse).
+    if [ -n "$swap_space" ] && \
+       timeout 120 "$python_bin" -m vllm.entrypoints.openai.api_server --help 2>/dev/null | grep -q -- '--swap-space'; then
+        VLLM_CMD+=(--swap-space "$swap_space")
+    fi
 
     if [ -n "$dp" ] && [ "$dp" -gt 1 ] 2>/dev/null; then
         VLLM_CMD+=(--data-parallel-size "$dp")

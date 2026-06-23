@@ -49,6 +49,22 @@ elif [ -n "${DCFT:-}" ]; then
 else
   WORKDIR="$PWD"
 fi
+
+# --- WORKDIR sanity guard (HARD FAIL — do not remove) ---
+# If WORKDIR does not point at the OpenThoughts-Agent repo root, every downstream
+# `source "$WORKDIR/hpc/..."` and `python -m hpc....` fails cryptically and the job
+# dies instantly. This happens when a job is submitted from outside the repo with
+# DCFT/DCFT_PRIVATE unset, so the fallback resolves WORKDIR=$PWD (the wrong dir).
+# Fail loudly and immediately instead of running from the wrong place.
+if [ ! -f "$WORKDIR/hpc/shell_utils/triton_cache.sh" ]; then
+  echo "FATAL: WORKDIR='$WORKDIR' is not the OpenThoughts-Agent repo root." >&2
+  echo "       (marker hpc/shell_utils/triton_cache.sh not found under it)." >&2
+  echo "       Submit the job FROM the repo dir with DCFT exported — on Jupiter:" >&2
+  echo "         cd /e/scratch/jureap59/feuer1/OpenThoughts-Agent && export DCFT=\$PWD" >&2
+  echo "       or pass --chdir <repo> to sbatch. Do NOT submit from \$HOME or a scratch subdir." >&2
+  echo "       See .claude/skills/rl-agentic-launch-jupiter for the correct launch procedure." >&2
+  exit 1
+fi
 cd "$WORKDIR"
 
 if [ -z "${DCFT:-}" ]; then
@@ -154,6 +170,17 @@ export PYTHONPATH="$WORKDIR:${PYTHONPATH:-}"
 
 # --- RL-specific environment variables ---
 {rl_env_exports}
+
+# --- RL container env (LATE override — config container.extra_env wins) ---
+# Re-emit the yaml container.extra_env exports AFTER both the hardcoded
+# export TORCH_NCCL_* lines above and the RL-specific env exports block,
+# so a config that intentionally sets a normally-hardcoded var (e.g. #232 lowering
+# TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC to 600 so NCCL's flight-recorder fires BEFORE
+# vLLM's 900s execute_model watchdog and actually dumps) wins by shell last-write.
+# No-op for every config whose extra_env does NOT collide with a hardcoded var
+# (the earlier container-env block already exported those, re-export is
+# idempotent), so this is byte-identical behavior for all existing configs.
+{rl_container_env_late}
 
 # --- Ray defaults ---
 {ray_env_exports}

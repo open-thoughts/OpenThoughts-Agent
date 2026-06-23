@@ -1,2 +1,0 @@
-
-I just set up a local enviroment according to https://tezos.gitlab.io/introduction/howtoget.html using the babylonnet.sh I am not familiar with docker but I could make sure with "docker stats" that everything seems to run fine. But I now struggle with the further documentation. The system does not know for example the tezos-node command. I just get a iMac:Downloads user$ tezos-node -bash: tezos-node: command not found How do I interact with tezos that run within a docker container?

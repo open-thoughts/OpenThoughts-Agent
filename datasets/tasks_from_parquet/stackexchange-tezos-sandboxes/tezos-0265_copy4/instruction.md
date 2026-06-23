@@ -1,2 +1,0 @@
-
-I was just trying to create a wallet using TezosJ_SDK specifically using Pocket and I have enchanted the following error: java.lang.RuntimeException: Could not initialize Android KeyStore. The code I have is: import milfont.com.tezosj_android.model.TezosWallet; ... TezosWallet pocketWallet = new TezosWallet("password123", "DEV123", TezosNetwork.ALPHANET, 60000); Log.d("new wallet is", pocketWallet.getPublicKeyHash());

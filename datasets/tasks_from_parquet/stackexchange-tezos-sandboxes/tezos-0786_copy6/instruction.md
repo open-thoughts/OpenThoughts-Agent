@@ -1,2 +1,0 @@
-
-I'm trying to write some functions in (came)ligo that compare several values as long as they are ints, strings, or nats. compare_equal is one of them. This errors out with Only composed types of not more than two element are allowed to be compared. let compare_equal (type k) (a, b: k * k) : bool = if(a = b) then true else false Is it possible to convert a and b to their composed types? let compare_equal (type k) (a, b: k * k) : bool = match a with int(v) -> if(a=b) then true else false | string(v) -> if(a=b) then true else false

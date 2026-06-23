@@ -1,0 +1,3 @@
+# all-3-ID-evals leg (swebench random-100, dev_set_v2, terminal_bench_2)
+laion/explore-tis-temp10-60-8B
+laion/64GPU_base_32b-55-32B

@@ -1,2 +1,0 @@
-
-I did few smart contracts with Ligo, but now looking for more productionize setup. Is there a test framework one can use for Tezos? I'm looking for something like waffle + mocha in Ethereum, or truffle . I could do it myself with mocha and taquito or ConseilJS , but firstly want to check if there are ready frameworks. Is there a lite version of a Tezos node? Something like ganache , something to super easily start and use to execute smart-contract.

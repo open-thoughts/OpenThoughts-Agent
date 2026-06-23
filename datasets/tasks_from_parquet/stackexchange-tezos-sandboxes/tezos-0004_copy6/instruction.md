@@ -1,2 +1,0 @@
-
-I'm researching setting up a highly available baking infrastructure. Is it possible to use multiple ledgers signing for the same address? My plan is to use a ledger connected to a laptop running a tezos-signer daemon and have two bakers (one active, one hot-standby) use this signer. I would prefer to duplicate the signer too - if possible. I would like to use a ledger to get it's double bake protection, but I guess that goes out the window if I use multiple ledgers

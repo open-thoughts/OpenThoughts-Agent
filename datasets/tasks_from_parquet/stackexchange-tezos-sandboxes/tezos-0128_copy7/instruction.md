@@ -1,2 +1,0 @@
-
-Contract (simple.liq): [%%version 1.0] type storage = int let%init storage = 0 let%entry main (parameter : int) storage = ( [], storage + parameter ) Deployment command: liquidity --tezos-node http://alphanet-node.tzscan.io:80 --private-key --protocol alphanet simple.liq --deploy After I run this command I get the following error that I cannot make sense of: Response Error: in /chains/main/blocks/head/helpers/preapply/operations - branch: proto.003-PsddFKi3.implicit.empty_implicit_contract It seems that the node thinks that our implicit contract is empty.

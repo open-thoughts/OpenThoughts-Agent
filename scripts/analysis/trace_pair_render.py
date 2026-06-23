@@ -539,6 +539,8 @@ def select_pairs(
     after: Dict[str, List[Trace]],
     top_n: int,
     prefer: str,
+    exclude: Optional[Sequence[str]] = None,
+    seed: int = 0,
 ) -> List[Tuple[str, Trace, Trace]]:
     """Pick representative pairs, ordered by what's most interesting.
 
@@ -548,14 +550,28 @@ def select_pairs(
       * ``reward-delta`` — tasks with the largest absolute reward swing
       * ``behavior-delta`` — tasks with the largest behavioral-feature
         deltas (helps the LLM-judge step pick the most informative pairs)
+      * ``random`` — a uniform sample WITHOUT replacement of the common
+        tasks, seeded by ``seed`` for reproducibility. Use this to estimate
+        "did behavior change *in general*", as opposed to on the
+        cherry-picked most-shifted tasks that ``behavior-delta`` surfaces.
       * ``any`` — first ``top_n`` common tasks sorted alphabetically
+
+    ``exclude`` — task ids to drop from the candidate set before selecting.
+    Pass the ``behavior-delta`` winners here so a ``random`` draw is disjoint
+    from them (sampling the *rest* of the distribution, without replacement).
     """
-    common = sorted(set(before) & set(after))
+    excluded = set(exclude or ())
+    common = [t for t in sorted(set(before) & set(after)) if t not in excluded]
     pairs: List[Tuple[str, Trace, Trace]] = []
     for task in common:
         b = _pick_representative(before[task])
         a = _pick_representative(after[task])
         pairs.append((task, b, a))
+    if prefer == "random":
+        import random as _random
+
+        _random.Random(seed).shuffle(pairs)
+        return pairs[:top_n]
     if prefer in ("flips", "reward-delta", "behavior-delta"):
         pairs.sort(key=lambda t: _pair_rank_key(t, prefer), reverse=True)
     return pairs[:top_n]

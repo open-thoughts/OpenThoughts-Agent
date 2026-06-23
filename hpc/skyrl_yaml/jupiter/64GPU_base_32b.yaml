@@ -67,6 +67,11 @@ terminal_bench:
     # Reward shaping (disabled - binary rewards)
     enable_reward_shaping: false
 
+    # TIS (2026-06-12 baseline): request + store per-token rollout logprobs from
+    # vLLM. REQUIRED for trainer.algorithm.use_tis (trainer asserts non-null
+    # rollout_logprobs when use_tis=true). Inherited from 56GPU_seqnorm_tis.yaml.
+    collect_rollout_details: true
+
     # RLOO-N error classification
     enable_error_classification: true
     mask_exceptions:
@@ -108,7 +113,13 @@ trainer:
     kl_loss_coef: 0.0
     eps_clip_low: 0.2
     eps_clip_high: 0.05
-    loss_reduction: token_mean
+    # seqnorm + TIS baseline (2026-06-12): inherited from 56GPU_seqnorm_tis.yaml,
+    # the more-stable default. Global-normed loss = length-unbiased,
+    # grad-accum-correct, and dead-group-dilution-free; TIS bounds the off-policy
+    # rollout-vs-train ratio. Requires collect_rollout_details: true (harbor block).
+    loss_reduction: seq_mean_token_sum_norm_global
+    use_tis: true
+    tis_imp_ratio_cap: 2.0
 
   # Training loop settings
   epochs: 2

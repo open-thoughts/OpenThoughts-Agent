@@ -1,2 +1,0 @@
-
-Image if I have a smart contract with entry-point increment() that increments a counter. So if I call this entry-point for the first time and we know that it takes almost 1 minute for the operation to be confirmed and baked. and all sub-sequent request fails until the block is confirmed. So does this set a limit on me to call this function, eg I can only call increment the counter by 60 in 1 hour..? I need help to make sure that my understanding is right or not and also if there is any way I can achieve a greater limit! Thanks in advance.

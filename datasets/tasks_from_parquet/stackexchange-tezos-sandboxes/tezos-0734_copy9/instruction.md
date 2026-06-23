@@ -1,2 +1,0 @@
-
-If I pass in the string QmbPAr5RcCZZDRsNKnf2p1t6GK3Qu7oDH39HCK3aewUq3w to the sp.pack method in an entrypoint and perform and sp.trace in smartpy I expect to get the following bytes: 0x516d62504172355263435a5a4452734e4b6e663270317436474b335175376f4448333948434b3361657755713377 However, I receive the following bytes: 0x05010000002e516d62504172355263435a5a4452734e4b6e663270317436474b335175376f4448333948434b3361657755713377 You can see that the bytes 0x05010000002e are being prepended to the value during the pack Why does this happen?

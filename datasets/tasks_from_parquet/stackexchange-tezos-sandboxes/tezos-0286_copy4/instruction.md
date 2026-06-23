@@ -1,2 +1,0 @@
-
-I have a public node that I'm trying to connect to my private node, but the connection keeps getting rejected, even after using trust peer and trust address in both of them. I also have tried from a different public node, with the same error, and ports are open (unless this needs some weird ports different than the usual ones). The error message shown is: ./mainnet.sh admin-client connect address :9732 Error: Rejected peer connection: rejected socket connection. Any ideas? Thanks!

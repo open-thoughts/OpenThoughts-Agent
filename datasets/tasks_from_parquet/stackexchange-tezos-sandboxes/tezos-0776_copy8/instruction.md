@@ -1,2 +1,0 @@
-
-I'm new to Tezos. I'm wanting to store some signed, hashed data on the Tezos blockchain, most likely using Taquito/Batch API. Can anyone direct me to the correct method to simply send the data and get back the hashed transaction information. I want the transaction data so I can look up the stored data later. Is it just the send method from here: https://tezostaquito.io/docs/batch_api/#how-does-it-work ? Any help is greatly appreciated.

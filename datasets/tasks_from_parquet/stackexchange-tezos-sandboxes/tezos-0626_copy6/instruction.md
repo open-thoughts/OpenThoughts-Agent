@@ -1,2 +1,0 @@
-
-I am using sp.if in an internal function, then I call it in an entry point, but whatever I enter in sp.if, it always is read as "True". Why? And how to fix it? My code : def is_something(self, contract): sp.if 1 == 2: return "Yes" sp.else: return "No" @sp.entry_point def updateSomething(self, params): sp.set_type(params, sp.TRecord(_id = sp.TNat, percentage = sp.TNat)) sp.trace(self.is_something(sp.sender)) When the entry point is called, sp.traces writes "Yes" instead of no. Why?

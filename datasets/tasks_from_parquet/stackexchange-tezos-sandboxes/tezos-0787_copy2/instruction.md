@@ -1,2 +1,0 @@
-
-I'm trying to loop through a mapping list (type_a) and update a different mapping list (type_b). Both lists are different. For List.fold, does the accumulator have to be the same type as list? ie, if we have let fn = fun (acc, a: type_b * type_a list) : type_b = ... let my_list : type_a list = Map.literal[...] let acc : type_b = ... let sum_of_elements : int = List.fold_left fn acc my_list Does acc have to be of type_a ? I'm getting a few errors about the fields not matching, but I'm not sure if that is because this is not allowed, or something else..

@@ -1,2 +1,0 @@
-
-I'm receiving this error message after a couple of transactions have failed. Is it the nonce? I was expecting the pre-apply call would take care of it. Now I'm receiving this message: branch refused (Error:\n Counter 1191226 already used for contract tz1Pwg.. (expected 1191227) Any ideas? Anywhere where error messages are explained? Google can't help. Update: Error messages are here: https://tezos.gitlab.io/mainnet/api/errors.html Though it seems like its incomplete as I have received several messages not found in the list.

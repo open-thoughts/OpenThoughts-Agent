@@ -1,2 +1,0 @@
-
-I get an unexpected arguments error while trying to make a transfer endpoint call. my_contract.transfer([{ "transfer_item": { "from_": "tz1...", "txs": [{ "txs_item": { "to_": "tz1...", "token_id": 0, "amount": 5 } }] } }]) The structure should look like this: $transfer_item: { "from_": address, "txs": [ $txs_item, … ] } $txs_item: { "to_": address, "token_id": nat, "amount": nat } I'm unsure if I nested it wrong or where I made the mistake.

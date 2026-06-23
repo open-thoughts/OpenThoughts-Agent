@@ -1,2 +1,0 @@
-
-Same issue as: Error compiling tezos main net [ERROR] The sources of the following couldn't be obtained, aborting: - hidapi.1.0-1: Bad checksum I did not update hidapi manually - this is on a fresh install. I attempted to install hidapi manually opam install hidapi - last night but this didn't work. I raised an issue with the repository for opam and this was fixed today. I can now run opam install hidapi - however the tezos build is still failing with the wrong checksum.

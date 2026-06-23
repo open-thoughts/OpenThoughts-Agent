@@ -1,2 +1,0 @@
-
-Trying to build onchain guessing game using commit-reveal pattern pattern uses encryption, solidity example is // Check the hash to ensure the commitment is correct require(keccak256(abi.encodePacked(msg.sender, choice, blindingFactor)) == commitChoice.commitment, "invalid hash"); From previos stack exchange answers ı found that tezos doesnt have encryption in smart contracts. Instead using timeclock/chests. the problem is how I can create a chest in client side ? only code I found is in OCaml note: can't open approite tags due to low reputation

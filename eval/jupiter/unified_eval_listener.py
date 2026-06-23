@@ -50,6 +50,36 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 # ---------------------------------------------------------------------------
+# Cross-cluster defaults
+# ---------------------------------------------------------------------------
+# This listener is the single canonical agentic-eval entrypoint for every
+# no-internet HPC cluster. The only things that differ per cluster are the
+# sbatch template + the log dir; everything else (dedup, DB pending-row,
+# size-based harbor-config selection, pre-download, proxy-via-sbatch) is
+# cluster-agnostic. `--cluster <name>` selects these defaults; an explicit
+# --sbatch-script / --log-dir (or the EVAL_LISTENER_SBATCH / EVAL_LISTENER_LOG_DIR
+# env vars) still wins. Default is "jupiter" so the live Jupiter campaign's
+# invocation (`python eval/jupiter/unified_eval_listener.py ...`, no --cluster)
+# is byte-for-behavior identical to before this flag existed.
+CLUSTER_DEFAULTS: Dict[str, Dict[str, str]] = {
+    "jupiter": {
+        "sbatch_script": "eval/jupiter/unified_eval_harbor.sbatch",
+        "log_dir": "eval/jupiter/logs",
+    },
+    "leonardo": {
+        "sbatch_script": "eval/leonardo/unified_eval_harbor.sbatch",
+        "log_dir": "eval/leonardo/logs",
+        # Leonardo A100 (64GB) OOMs during vLLM cudagraph capture above ~0.85
+        # (see eval/leonardo/unified_eval_harbor.sbatch). The PRESETS gpu_memory_util
+        # values (0.95) are tuned for Jupiter GH200 (96GB); clamp them down here so a
+        # `--cluster leonardo` launch is safe by default. An explicit --gpu-memory-util
+        # still wins. (2026-06-21: 8 Leonardo legs OOM'd at the hardcoded 0.95.)
+        "gpu_memory_util_cap": "0.85",
+    },
+}
+DEFAULT_CLUSTER = os.getenv("EVAL_LISTENER_CLUSTER", "jupiter")
+
+# ---------------------------------------------------------------------------
 # Imports from database/unified_db
 # ---------------------------------------------------------------------------
 from database.unified_db.utils import (  # noqa: E402
@@ -92,8 +122,10 @@ PRESETS: Dict[str, Dict] = {
         "gpu_memory_util": 0.95,
     },
     "swebench": {
-        "datasets": ["DCAgent/swebench_verified_eval_set"],
-        "description": "SWE-bench verified eval",
+        # The random-100 ID subset (the old DCAgent/swebench_verified_eval_set repo 404s).
+        # Benchmark NAME stays canonical via unified_eval_harbor.sbatch BENCHMARK_NAME_MAP.
+        "datasets": ["DCAgent2/swebench-verified-random-100-folders"],
+        "description": "SWE-bench verified (random-100 subset) eval",
         "n_concurrent": 32,
         "gpu_memory_util": 0.95,
     },
@@ -313,6 +345,115 @@ def get_vllm_env_overrides(hf_model: str, configs: Dict[str, Dict[str, Any]]) ->
 
 
 # ---------------------------------------------------------------------------
+# Model-size -> canonical Harbor config selection
+# ---------------------------------------------------------------------------
+# Larger models decode their agentic rollouts much more slowly, so they
+# spuriously hit AgentTimeout at the small default multiplier. Rather than
+# inferring a bare multiplier from the model name, the listener SELECTS the
+# canonical harbor config by the model's parameter-count size token in the HF
+# name (e.g. "...-8B", "Qwen3-32B") — the timeout_multiplier now lives IN the
+# config file:
+#   <= ~14B (8B-class)   -> hpc/harbor_yaml/eval/dcagent_eval_defaults.yaml      (timeout_multiplier 2.0)
+#   ~28-42B (32B-class)  -> hpc/harbor_yaml/eval/dcagent_eval_defaults_32b.yaml  (timeout_multiplier 16.0)
+# Sizes outside these bands (e.g. 1.5B, 80B) and names with no size token fall
+# back to the base default config and emit a log line. An explicit user
+# --harbor-config / preset harbor_config overrides the size selection entirely,
+# and a per-model "timeout_multiplier" in baseline_model_configs.yaml still wins
+# over whatever the selected config specifies.
+_SIZE_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9.])(\d+(?:\.\d+)?)\s*[bB](?![A-Za-z0-9])")
+
+# Canonical config paths, resolved relative to the repo root (same root used to
+# import database.unified_db.*). The base default covers 8B-class; the _32b
+# variant is byte-identical except timeout_multiplier 16.0.
+DEFAULT_HARBOR_CONFIG = os.path.join(
+    _PROJECT_ROOT, "hpc", "harbor_yaml", "eval", "dcagent_eval_defaults.yaml")
+DEFAULT_HARBOR_CONFIG_32B = os.path.join(
+    _PROJECT_ROOT, "hpc", "harbor_yaml", "eval", "dcagent_eval_defaults_32b.yaml")
+
+
+def select_harbor_config(
+    hf_model: str,
+    base_default_path: str = DEFAULT_HARBOR_CONFIG,
+    path_32b: str = DEFAULT_HARBOR_CONFIG_32B,
+) -> str:
+    """Select the canonical harbor config for a model by its size token.
+
+    Returns ``path_32b`` when the largest size token in the HF name falls in
+    the 32B band (~28-42B), else ``base_default_path``. Out-of-band sizes
+    (e.g. 1.5B / 80B) and names with no size token get the base default; a log
+    line records the decision.
+    """
+    # Largest size token in the name wins (handles e.g. MoE "30b-a3b").
+    sizes = [float(m) for m in _SIZE_TOKEN_RE.findall(hf_model)]
+    b = max(sizes) if sizes else None
+    if b is not None and 28.0 <= b <= 42.0:
+        log(f"  Harbor config (size-based): 32B-class ({b}B) -> {path_32b}", verbose_only=True)
+        return path_32b
+    if b is None:
+        log(f"  Harbor config (size-based): no size token in {hf_model!r} -> base default {base_default_path}",
+            verbose_only=True)
+    elif b > 42.0 or b < 28.0:
+        log(f"  Harbor config (size-based): {b}B out of 32B band -> base default {base_default_path}",
+            verbose_only=True)
+    return base_default_path
+
+
+def get_model_timeout_override(hf_model: str, configs: Dict[str, Dict[str, Any]]) -> Optional[str]:
+    """Return an explicit per-model timeout_multiplier override, or None.
+
+    Highest-priority source: a "timeout_multiplier" under a model (or pattern)
+    entry in baseline_model_configs.yaml. Use this for models whose name has no
+    size token (e.g. a GLM-named Qwen3-8B) or an out-of-band size you want a
+    deliberate value for. Returns the multiplier as a string, or None when no
+    per-model override applies (caller falls back to the selected config's
+    timeout_multiplier).
+    """
+    cfg = configs.get(hf_model) or _match_pattern_config(hf_model) or {}
+    if cfg.get("timeout_multiplier") is not None:
+        return str(float(cfg["timeout_multiplier"]))
+    return None
+
+
+def resolve_model_eval(
+    hf_model: str,
+    explicit_harbor_config: Optional[str],
+    baseline_configs: Dict[str, Dict[str, Any]],
+) -> Tuple[str, Dict[str, Any]]:
+    """Resolve the harbor config path + eval_config dict for a single model.
+
+    This is the single source of truth used BOTH for dedup (so a 32B's existing
+    16.0 row is compared against 16.0, not the global default) AND for the
+    per-model sbatch env. Logic:
+
+      1. Harbor config path:
+         - an explicit ``--harbor-config`` / preset ``harbor_config`` wins for
+           every model (size selection is bypassed);
+         - otherwise ``select_harbor_config`` picks the size-appropriate
+           canonical default (8B-class base, 32B-class _32b).
+      2. eval_config = parsed fields of THAT config (timeout_multiplier +
+         resource overrides) — this is what gets compared in dedup and written
+         to the Pending DB row.
+      3. A per-model ``timeout_multiplier`` in baseline_model_configs.yaml is the
+         highest-priority override and replaces the config's value.
+
+    Returns ``(harbor_config_path, eval_config)``.
+    """
+    if explicit_harbor_config:
+        harbor_config_path = explicit_harbor_config
+    else:
+        harbor_config_path = select_harbor_config(hf_model)
+
+    eval_config = parse_harbor_eval_config(harbor_config_path)
+
+    # Per-model explicit override (baseline_model_configs.yaml) wins.
+    override_tm = get_model_timeout_override(hf_model, baseline_configs)
+    if override_tm is not None:
+        eval_config["timeout_multiplier"] = float(override_tm)
+
+    return harbor_config_path, eval_config
+
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 _LOG_FILE: Optional[Path] = None
@@ -482,12 +623,22 @@ def should_start_job(
     eval_config: Optional[Dict[str, Any]] = None,
     stale_started_hours: float = 24.0,
     stale_pending_hours: float = 6.0,
+    force: bool = False,
 ) -> Tuple[bool, str]:
     """
     Determine if a job should be started based on DB status.
     Extends TACC's check_job_status with Pending handling, auto-scancel,
     and config-aware deduplication (timeout, resource overrides).
+
+    ``force=True`` (the ``--force-eval`` CLI flag) bypasses ALL dedup checks and
+    always submits — for intentional re-evals / parity tests, where an existing
+    Finished+metrics row would otherwise return ``(False, "job finished")``.
+    Note that this does NOT touch the existing row (no metrics clearing); it just
+    submits a fresh eval that lands as a new (model, benchmark) row.
     """
+    if force:
+        return (True, "force-eval (dedup bypassed)")
+
     # First, quick check: does any job exist at all for this model+benchmark?
     job_exists, job_status, started_at = check_job_status(model_id, benchmark_id)
 
@@ -712,6 +863,7 @@ def submit_eval(
     dependency: Optional[str] = None,
     remote_host: Optional[str] = None,
     remote_workdir: Optional[str] = None,
+    time_limit: Optional[str] = None,
 ) -> Optional[str]:
     """
     Submit a batch job (SLURM sbatch or PBS qsub). Returns job_id if successful.
@@ -747,6 +899,9 @@ def submit_eval(
                 export_parts.append(f"{k}={v}")
         export_flag = ",".join(export_parts)
         cmd = ["sbatch", f"--export={export_flag}"]
+        if time_limit:
+            # CLI --time overrides the #SBATCH --time directive in the script.
+            cmd.append(f"--time={time_limit}")
         if reservation:
             cmd.append(f"--reservation={reservation}")
         if dependency:
@@ -811,11 +966,22 @@ Examples:
     g.add_argument("--preset", choices=list(PRESETS.keys()), help="Use a preset benchmark configuration")
     g.add_argument("--datasets", help="Comma/space separated list of HF dataset repos")
 
-    # Sbatch
+    # Cluster selection (sets per-cluster sbatch/log-dir defaults)
+    p.add_argument(
+        "--cluster",
+        choices=sorted(CLUSTER_DEFAULTS.keys()),
+        default=DEFAULT_CLUSTER,
+        help="Target cluster — selects the default --sbatch-script and --log-dir "
+             "for that cluster (jupiter -> eval/jupiter/..., leonardo -> eval/leonardo/...). "
+             "An explicit --sbatch-script / --log-dir (or EVAL_LISTENER_SBATCH / "
+             "EVAL_LISTENER_LOG_DIR) still overrides. Default: %(default)s.",
+    )
+
+    # Sbatch (default None -> resolved from --cluster post-parse; EVAL_LISTENER_SBATCH wins)
     p.add_argument(
         "--sbatch-script",
-        default=os.getenv("EVAL_LISTENER_SBATCH", "eval/jupiter/unified_eval_harbor.sbatch"),
-        help="Path to sbatch script (default: %(default)s)",
+        default=os.getenv("EVAL_LISTENER_SBATCH"),
+        help="Path to sbatch script (default: per --cluster). EVAL_LISTENER_SBATCH overrides.",
     )
 
     # Timing
@@ -823,6 +989,12 @@ Examples:
     p.add_argument("--check-hours", type=float, default=float(os.getenv("EVAL_LISTENER_CHECK_HOURS", "4")))
     p.add_argument("--stale-started-hours", type=float, default=float(os.getenv("EVAL_LISTENER_STALE_HOURS", "24")))
     p.add_argument("--stale-pending-hours", type=float, default=float(os.getenv("EVAL_LISTENER_STALE_PENDING_HOURS", "6")))
+    p.add_argument("--force-eval", action="store_true",
+                   help="Bypass ALL dedup checks and (re)submit every targeted (model, dataset) pair, "
+                        "even if a Finished row WITH metrics already exists (which would otherwise "
+                        "Skip with reason='job finished'). For intentional re-evals / parity tests. "
+                        "Submits a fresh row; does NOT mutate the existing one. ALWAYS combine with "
+                        "--require-priority-list so only the intended models are forced.")
 
     # Priority file
     p.add_argument("--priority-file", default=os.getenv("EVAL_LISTENER_PRIORITY_FILE"))
@@ -835,6 +1007,10 @@ Examples:
     p.add_argument("--harbor-config", default=None,
                    help="Path to Harbor YAML config (passed as EVAL_HARBOR_CONFIG to sbatch)")
     p.add_argument("--reservation", default=os.getenv("EVAL_LISTENER_RESERVATION"), help="SLURM reservation name")
+    p.add_argument("--time-limit", default=os.getenv("EVAL_LISTENER_TIME_LIMIT"),
+                   help="SLURM walltime (e.g. 24:00:00); CLI --time overrides the sbatch #SBATCH --time "
+                        "directive (default 12:00:00). Use a longer limit for full-dataset agentic re-evals "
+                        "that don't finish all trials in 12h (esp. 32B at 16x timeout-multiplier).")
     p.add_argument("--max-jobs", type=int, default=None, help="Maximum number of SLURM jobs to submit in one iteration")
     p.add_argument("--batch-size", type=int, default=None,
                    help="Max concurrent jobs via sliding-window SLURM dependencies. "
@@ -864,7 +1040,9 @@ Examples:
     p.add_argument("--pre-download", action="store_true",
                    help="Pre-download all model weights on login node before submitting jobs. "
                         "Essential for no-internet compute nodes (Leonardo, Jupiter).")
-    p.add_argument("--log-dir", default=os.getenv("EVAL_LISTENER_LOG_DIR", "eval/jupiter/logs"))
+    # --log-dir default None -> resolved from --cluster post-parse; EVAL_LISTENER_LOG_DIR wins
+    p.add_argument("--log-dir", default=os.getenv("EVAL_LISTENER_LOG_DIR"),
+                   help="Listener log dir (default: per --cluster). EVAL_LISTENER_LOG_DIR overrides.")
 
     return p
 
@@ -879,8 +1057,20 @@ def main() -> None:
     args = parser.parse_args()
     _VERBOSE = args.verbose
 
+    # Resolve per-cluster defaults for sbatch script + log dir. Precedence:
+    # explicit --sbatch-script / --log-dir (or their EVAL_LISTENER_* env vars,
+    # already folded into the argparse default) > --cluster default. This keeps
+    # the live Jupiter campaign (no --cluster -> "jupiter") behavior-identical
+    # while letting `--cluster leonardo` retarget the whole pipeline.
+    _cluster_defaults = CLUSTER_DEFAULTS[args.cluster]
+    if not args.sbatch_script:
+        args.sbatch_script = _cluster_defaults["sbatch_script"]
+    if not args.log_dir:
+        args.log_dir = _cluster_defaults["log_dir"]
+
     _load_secrets()
     _init_logging(args.log_dir)
+    log(f"Cluster: {args.cluster} (sbatch={args.sbatch_script}, log_dir={args.log_dir})")
 
     # Resolve datasets
     datasets: List[str] = []
@@ -911,23 +1101,29 @@ def main() -> None:
     # CLI overrides take precedence
     n_concurrent = args.n_concurrent or preset_config.get("n_concurrent", 128)
     gpu_mem_util = args.gpu_memory_util or preset_config.get("gpu_memory_util", 0.95)
+    # Per-cluster gpu-mem cap (precedence: explicit --gpu-memory-util > cluster cap >
+    # preset). The preset values target Jupiter GH200 96GB; clamp DOWN for clusters
+    # whose GPUs OOM at that level (Leonardo A100 64GB → 0.85). Only clamps when the
+    # user did NOT pass --gpu-memory-util, and only downward.
+    _gpu_cap = _cluster_defaults.get("gpu_memory_util_cap")
+    if args.gpu_memory_util is None and _gpu_cap is not None and gpu_mem_util > float(_gpu_cap):
+        log(f"Clamping gpu_memory_util {gpu_mem_util} -> {_gpu_cap} (cluster '{args.cluster}' cap)")
+        gpu_mem_util = float(_gpu_cap)
     sbatch_env["EVAL_N_CONCURRENT"] = str(n_concurrent)
     # Only override gpu_mem_util if explicitly set via CLI or preset (don't clobber datagen)
     if args.gpu_memory_util is not None or "EVAL_GPU_MEMORY_UTIL" not in sbatch_env:
         sbatch_env["EVAL_GPU_MEMORY_UTIL"] = str(gpu_mem_util)
     sbatch_env["EVAL_DAYTONA_THRESHOLD"] = str(args.daytona_threshold)
 
-    # Harbor config (CLI > preset > sbatch default)
-    harbor_config = args.harbor_config or preset_config.get("harbor_config")
-    if harbor_config:
-        sbatch_env["EVAL_HARBOR_CONFIG"] = harbor_config
-
-    # Parse eval-relevant config from harbor YAML for dedup + sbatch env vars
-    eval_config = parse_harbor_eval_config(harbor_config)
-    if eval_config.get("timeout_multiplier") is not None:
-        sbatch_env["EVAL_TIMEOUT_MULTIPLIER"] = str(eval_config["timeout_multiplier"])
-    if eval_config.get("override_memory_mb") is not None:
-        sbatch_env["EVAL_OVERRIDE_MEMORY_MB"] = str(eval_config["override_memory_mb"])
+    # Harbor config: an explicit --harbor-config / preset harbor_config is an
+    # override that wins for EVERY model (bypasses size selection). When unset,
+    # the listener SELECTS the canonical config per-model by size in the loop
+    # below (8B-class -> dcagent_eval_defaults.yaml [2.0]; 32B-class ->
+    # dcagent_eval_defaults_32b.yaml [16.0]). The harbor config + its parsed
+    # eval_config (timeout_multiplier, resource overrides) are resolved per-model
+    # via resolve_model_eval() so EVAL_HARBOR_CONFIG / EVAL_TIMEOUT_MULTIPLIER and
+    # the dedup comparison all use the SAME per-model values.
+    explicit_harbor_config = args.harbor_config or preset_config.get("harbor_config")
     # Preset-specific env vars (snapshot, daytona key)
     if preset_config.get("snapshot_name"):
         sbatch_env["EVAL_SNAPSHOT_NAME"] = preset_config["snapshot_name"]
@@ -939,8 +1135,11 @@ def main() -> None:
 
     check_interval_seconds = int(args.check_hours * 3600)
 
-    if eval_config:
-        log(f"Eval config for dedup: {eval_config}")
+    if explicit_harbor_config:
+        log(f"Harbor config (explicit override for all models): {explicit_harbor_config}")
+    else:
+        log("Harbor config: size-based per-model selection "
+            f"(8B-class -> {DEFAULT_HARBOR_CONFIG}; 32B-class -> {DEFAULT_HARBOR_CONFIG_32B})")
     log(
         f"Starting listener: datasets={datasets}, lookback={args.lookback_days}d, "
         f"interval={args.check_hours}h, sbatch={args.sbatch_script}, "
@@ -961,7 +1160,13 @@ def main() -> None:
                 ds: resolve_benchmark_id_for_dataset(ds) for ds in datasets
             }
 
-            submissions: List[Tuple[str, str, str, Optional[str], str]] = []
+            # (model_id, hf_model, dataset_hf, bench_id, reason, harbor_config_path, eval_config)
+            submissions: List[Tuple[str, str, str, Optional[str], str, str, Dict[str, Any]]] = []
+
+            # Per-model resolved (harbor_config_path, eval_config). Depends only on
+            # the model (size + baseline override + explicit override), not the
+            # dataset, so compute once per model and reuse for dedup + submission.
+            model_eval_cache: Dict[str, Tuple[str, Dict[str, Any]]] = {}
 
             for m in models:
                 model_id = str(m.get("id", ""))
@@ -981,16 +1186,27 @@ def main() -> None:
                     log(f"Skip (not found on HF): {hf_model}")
                     continue
 
+                # Resolve the per-model harbor config + eval_config UP FRONT so the
+                # dedup comparison below uses THIS model's timeout (e.g. a 32B's
+                # existing 16.0 row is compared against 16.0, an 8B against 2.0),
+                # not a single global value.
+                if hf_model not in model_eval_cache:
+                    model_eval_cache[hf_model] = resolve_model_eval(
+                        hf_model, explicit_harbor_config, baseline_configs)
+                harbor_config_path, model_eval_config = model_eval_cache[hf_model]
+
                 for dataset_hf in datasets:
                     bench_id = dataset_to_bench.get(dataset_hf)
                     start, reason = should_start_job(
                         model_id, bench_id,
-                        eval_config=eval_config,
+                        eval_config=model_eval_config,
                         stale_started_hours=args.stale_started_hours,
                         stale_pending_hours=args.stale_pending_hours,
+                        force=args.force_eval,
                     )
                     if start:
-                        submissions.append((model_id, hf_model, dataset_hf, bench_id, reason))
+                        submissions.append((model_id, hf_model, dataset_hf, bench_id, reason,
+                                            harbor_config_path, model_eval_config))
                     else:
                         log(f"Skip: model={hf_model}, dataset={dataset_hf}, reason={reason}", verbose_only=True)
 
@@ -1015,7 +1231,7 @@ def main() -> None:
                     # Pre-download datasets (same for all submissions, download once)
                     downloaded_datasets: set = set()
                     failed_datasets: set = set()
-                    for _, _, dataset_hf, _, _ in submissions:
+                    for _, _, dataset_hf, _, _, _, _ in submissions:
                         if dataset_hf not in downloaded_datasets and dataset_hf not in failed_datasets:
                             log(f"  Pre-downloading dataset {dataset_hf}...")
                             try:
@@ -1037,7 +1253,8 @@ def main() -> None:
                         f"first {batch_size} run immediately, rest chain one-by-one")
 
                 failed_models: set = set() if pre_download else set()
-                for idx, (mid, hf_model, dataset_hf, bench_id, reason) in enumerate(submissions):
+                for idx, (mid, hf_model, dataset_hf, bench_id, reason,
+                          harbor_config_path, model_eval_config) in enumerate(submissions):
                     # Skip if dataset download failed
                     if pre_download and dataset_hf in failed_datasets:
                         log(f"  Skipping {hf_model} (dataset {dataset_hf} download failed)")
@@ -1062,12 +1279,32 @@ def main() -> None:
 
                     log(f"Submitting [{idx+1}/{len(submissions)}]: model={hf_model}, dataset={dataset_hf}, reason={reason}")
 
+                    # harbor_config_path + model_eval_config were resolved per-model
+                    # (resolve_model_eval) during the gathering pass and used for the
+                    # dedup decision above, so they're identical here — no re-derivation.
+                    log(f"  Harbor config: {harbor_config_path}", verbose_only=True)
+
                     db_job_id = create_pending_job(hf_model, dataset_hf, bench_id, mid,
-                                                    eval_config=eval_config)
+                                                    eval_config=model_eval_config or None)
 
                     job_env = dict(sbatch_env)
                     if db_job_id:
                         job_env["EVAL_DB_JOB_ID"] = db_job_id
+
+                    # Per-model harbor config selection (8B vs 32B canonical, or the
+                    # explicit override) drives EVAL_HARBOR_CONFIG for this job.
+                    job_env["EVAL_HARBOR_CONFIG"] = harbor_config_path
+
+                    # The timeout multiplier now lives IN the selected config; mirror
+                    # it (and any resource override) into the sbatch env so harbor's
+                    # --timeout-multiplier / --override-memory-mb fire with the same
+                    # value recorded in the Pending DB row.
+                    tm = model_eval_config.get("timeout_multiplier")
+                    if tm is not None:
+                        job_env["EVAL_TIMEOUT_MULTIPLIER"] = str(tm)
+                        log(f"  Timeout multiplier: {tm}x for {hf_model}")
+                    if model_eval_config.get("override_memory_mb") is not None:
+                        job_env["EVAL_OVERRIDE_MEMORY_MB"] = str(model_eval_config["override_memory_mb"])
 
                     # Apply per-model vLLM overrides from baseline config mapping
                     vllm_overrides = get_vllm_env_overrides(hf_model, baseline_configs)
@@ -1095,6 +1332,7 @@ def main() -> None:
                         dependency=job_dependency,
                         remote_host=args.remote_host,
                         remote_workdir=args.remote_workdir,
+                        time_limit=args.time_limit,
                     )
 
                     if slurm_id and slurm_id != "DRY_RUN":

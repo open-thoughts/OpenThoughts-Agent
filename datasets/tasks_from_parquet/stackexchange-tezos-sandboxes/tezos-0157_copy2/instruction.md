@@ -1,2 +1,0 @@
-
-The error below is from starting a Tezos node (on Windows Linux Subsystem - Ubuntu 18.04) on the Alphanet: ./tezos-node run --rpc-addr 127.0.0.1:8732 Apr 6 21:13:53 - node.main: Starting the Tezos node... Apr 6 21:13:53 - node.main: No local peer discovery. Apr 6 21:13:53 - node.main: Peer's global id: idqx3xmhXtg7fhxSaqSBcWSU1ELdPm Apr 6 21:13:53 - node.worker: bootstrapping chain... tezos-node: Error: MDB_CORRUPTED: Located page was wrong type

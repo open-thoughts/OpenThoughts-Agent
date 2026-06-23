@@ -2772,6 +2772,28 @@ def _extract_job_metadata(
     # job_name can be None in Harbor result.json — fall back to config or dir name
     job_name = config.get("job_name") or result.get("job_name") or job_dir.name
 
+    # Ensure the leaderboard-expected VALID-trial numerator is present as a top-level
+    # `stats.n_trials` key. The leaderboard reads `stats.n_trials` for the "completed"
+    # numerator (server/storage.ts), but current Harbor (>=0.1.x JobStats schema) renamed
+    # the legacy top-level `n_trials` -> `n_completed_trials` and the legacy field no longer
+    # serializes — so without this the leaderboard renders "?/X". `n_completed_trials` is
+    # NOT the right numerator anyway: it counts ALL completed trials (incl. errored/no-reward
+    # ones), whereas the VALID count we standardized on (eval-agentic-cleanup §0 check-4 =
+    # trials with a numeric verifier reward) is the per-eval `stats.evals.<key>.n_trials`,
+    # which JobStats only increments when a reward is present. Sum those into a top-level
+    # `n_trials` so the leaderboard numerator is the VALID count.
+    stats = result.get("stats")
+    if isinstance(stats, dict) and "n_trials" not in stats:
+        evals = stats.get("evals")
+        if isinstance(evals, dict) and evals:
+            valid_trials = 0
+            for eval_data in evals.values():
+                if isinstance(eval_data, dict):
+                    n = eval_data.get("n_trials")
+                    if isinstance(n, int):
+                        valid_trials += n
+            stats["n_trials"] = valid_trials
+
     job_metadata = {
         "job_id": result["id"],  # Preserve local job ID from result.json
         "job_name": job_name,
@@ -2783,7 +2805,7 @@ def _extract_job_metadata(
         "n_rep_eval": config.get("n_attempts", 1),
         "config": config,
         "metrics": metrics_list,  # Now properly extracted from nested structure
-        "stats": result.get("stats"),
+        "stats": stats,
         "git_commit_id": git_commit_id,
         "package_version": package_version,
         "started_at": _parse_datetime(result.get("started_at")),

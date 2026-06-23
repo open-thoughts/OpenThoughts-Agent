@@ -1,2 +1,0 @@
-
-On a private node, is there an effective difference between using ./tezos-admin-client trust peer id12345abcde and ./tezos-node config update --peer=IP:PORT ? In other words, if you use the latter, is there an advantage to also using the former? PS: the latter is the only way to make it stick . the former cannot be put into the config file, you can only hope that it will remain in peers.json (or you could cron the cmd every so often).

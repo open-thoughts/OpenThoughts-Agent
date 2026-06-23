@@ -1,2 +1,0 @@
-
-I am developing an app and I use JavaScript. I need to watch transaction from user browser. I use eztz method eztz.contract.send for create transaction. I receive back the transaction hash, but not return block id. Is there a reliable way to know the transaction status of this tx hash so that I know if my transaction was accepted by the network? In this specific instance I am using alphanet and the ophash returned by eztz is ooTC8mMZ7dG1ReCXLPiTAN3qEUB7uNFuh9R8KZXEFbZZiZcypBf .

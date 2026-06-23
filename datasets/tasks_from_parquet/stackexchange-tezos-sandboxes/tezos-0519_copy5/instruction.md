@@ -1,2 +1,0 @@
-
-How are strings serialized to byte arrays? I understand that they are treated like strings, and that ASCII (or utf8) encoding is used. But what about the rest of the bytes, what do they mean? Running the LIGO CLI, I got: $ ligo interpret -s pascaligo 'Bytes.pack(("Hello World!"))' 0x05010000000c48656c6c6f20576f726c6421 where the latter part, 48656c6c6f20576f726c6421 is simply the hexadecimal representation of the ASCII values of the string. But is the type and the length of the string also encoded somehow?

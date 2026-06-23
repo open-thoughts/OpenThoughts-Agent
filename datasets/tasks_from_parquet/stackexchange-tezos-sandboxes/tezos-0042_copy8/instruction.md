@@ -1,2 +1,0 @@
-
-I have several times found myself unable to restart my tezos node because I believe I have ended the process but when I try to start it again I get the following message: Data directory is locked by another process Most recently I used Ctrl-C, then when I did not see progress, I used Ctrl-Z. I believe this put the process in the background further adding to my confusion. What method should I use to reliably end the tezos-node process? If I accidentally put the process in the background, is there a way for me to bring it back to the foreground?

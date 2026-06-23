@@ -1,2 +1,0 @@
-
-What is the correct BIP-44 path structure for the Tezos ledger apps? Should it have five path components (as Galleon uses) or four (as tezos-client and Tezbox use)? The BIP-44 spec defines 5 levels of path and uses all 5 in all of its examples. It's not apparent that the final "index" component is optional. Tezbox and tezos-client appear to default to the m/44'/1729'/0'/0' path, whereas Galleon defaults to m/44'/1729'/0'/0'/0' .

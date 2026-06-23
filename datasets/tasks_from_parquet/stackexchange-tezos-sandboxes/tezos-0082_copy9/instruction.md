@@ -1,2 +1,0 @@
-
-I recently updated my mainnet.sh script as it says the script present is not the latest image. I am following exact steps as mentioned here . And when my turn for endorsement came, I missed it with the below error in endorsement logs when transaction was sent to remote-signer signed using authentication key. Error: Unregistred error: { "kind": "generic", "error": "invalid authentication signature" } It was working before the script updation. Was something updated in my mainnet.sh script regarding remote signer authentication keys?

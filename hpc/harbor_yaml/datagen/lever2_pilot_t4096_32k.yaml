@@ -1,0 +1,99 @@
+# Lever-2 summarization-aware-SFT datagen PILOT harbor config.
+# CELL: proactive_summarization_threshold=4096  max_input_tokens=32768
+# 3-LAYER AGREEMENT: vLLM max_model_len == model_info.max_input_tokens == this max_input_tokens == 32768.
+#   -> pair with serve config glm_47_jupiter_1node_32k_lever2pilot.yaml (max_model_len=32768).
+# enable_summarize:true, linear_history:true (eval regime), verifier ON (reward/realness signal).
+job_name: lever2-pilot-trace-job
+jobs_dir: trace_jobs
+n_attempts: 1
+timeout_multiplier: 1.0
+debug: false
+# Bound worker host-RAM on long, memory-heavy datagen runs: drop per-trial
+# trajectories/step-observations from the in-memory copies harbor retains for
+# aggregation (full results are already on disk per trial). Without this, the
+# harbor process grows ~15 MB/trial on heavy datasets (e.g. repo-based tasks)
+# and OOM-kills the v5p-8 container mid-run. Datagen-only; never set for RL
+# (which reads rollout_details back from the returned results). Requires harbor
+# >= the slimming fix (JobConfig.release_trial_payloads_in_memory).
+release_trial_payloads_in_memory: true
+orchestrator:
+  type: local
+  n_concurrent_trials: 64
+  quiet: false
+  plain_output: true
+  adaptive_concurrency:
+    enabled: false
+    algorithm: gradient2
+    min_limit: null
+    max_limit: null
+    metrics_endpoint: null
+    metrics_timeout_sec: 10.0
+    poll_interval_sec: 120.0
+    window_size: 5
+    queue_p95_drop_threshold: null
+    algorithm_kwargs: {}
+  retry:
+    max_retries: 10
+    include_exceptions:
+    - DaytonaRateLimitError
+    - AgentEnvironmentTimeoutError
+    exclude_exceptions:
+    - AgentTimeoutError
+    - VerifierTimeoutError
+    - RewardFileNotFoundError
+    - RewardFileEmptyError
+    - VerifierOutputParseError
+    - SandboxBuildFailedError
+    - VerifierRuntimeError
+    wait_multiplier: 2.0
+    min_wait_sec: 1.0
+    max_wait_sec: 90.0
+  kwargs: {}
+environment:
+  type: daytona
+  force_build: false
+  delete: true
+  override_cpus: 1
+  override_memory_mb: 2048
+  override_storage_mb: 2048
+  kwargs:
+    auto_snapshot: true
+verifier:
+  override_timeout_sec: null
+  max_timeout_sec: null
+  disable: false
+metrics: []
+agents:
+- name: terminus-2
+  import_path: null
+  model_name: placeholder/override-at-runtime
+  override_timeout_sec: 1800
+  max_timeout_sec: null
+  kwargs:
+    record_terminal_session: false
+    enable_episode_logging: false
+    enable_pane_logging: false
+    collect_rollout_details: false
+    collect_engine_metrics: false
+    metrics_endpoint: https://replace-with-vllm-host/metrics
+    metrics_timeout_sec: 10
+    model_info:
+      max_input_tokens: 32768
+      max_output_tokens: 16384
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+    trajectory_config:
+      raw_content: true
+      linear_history: true
+    enable_summarize: true
+    proactive_summarization_threshold: 4096
+    interleaved_thinking: true
+    parser_name: json
+    tmux_pane_width: 160
+    tmux_pane_height: 40
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+datasets:
+- path: /replace/with/tasks/path
+tasks: []

@@ -1,2 +1,0 @@
-
-In the Nomadic Labs post on Snapshots and History Modes ( https://blog.nomadic-labs.com/introducing-snapshots-and-history-modes-for-the-tezos-node.html ) , it talks about bootstrapping a Tezos node from a file FILE.full using the following command: $ tezos-node snapshot import FILE.full Where do I obtain this FILE.full publicly if I'm trying to start up my own Tezos node for the first time and quickly?

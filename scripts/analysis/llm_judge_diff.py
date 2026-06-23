@@ -433,6 +433,7 @@ def _write_markdown_report(
     after_label: str,
     model_id: str,
     n_pairs_attempted: int,
+    selection: str = "",
 ) -> None:
     n = len(judgments)
     tag_counts: Counter[str] = Counter()
@@ -447,6 +448,11 @@ def _write_markdown_report(
         f"- **Before**: `{before_label}`",
         f"- **After**:  `{after_label}`",
         f"- **Judge model**: `{model_id}`",
+        f"- **Selection**: `{selection}`"
+        + ("  ⚠️ most-shifted tasks — biased toward where the policy changed; "
+           "NOT an unbiased win-rate over the benchmark" if selection == "behavior-delta"
+           else "  uniform sample — estimates 'did behavior change in general'"
+           if selection == "random" else ""),
         f"- **Pairs judged**: {n} (attempted {n_pairs_attempted})",
         "",
         "## Win-rate table",
@@ -547,13 +553,35 @@ async def _run_async(args: argparse.Namespace) -> int:
     after = load_traces(args.after, max_rows=args.max_rows)
     bb = group_by_task(before)
     aa = group_by_task(after)
-    # Use trace_pair_render.select_pairs with the 'behavior-delta' policy so we
-    # judge the same pairs that human reviewers would naturally inspect.
-    pairs = select_pairs(bb, aa, args.max_pairs, prefer="behavior-delta")
+    # Load the exclusion set (e.g. the most-changed run's selected tasks) so a
+    # 'random' draw is disjoint from it. Tolerant of a missing/unreadable file.
+    exclude: List[str] = []
+    if args.exclude_tasks_file:
+        try:
+            payload = json.loads(Path(args.exclude_tasks_file).read_text(encoding="utf-8"))
+            exclude = list(payload.get("tasks", payload) if isinstance(payload, dict) else payload)
+            print(f"[llm-judge-diff] excluding {len(exclude)} task(s) from {args.exclude_tasks_file}")
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"[llm-judge-diff] WARN: could not read --exclude-tasks-file ({e}); no exclusion",
+                  file=sys.stderr)
+    # Select the tasks to judge. 'behavior-delta' = the most-shifted tasks
+    # (biased toward where the policy changed); 'random' = a uniform
+    # without-replacement sample ("did behavior change in general?").
+    pairs = select_pairs(bb, aa, args.max_pairs, prefer=args.selection,
+                         exclude=exclude, seed=args.seed)
     if not pairs:
-        print("[llm-judge-diff] no common tasks between before/after", file=sys.stderr)
+        print("[llm-judge-diff] no common tasks between before/after (after exclusion)", file=sys.stderr)
         return 2
-    print(f"[llm-judge-diff] selected {len(pairs)} pair(s) for LLM judgment")
+    print(f"[llm-judge-diff] selection={args.selection} seed={args.seed}: "
+          f"selected {len(pairs)} pair(s) for LLM judgment")
+    # Record which tasks were judged, so a downstream 'random' run can exclude
+    # this set (disjoint, without replacement across the two probes).
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    (args.output.parent / "selected_tasks.json").write_text(
+        json.dumps({"selection": args.selection, "seed": args.seed,
+                    "tasks": [task for task, _, _ in pairs]}, indent=2),
+        encoding="utf-8",
+    )
 
     cfg = LLMConfig(
         model=args.model,
@@ -624,6 +652,7 @@ async def _run_async(args: argparse.Namespace) -> int:
         after_label=args.after,
         model_id=args.model,
         n_pairs_attempted=len(pairs),
+        selection=args.selection,
     )
     sidecar = args.output.with_suffix(".json")
     _write_json_sidecar(judgments, sidecar, args.model)
@@ -636,8 +665,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--before", required=True, help="Pre-RL trace source (HF id / JSONL / dir)")
     parser.add_argument("--after",  required=True, help="Post-RL trace source (HF id / JSONL / dir)")
     parser.add_argument("--output", type=Path, required=True, help="Markdown report path (sidecar .json also written)")
-    parser.add_argument("--max-pairs", type=int, default=30,
-                        help="Number of pairs to judge (default 30, capped for cost)")
+    parser.add_argument("--max-pairs", type=int, default=20,
+                        help="Number of pairs to judge (default 20, capped for cost)")
+    parser.add_argument("--selection", choices=("behavior-delta", "random", "flips", "reward-delta"),
+                        default="behavior-delta",
+                        help="How to pick the judged tasks: 'behavior-delta' (the most-shifted "
+                             "tasks — biased toward where the policy changed) or 'random' (a "
+                             "uniform without-replacement sample — 'did behavior change in general?'). "
+                             "Default behavior-delta.")
+    parser.add_argument("--seed", type=int, default=0,
+                        help="RNG seed for --selection random (reproducible sample)")
+    parser.add_argument("--exclude-tasks-file", type=Path, default=None,
+                        help="JSON file with a list of task ids to exclude from the candidate set "
+                             "(e.g. the most-changed run's selected_tasks.json, so a random draw is "
+                             "disjoint from it). Missing/unreadable file = no exclusion.")
     parser.add_argument("--max-rows", type=int, default=None,
                         help="Cap rows loaded per side (smoke testing only)")
     parser.add_argument("--model", default="openai/gpt-5-2025-08-07",

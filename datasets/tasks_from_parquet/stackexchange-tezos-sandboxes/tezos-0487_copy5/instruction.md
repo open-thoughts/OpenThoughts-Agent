@@ -1,2 +1,0 @@
-
-When querying the tezos rpc, the baker address is shown under the delegated_contracts , this causes an issue when using tezos-reward-distributor to payout the rewards since TRD looks at the rpc and creates a payment transaction to pay the baker. What seems to be the configuration issue that causes the baker to be listed as a delegated_contract? I have pretty much followed the default baker node setup, the only change was to use a remote-signer Ref : https://testnet-tezos.giganode.io/chains/main/blocks/head/context/delegates/tz1PgkWZdr5Vcbb3CbhubheYuEGpxJtKDMhT

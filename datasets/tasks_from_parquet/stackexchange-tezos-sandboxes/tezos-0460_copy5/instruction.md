@@ -1,2 +1,0 @@
-
-burn function in KT_token contract can be called with arg format: burn: (pair (or (unit %uSD) (unit %xTZ)) mutez) so I tried, ./tezos-client transfer 0 from alice to KT_token --entrypoint burn --arg '(Pair %XTZ 100000)' --burn-cap 1 ./tezos-client transfer 0 from alice to KT_token --entrypoint burn --arg '(Pair (unit %xTZ) 100000)' --burn-cap 1 it seems the type option can not accept both of the above format. My question is, what is the correct argument to call this function? Many thanks!

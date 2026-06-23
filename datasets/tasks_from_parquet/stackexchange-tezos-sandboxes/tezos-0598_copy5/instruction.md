@@ -1,2 +1,0 @@
-
-I recently started running a node on the edo2net test network. The endorser has been working fine. I had rights to bake a couple of blocks today, but both times the baker failed with a "Fitness too low" error: tezos-baker-008-PtEdo2Zk[314539]: Mar 22 22:21:45.171 - 008-PtEdo2Zk.baking.forge: Error while injecting block tezos-baker-008-PtEdo2Zk[314539]: Mar 22 22:21:45.199 - 008-PtEdo2Zk.baking.forge: Error: tezos-baker-008-PtEdo2Zk[314539]: Mar 22 22:21:45.199 - 008-PtEdo2Zk.baking.forge: Fitness too low Any ideas on how would I find out the cause of this error?

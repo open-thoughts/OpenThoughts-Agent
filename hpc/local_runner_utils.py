@@ -6,7 +6,6 @@ datagen config parsing, Docker runtime setup, and Harbor command building.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import resource
 import subprocess
@@ -18,7 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from hpc.vllm_utils import _build_vllm_cli_args, run_endpoint_health_check
-from hpc.launch_utils import generate_served_model_id, hosted_vllm_alias, maybe_int, PROJECT_ROOT
+from hpc.launch_utils import generate_served_model_id, hosted_vllm_alias, maybe_int
 from hpc.arg_groups import (
     add_harbor_args,
     add_model_compute_args,
@@ -142,7 +141,7 @@ class FileDescriptorMonitor:
             percent_used = (current_fds / soft_limit * 100) if soft_limit > 0 else 0
 
             return current_fds, soft_limit, hard_limit, percent_used
-        except Exception as e:
+        except Exception:
             return -1, -1, -1, 0.0
 
     def _log_status(self) -> None:
@@ -172,7 +171,7 @@ class FileDescriptorMonitor:
 
         if percent >= 75:
             print(
-                f"[fd-monitor] Consider reducing --n_concurrent or increasing ulimit -n",
+                "[fd-monitor] Consider reducing --n_concurrent or increasing ulimit -n",
                 flush=True,
             )
 
@@ -207,6 +206,20 @@ class FileDescriptorMonitor:
         # Final status report
         self._log_status()
         print("[fd-monitor] Stopped", flush=True)
+
+
+def _cli_has_option(*flags: str) -> bool:
+    """Return whether the current command line provided any flag.
+
+    Argparse stores parsed values but not whether a value came from a default.
+    Local runner config defaults need that distinction when deciding whether a
+    Harbor YAML value may override a parsed argument.
+    """
+    for arg in sys.argv[1:]:
+        token = arg.split("=", 1)[0]
+        if token in flags:
+            return True
+    return False
 
 
 def _open_log_file(log_path: Optional[Path]) -> tuple:
@@ -793,14 +806,20 @@ class LocalHarborRunner:
         config_n_concurrent = get_orchestrator_field(harbor_job, "n_concurrent_trials")
         if config_n_concurrent is not None and config_n_concurrent > 0:
             # Only override if args.n_concurrent is at the class default
-            if getattr(args, "n_concurrent", None) == self.DEFAULT_N_CONCURRENT:
+            if (
+                not _cli_has_option("--n_concurrent", "--n-concurrent")
+                and getattr(args, "n_concurrent", None) == self.DEFAULT_N_CONCURRENT
+            ):
                 args.n_concurrent = int(config_n_concurrent)
 
         # Apply n_attempts from harbor config if CLI didn't override
         config_n_attempts = harbor_job.n_attempts
         if config_n_attempts is not None and config_n_attempts > 0:
             # Only override if args.n_attempts is at the default of 1
-            if getattr(args, "n_attempts", 1) == 1:
+            if (
+                not _cli_has_option("--n_attempts", "--n-attempts")
+                and getattr(args, "n_attempts", 1) == 1
+            ):
                 args.n_attempts = int(config_n_attempts)
 
         # Subclass-specific validation
@@ -1008,7 +1027,6 @@ class LocalHarborRunner:
             # Get dataset info
             dataset_slug, dataset_path = self.get_dataset_for_harbor()
 
-            # Build Harbor command
             harbor_cmd = build_harbor_command(
                 harbor_binary=args.harbor_binary,
                 harbor_config_path=args.harbor_config,
@@ -1040,7 +1058,6 @@ class LocalHarborRunner:
         finally:
             self.cleanup()
 
-
 __all__ = [
     # Process management
     "ManagedProcess",
@@ -1054,6 +1071,8 @@ __all__ = [
     "DEFAULT_FD_MONITOR_INTERVAL",
     # Config and setup utilities
     "maybe_int",
+    "get_model_specific_env_vars",
+    "GPT_OSS_TIKTOKEN_FILES",
     "apply_datagen_defaults",
     "setup_docker_runtime_if_needed",
     "load_harbor_config",
@@ -1061,6 +1080,7 @@ __all__ = [
     "get_harbor_env_from_config",
     "resolve_jobs_dir_path",
     # Endpoint utilities
+    "build_endpoint_meta",
     "run_endpoint_health_check",
     "load_endpoint_metadata",
     # Harbor command building

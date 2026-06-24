@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Launch OpenThoughts evals on Marin's Iris TPU cluster.
+"""Launch OpenThoughts evals on Marin's Iris TPU/GPU clusters.
 
 Iris analog of ``eval/cloud/launch_eval_cloud.py``. Shape mirrors the SkyPilot
 launcher exactly so muscle memory carries over — same arg names, same flow.
 The differences are all behind the IrisLauncher base.
 
-Output handling: by default outputs are rsync'd back to ``--local-sync-dir``
-periodically while the job runs, so downstream eval-analysis tooling sees
-local files. Pass ``--output-mode gcs --gcs-output-dir gs://...`` to skip
-the rsync layer and have the workload write straight to GCS instead.
+Output handling: by default outputs are written to GCS for TPU and S3/R2 for
+GPU. CoreWeave GPU eval support is currently limited to one H100x8 node on
+cw-use02a-h100-8x (``--replicas 1``); multi-replica GPU eval needs task
+sharding and is not implemented yet.
 
 Harbor environment: defaults to ``daytona`` (the only sandbox backend that
 works on iris workers without DinD). Passing ``--harbor_env docker`` is not
@@ -29,7 +29,7 @@ if str(_repo_root) not in sys.path:
     sys.path.append(str(_repo_root))
 
 from hpc.iris_launch_utils import IrisLauncher
-from hpc.cloud_launch_utils import repo_relative, parse_gpu_count, infer_harbor_env_from_config
+from hpc.cloud_launch_utils import repo_relative, infer_harbor_env_from_config
 from hpc.arg_groups import (
     add_harbor_args,
     add_harbor_env_arg,
@@ -39,6 +39,7 @@ from hpc.arg_groups import (
 )
 from hpc.harbor_utils import load_harbor_config
 from hpc.datagen_config_utils import parse_datagen_config
+from hpc.hf_utils import is_hf_dataset_path
 from hpc.launch_utils import PROJECT_ROOT
 from eval.presets import load_presets
 
@@ -121,11 +122,34 @@ class EvalIrisLauncher(IrisLauncher):
         parser.add_argument("--ray_object_store_gb", "--ray-object-store-gb",
                             type=float, default=None,
                             help="Ray object store (plasma) size in GB.")
-
         # NOTE: --job_name comes from add_harbor_args above.
 
         add_hf_upload_args(parser)
         add_database_upload_args(parser)
+
+    def _validate_gpu_mode(self, args: argparse.Namespace) -> None:
+        accelerator = self.resolved_accelerator(args)
+        if not accelerator.is_gpu:
+            return
+
+        if accelerator.gpu_variant != "H100" or accelerator.gpu_count != 8:
+            raise SystemExit(
+                "GPU eval is currently limited to --gpu H100x8 on "
+                "cw-use02a-h100-8x."
+            )
+
+        if args.upload_to_database:
+            raise SystemExit(
+                "GPU Iris eval writes Harbor outputs to S3; --upload_to_database "
+                "still expects a local Harbor job directory and is not supported yet."
+            )
+
+        if (args.replicas or 1) > 1:
+            raise SystemExit(
+                "GPU eval replicas > 1 need task sharding and are not supported yet. "
+                "Use --replicas 1 for the single-node CoreWeave H100x8 path on "
+                "cw-use02a-h100-8x."
+            )
 
     def _apply_preset(self, args: argparse.Namespace) -> None:
         """Resolve a named preset onto the launcher args.
@@ -192,6 +216,7 @@ class EvalIrisLauncher(IrisLauncher):
         )
 
     def normalize_paths(self, args: argparse.Namespace) -> None:
+        self._validate_gpu_mode(args)
         self._apply_preset(args)
         if args.dataset and args.dataset_path:
             raise ValueError("Specify either --dataset or --dataset-path (not both).")
@@ -199,24 +224,27 @@ class EvalIrisLauncher(IrisLauncher):
             raise ValueError("Must provide --dataset or --dataset-path for eval workloads.")
 
         # --gpus is the downstream run_eval.py knob for vLLM tensor_parallel_size.
-        # On TPU, derive it from the TPU variant's chip count.
+        # Ask the resolved Iris accelerator for the OT-A runtime device count.
         if args.gpus is None:
-            try:
-                chips = int(args.tpu.rsplit("-", 1)[-1])
-                args.gpus = chips
-            except (ValueError, AttributeError):
-                args.gpus = parse_gpu_count(getattr(args, "accelerator", "") or "")
+            args.gpus = self.resolved_accelerator(args).downstream_eval_device_count
 
         args.harbor_config = repo_relative(args.harbor_config, self.repo_root)
         if args.datagen_config:
             args.datagen_config = repo_relative(args.datagen_config, self.repo_root)
-        if args.dataset_path and not args.dataset_path.startswith("/"):
+        if (
+            args.dataset_path
+            and not args.dataset_path.startswith("/")
+            and not is_hf_dataset_path(args.dataset_path)
+        ):
             args.dataset_path = repo_relative(args.dataset_path, self.repo_root)
 
-        infer_harbor_env_from_config(args, args.harbor_config, log_prefix="[eval-iris]")
+        harbor_config_path = str(self.repo_root / args.harbor_config)
+        datagen_config_path = str(self.repo_root / args.datagen_config) if args.datagen_config else None
+
+        infer_harbor_env_from_config(args, harbor_config_path, log_prefix="[eval-iris]")
 
         if not args.agent:
-            harbor_cfg = load_harbor_config(args.harbor_config)
+            harbor_cfg = load_harbor_config(harbor_config_path)
             agents = harbor_cfg.get("agents", [])
             if agents and isinstance(agents, list) and len(agents) > 0:
                 inferred_agent = agents[0].get("name")
@@ -226,7 +254,7 @@ class EvalIrisLauncher(IrisLauncher):
 
         if not args.model and args.datagen_config:
             try:
-                parsed = parse_datagen_config(args.datagen_config)
+                parsed = parse_datagen_config(datagen_config_path)
                 if parsed.model:
                     args.model = parsed.model
                     print(f"[eval-iris] Inferred --model={parsed.model} from datagen config")
@@ -282,12 +310,14 @@ class EvalIrisLauncher(IrisLauncher):
         elif args.dataset_path:
             cmd.extend(["--dataset_path", args.dataset_path])
 
+        work_output_dir = getattr(args, "_work_output_dir", remote_output_dir)
+
         cmd.extend([
             "--agent", args.agent,
             "--n_concurrent", str(args.n_concurrent),
             "--n_attempts", str(args.n_attempts),
             "--gpus", str(args.gpus),
-            "--experiments_dir", remote_output_dir,
+            "--experiments_dir", work_output_dir,
         ])
 
         if args.harbor_env:
@@ -303,13 +333,14 @@ class EvalIrisLauncher(IrisLauncher):
 
         for kwarg in args.agent_kwarg:
             cmd.extend(["--agent_kwarg", kwarg])
-        # Auto-inject --jobs-dir so harbor writes outputs to the same GCS
-        # prefix the workload's --experiments_dir points at. With harbor's
+        # Auto-inject --jobs-dir so harbor writes outputs under the durable
+        # jobs root. Harbor appends --job-name below this directory. With harbor's
         # UPath patch (penfever/otagent-latest @ dc41d295a4) this routes
-        # all per-job/per-trial writes through fsspec to GCS instead of
-        # local /app/trace_jobs/. User --harbor_extra_arg entries follow
+        # all per-job/per-trial writes through fsspec instead of local
+        # /app/trace_jobs/. User --harbor_extra_arg entries follow
         # below so an explicit --harbor_extra_arg=--jobs-dir=... wins.
-        cmd.append(f"--harbor_extra_arg=--jobs-dir={remote_output_dir}")
+        harbor_jobs_dir = getattr(args, "_harbor_jobs_dir", remote_output_dir)
+        cmd.append(f"--harbor_extra_arg=--jobs-dir={harbor_jobs_dir}")
         for extra in args.harbor_extra_arg:
             # Use the `=` form so argparse on the worker side accepts values
             # that start with `-` (e.g. --harbor_extra_arg=--n-tasks). The
@@ -341,7 +372,7 @@ class EvalIrisLauncher(IrisLauncher):
 def main() -> None:
     launcher = EvalIrisLauncher(PROJECT_ROOT)
     parser = launcher.create_argument_parser(
-        description="Launch eval/local/run_eval.py on a Marin Iris TPU worker."
+        description="Launch eval/local/run_eval.py on a Marin Iris TPU/GPU worker."
     )
     args = parser.parse_args()
     sys.exit(launcher.run(args))

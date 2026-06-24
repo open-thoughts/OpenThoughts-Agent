@@ -6,6 +6,8 @@ import argparse
 import os
 from pathlib import Path
 
+from hpc.iris.accelerator import ResolvedIrisAccelerator
+
 
 def default_secrets_env() -> str | None:
     """Return the default launch-host secrets file if one exists."""
@@ -47,46 +49,28 @@ def apply_iris_runtime_env(
     *,
     env_vars: dict[str, str],
     args: argparse.Namespace,
+    accelerator: ResolvedIrisAccelerator,
+    output_mode: str,
     remote_output_dir: str,
     extras: list[str],
 ) -> None:
     """Apply OT-Agent Iris runtime defaults in-place to ``env_vars``."""
-    # iris-serve gating. iris runs the entrypoint on EVERY VM of the slice
-    # (one task/VM; adjust_tpu_replicas scales replicas=1 -> vm_count), so
-    # the worker's LocalHarborRunner.run() must (a) bring up ONE cross-host
-    # Ray cluster via scripts/vllm/start_vllm_iris_controller.py instead of
-    # the SLURM/single-host start_vllm_ray_controller.py, and (b) gate
-    # harbor to the driver rank (IRIS_TASK_ID==0). This env var is the
-    # signal - it is only ever set here, on the iris entrypoint path. The
-    # rendezvous dir is a shared gs:// location (under the job's GCS output
-    # prefix) where rank 0 publishes the Ray head IP for the worker ranks.
-    env_vars.setdefault("OT_AGENT_IRIS_SERVE", "1")
-    env_vars.setdefault(
-        "OT_AGENT_IRIS_RENDEZVOUS_DIR",
-        f"{remote_output_dir.rstrip('/')}/_ray_rendezvous",
-    )
+    if accelerator.uses_iris_serve:
+        # TPU Iris jobs use the cross-host serve path and gate Harbor to
+        # the driver rank. GPU Iris jobs use the normal single-pod Ray/vLLM path.
+        env_vars.setdefault("OT_AGENT_IRIS_SERVE", "1")
+        env_vars.setdefault(
+            "OT_AGENT_IRIS_RENDEZVOUS_DIR",
+            f"{remote_output_dir.rstrip('/')}/_ray_rendezvous",
+        )
 
-    # Wire the iris controller's XLA persistent cache to the same
-    # region-matched bucket we picked above. The worker appends
-    # /<cpu_tag>/<model_tag>/ to namespace per-microarch (the only
-    # axis the JAX cache key doesn't already discriminate; see
-    # [[xla-persistent-cache-cross-host-poison]]). One shared base
-    # across all jobs is fine - JAX hashes the HLO into per-config
-    # subdirs of its own beneath the dir we hand it. Disable with
-    # OT_AGENT_XLA_CACHE_BASE=disabled in the environment.
-    if args.gcs_output_dir:
+    if accelerator.is_tpu and output_mode == "gcs" and args.gcs_output_dir:
         cache_root = args.gcs_output_dir.rstrip("/").rsplit("/ot-agent", 1)[0]
         env_vars.setdefault(
             "OT_AGENT_XLA_CACHE_BASE",
             f"{cache_root}/ot-agent/xla_cache",
         )
 
-    # OT-Agent's build_support.py syncs the sft/llamafactory git submodule
-    # at every setuptools.build_meta call (i.e. every editable install),
-    # even when no sft-* extra is being installed. Inside the iris worker
-    # container there's no git remote configured for that submodule, so
-    # the sync errors out with exit 128. The build_support helper already
-    # supports an escape hatch - opt in when no sft-* extra is requested.
     if not any(e.startswith("sft-") for e in extras):
         env_vars.setdefault("OT_AGENT_SKIP_SFT_SYNC", "1")
 
@@ -96,9 +80,10 @@ def apply_iris_runtime_env(
     env_vars.setdefault("UV_LINK_MODE", "copy")
     env_vars.setdefault("OT_AGENT_INHERIT_SUBPROC_LOGS", "1")
 
-    env_vars.setdefault("VLLM_SKIP_FLAG_DISCOVERY", "1")
-    env_vars.setdefault("VLLM_SKIP_RAY_PROBE", "1")
-    env_vars.setdefault("MODEL_IMPL_TYPE", "vllm")
+    if accelerator.is_tpu:
+        env_vars.setdefault("VLLM_SKIP_FLAG_DISCOVERY", "1")
+        env_vars.setdefault("VLLM_SKIP_RAY_PROBE", "1")
+        env_vars.setdefault("MODEL_IMPL_TYPE", "vllm")
 
     # Run:AI Model Streamer config for S3-compatible safetensor reads.
     env_vars.setdefault("RUNAI_STREAMER_S3_USE_VIRTUAL_ADDRESSING", "False")
@@ -106,7 +91,7 @@ def apply_iris_runtime_env(
 
     _forward_launcher_env(env_vars)
     _load_worker_secrets_env(env_vars, getattr(args, "secrets_env", None))
-    _alias_s3_credentials(env_vars)
+    _alias_s3_credentials(env_vars, accelerator)
 
 
 def _forward_launcher_env(env_vars: dict[str, str]) -> None:
@@ -124,6 +109,19 @@ def _forward_launcher_env(env_vars: dict[str, str]) -> None:
         "SUPABASE_URL",
         "SUPABASE_KEY",
         "SUPABASE_SERVICE_ROLE_KEY",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_ENDPOINT_URL",
+        "AWS_REGION",
+        "AWS_DEFAULT_REGION",
+        "LAION_ENDPOINT",
+        "LAION_BUCKET_NAME",
+        "LAION_ACCESS_KEY",
+        "LAION_SECRET_KEY",
+        "R2_ENDPOINT",
+        "R2_ACCESS_KEY_ID",
+        "R2_SECRET_ACCESS_KEY",
     )
     for key in launcher_env_passthrough:
         value = os.environ.get(key)
@@ -162,7 +160,10 @@ def _load_worker_secrets_env(env_vars: dict[str, str], secrets_env: str | None) 
     )
 
 
-def _alias_s3_credentials(env_vars: dict[str, str]) -> None:
+def _alias_s3_credentials(
+    env_vars: dict[str, str],
+    accelerator: ResolvedIrisAccelerator,
+) -> None:
     endpoint_in_yaml = env_vars.get("AWS_ENDPOINT_URL")
     is_marin_endpoint = (
         endpoint_in_yaml is not None and "storage.googleapis.com" in endpoint_in_yaml
@@ -172,12 +173,42 @@ def _alias_s3_credentials(env_vars: dict[str, str]) -> None:
         and "MARIN_HMAC_SECRET" in env_vars
     )
     has_laion = "LAION_ENDPOINT" in env_vars
+    has_r2 = (
+        "R2_ENDPOINT" in env_vars
+        and "R2_ACCESS_KEY_ID" in env_vars
+        and "R2_SECRET_ACCESS_KEY" in env_vars
+    )
+    has_explicit_aws = (
+        "AWS_ACCESS_KEY_ID" in env_vars
+        and "AWS_SECRET_ACCESS_KEY" in env_vars
+    )
     aliased: list[str] = []
 
-    if has_marin and (is_marin_endpoint or not has_laion):
+    if accelerator.is_gpu and has_explicit_aws:
+        r2_endpoint = env_vars.get("R2_ENDPOINT")
+        if r2_endpoint and "AWS_ENDPOINT_URL" not in env_vars:
+            if not r2_endpoint.startswith(("http://", "https://")):
+                r2_endpoint = f"https://{r2_endpoint}"
+            env_vars["AWS_ENDPOINT_URL"] = r2_endpoint
+            aliased.append("AWS_ENDPOINT_URL ← R2_ENDPOINT")
+    elif accelerator.is_gpu and has_r2:
+        endpoint = env_vars["R2_ENDPOINT"]
+        if not endpoint.startswith(("http://", "https://")):
+            endpoint = f"https://{endpoint}"
+        env_vars.setdefault("AWS_ENDPOINT_URL", endpoint)
+        env_vars["AWS_ACCESS_KEY_ID"] = env_vars["R2_ACCESS_KEY_ID"]
+        env_vars["AWS_SECRET_ACCESS_KEY"] = env_vars["R2_SECRET_ACCESS_KEY"]
+        env_vars.pop("AWS_SESSION_TOKEN", None)
+        aliased = [
+            "AWS_ENDPOINT_URL ← R2_ENDPOINT",
+            "AWS_ACCESS_KEY_ID ← R2_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY ← R2_SECRET_ACCESS_KEY",
+        ]
+    elif has_marin and (is_marin_endpoint or not has_laion):
         env_vars.setdefault("AWS_ENDPOINT_URL", "https://storage.googleapis.com")
         env_vars["AWS_ACCESS_KEY_ID"] = env_vars["MARIN_HMAC_ACCESS_ID"]
         env_vars["AWS_SECRET_ACCESS_KEY"] = env_vars["MARIN_HMAC_SECRET"]
+        env_vars.pop("AWS_SESSION_TOKEN", None)
         aliased = [
             "AWS_ENDPOINT_URL ← https://storage.googleapis.com",
             "AWS_ACCESS_KEY_ID ← MARIN_HMAC_ACCESS_ID",
@@ -193,6 +224,8 @@ def _alias_s3_credentials(env_vars: dict[str, str]) -> None:
         if "LAION_SECRET_KEY" in env_vars:
             env_vars["AWS_SECRET_ACCESS_KEY"] = env_vars["LAION_SECRET_KEY"]
             aliased.append("AWS_SECRET_ACCESS_KEY ← LAION_SECRET_KEY")
+        if "AWS_ACCESS_KEY_ID" in env_vars and "AWS_SECRET_ACCESS_KEY" in env_vars:
+            env_vars.pop("AWS_SESSION_TOKEN", None)
 
     if aliased:
         print(

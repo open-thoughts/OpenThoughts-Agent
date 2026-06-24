@@ -1,6 +1,6 @@
-"""IrisLauncher - base class for submitting OT-Agent jobs to a Marin Iris cluster.
+"""IrisLauncher — base class for submitting OT-Agent jobs to a Marin Iris cluster.
 
-This is the Iris analog of ``hpc.cloud_launch_utils.CloudLauncher`` (which
+This is the Iris analog of ``hpc/cloud_launch_utils.CloudLauncher`` (which
 targets SkyPilot). It exists in parallel rather than as a "provider" plugin
 because Iris and SkyPilot disagree on key abstractions (workdir bind mount
 vs file_mounts, in-cluster scheduling vs bring-up-a-VM, autostop vs job
@@ -10,16 +10,8 @@ modules is cheaper to reason about.
 Backend-agnostic helpers under ``hpc/`` (e.g. ``arg_groups``,
 ``harbor_utils``, ``datagen_config_utils``) are reused as-is.
 
-Output handling - GCS only. The workload writes directly to
-``--gcs-output-dir/<job-name>/`` (default
-``gs://marin-eu-west4/ot-agent/``; override with ``$OT_AGENT_GCS_OUTPUT_ROOT``
-or the flag). A local fetch daemon (``hpc.iris_fetch_daemon``, planned)
-polls the iris controller and pulls completed jobs into
-``~/.ot-agent/runs/<job-name>/``. The previous "rsync from worker
-workdir" mode was removed on 2026-05-22: the worker workdir is on
-ephemeral tmpfs and iris GCs it at task end, so any laptop-side rsync
-loop is fragile by construction; see
-``notes/marin/flows/iris-outputs-redesign.md`` for the post-mortem.
+Output handling defaults to GCS for TPU and S3-compatible object storage for
+GPU. The workload writes Harbor artifacts directly to the durable prefix.
 
 Multi-host slices (TPU vm_count > 1) are scaffolded but only validated
 on v6e-8. Confirm cross-host JAX init + coscheduling before relying on
@@ -39,6 +31,7 @@ from typing import List, Optional
 
 from hpc.local_paths import PATHS as LOCAL_PATHS, ensure as ensure_local_paths
 from hpc.iris_job_registry import register_submission, get_latest_by_job_name
+from hpc.iris.accelerator import DEFAULT_IRIS_JOB_API, IrisJobApi, ResolvedIrisAccelerator
 from hpc.iris.bootstrap import wrap_task_command
 from hpc.iris.env import (
     apply_iris_runtime_env,
@@ -47,16 +40,25 @@ from hpc.iris.env import (
 )
 from hpc.iris.outputs import (
     DEFAULT_GCS_OUTPUT_ROOT,
+    DEFAULT_LOCAL_OUTPUT_ROOT,
+    DEFAULT_S3_OUTPUT_ROOT,
     resolve_remote_output_dir,
+    resolve_output_mode,
+    resolve_work_output_dir,
     validate_output_args,
 )
 from hpc.iris.regions import (
     assert_yaml_regions_match_pin,
     discover_region_for_tpu,
     gcs_bucket_for_region,
-    parse_tpu_vm_count,
 )
-from hpc.iris.settings import DEFAULT_CLUSTER_CONFIG, DEFAULT_PRIORITY, DEFAULT_TASK_IMAGE
+from hpc.iris.settings import (
+    DEFAULT_CLUSTER_CONFIG,
+    DEFAULT_GPU_CLUSTER_CONFIG,
+    DEFAULT_GPU_TASK_IMAGE,
+    DEFAULT_PRIORITY,
+    DEFAULT_TASK_IMAGE,
+)
 
 
 class IrisLauncher:
@@ -79,8 +81,9 @@ class IrisLauncher:
     # /var/run/docker.sock so the job will fail at runtime — by design.
     default_harbor_env: str = "daytona"
 
-    def __init__(self, repo_root: Path):
+    def __init__(self, repo_root: Path, iris_api: IrisJobApi = DEFAULT_IRIS_JOB_API):
         self.repo_root = Path(repo_root).resolve()
+        self.iris_api = iris_api
 
     # ------------------------------------------------------------------
     # Argument parsing
@@ -95,13 +98,18 @@ class IrisLauncher:
     def _add_iris_common_args(self, parser: argparse.ArgumentParser) -> None:
         g = parser.add_argument_group("iris")
         g.add_argument("--cluster-config", "--cluster_config",
-                       default=self._resolve_cluster_config_default(),
-                       help="Path to the iris cluster YAML (default: marin via lib/iris/config/marin.yaml in the marin repo).")
+                       default=None,
+                       help="Path to the iris cluster YAML (default: marin for TPU, "
+                            "cw-us-east-02a for GPU, resolved in the marin repo).")
         g.add_argument("--task-image", "--task_image",
-                       default=DEFAULT_TASK_IMAGE,
-                       help=f"Container image for the task (default: {DEFAULT_TASK_IMAGE}).")
-        g.add_argument("--tpu", default=self.default_tpu,
-                       help=f"TPU variant (default: {self.default_tpu}).")
+                       default=None,
+                       help="Container image for the task (default: "
+                            f"{DEFAULT_TASK_IMAGE} for TPU, {DEFAULT_GPU_TASK_IMAGE} for GPU).")
+        g.add_argument("--tpu", default=None,
+                       help=f"TPU variant (default: {self.default_tpu} when --gpu is omitted).")
+        g.add_argument("--gpu", default=None,
+                       help="GPU variant in Iris format, e.g. H100x8. Mutually "
+                            "exclusive with --tpu.")
         g.add_argument("--replicas", type=int, default=1,
                        help="Replica count passed to iris submit (default 1). "
                             "For a multi-host TPU slice iris REQUIRES one task "
@@ -148,10 +156,18 @@ class IrisLauncher:
         g.add_argument("--extras", action="append", default=None,
                        help="OpenThoughts-Agent extras to install in the iris worker's "
                             "/app/.venv via `uv sync --extra <name>`. Repeatable. "
-                            "Default: ['datagen-tpu'] (matches the :tpu task image's "
-                            "intended dep set). Pass --extras '' to install no extras.")
+                            "Default: ['datagen-tpu'] for TPU and ['datagen'] for GPU. "
+                            "Pass --extras '' to install no extras.")
 
         og = parser.add_argument_group("outputs")
+        og.add_argument("--output-mode", "--output_mode",
+                        choices=["auto", "gcs", "s3"],
+                        default=os.environ.get("OT_AGENT_OUTPUT_MODE", "auto"),
+                        help="Where workload outputs are written. 'auto' uses GCS "
+                             "for TPU and S3-compatible storage for GPU; 'gcs' writes to "
+                             "--gcs-output-dir/<job-name> and registers the fetch "
+                             "daemon; 's3' writes Harbor artifacts to "
+                             "--s3-output-dir/<job-name>.")
         og.add_argument("--gcs-output-dir", "--gcs_output_dir",
                         default=os.environ.get("OT_AGENT_GCS_OUTPUT_ROOT", DEFAULT_GCS_OUTPUT_ROOT),
                         help=f"GCS prefix for workload outputs; workload writes to "
@@ -159,6 +175,17 @@ class IrisLauncher:
                              f"{DEFAULT_GCS_OUTPUT_ROOT}. The fetch daemon "
                              f"(hpc.iris_fetch_daemon) pulls completed jobs from here into "
                              f"{LOCAL_PATHS.runs}/<job-name>/.")
+        og.add_argument("--s3-output-dir", "--s3_output_dir",
+                        default=os.environ.get("OT_AGENT_S3_OUTPUT_ROOT", DEFAULT_S3_OUTPUT_ROOT),
+                        help="S3/R2-compatible prefix for durable GPU outputs, "
+                             "for example s3://bucket/ot-agent. Defaults to "
+                             "$OT_AGENT_S3_OUTPUT_ROOT. The worker uses AWS_* "
+                             "credentials plus AWS_ENDPOINT_URL, or the existing "
+                             "LAION_* aliases from --secrets-env.")
+        og.add_argument("--local-output-dir", "--local_output_dir",
+                        default=os.environ.get("OT_AGENT_LOCAL_OUTPUT_ROOT", DEFAULT_LOCAL_OUTPUT_ROOT),
+                        help="Pod-local runtime scratch root used with --output-mode s3. "
+                             f"Defaults to {DEFAULT_LOCAL_OUTPUT_ROOT}.")
 
         rg = parser.add_argument_group("resume")
         rg.add_argument("--resume-from", "--resume_from", dest="resume_from", default=None,
@@ -195,18 +222,18 @@ class IrisLauncher:
         # which subclass launchers call from add_task_specific_args. We don't redeclare
         # it here to avoid argparse conflicts.
 
-    def _resolve_cluster_config_default(self) -> str:
+    def _resolve_cluster_config_default(self, default_config: str = DEFAULT_CLUSTER_CONFIG) -> str:
         """Find the marin repo's cluster config relative to common locations."""
         candidates = [
-            Path.home() / "Documents/marin" / DEFAULT_CLUSTER_CONFIG,
-            Path.home() / "dev/marin" / DEFAULT_CLUSTER_CONFIG,
-            Path(os.environ.get("MARIN_REPO", "")) / DEFAULT_CLUSTER_CONFIG,
-            Path(os.environ.get("MARIN_ROOT", "")) / DEFAULT_CLUSTER_CONFIG,
+            Path.home() / "Documents/marin" / default_config,
+            Path.home() / "dev/marin" / default_config,
+            Path(os.environ.get("MARIN_REPO", "")) / default_config,
+            Path(os.environ.get("MARIN_ROOT", "")) / default_config,
         ]
         for c in candidates:
             if c.exists():
                 return str(c)
-        return DEFAULT_CLUSTER_CONFIG
+        return default_config
 
     # ------------------------------------------------------------------
     # Subclass hooks
@@ -247,10 +274,50 @@ class IrisLauncher:
         ts = time.strftime("%Y%m%d-%H%M%S")
         return f"{self.job_name_prefix}-{ts}"
 
-    def run(self, args: argparse.Namespace) -> int:
-        self.normalize_paths(args)
+    def _normalize_accelerator_args(self, args: argparse.Namespace) -> ResolvedIrisAccelerator:
+        """Resolve the default TPU vs explicit GPU accelerator choice."""
+        accelerator = ResolvedIrisAccelerator.from_args(
+            args,
+            default_tpu=self.default_tpu,
+            iris_api=self.iris_api,
+        )
+        args.tpu = accelerator.tpu
+        args.gpu = accelerator.gpu
+        self._apply_accelerator_defaults(args, accelerator)
+        args._resolved_iris_accelerator = accelerator
+        return accelerator
 
-        validate_output_args(args)
+    def _apply_accelerator_defaults(
+        self,
+        args: argparse.Namespace,
+        accelerator: ResolvedIrisAccelerator,
+    ) -> None:
+        if args.task_image is None:
+            args.task_image = DEFAULT_GPU_TASK_IMAGE if accelerator.is_gpu else DEFAULT_TASK_IMAGE
+        elif accelerator.is_gpu and args.task_image == DEFAULT_TASK_IMAGE:
+            raise SystemExit(
+                "--gpu requires a GPU task image. Omit --task-image to use "
+                f"{DEFAULT_GPU_TASK_IMAGE}, or pass an explicit GPU-capable image."
+            )
+
+        if args.cluster_config is None:
+            config = DEFAULT_GPU_CLUSTER_CONFIG if accelerator.is_gpu else DEFAULT_CLUSTER_CONFIG
+            args.cluster_config = self._resolve_cluster_config_default(config)
+
+    def resolved_accelerator(self, args: argparse.Namespace) -> ResolvedIrisAccelerator:
+        accelerator = getattr(args, "_resolved_iris_accelerator", None)
+        if accelerator is None:
+            accelerator = self._normalize_accelerator_args(args)
+        return accelerator
+
+    def run(self, args: argparse.Namespace) -> int:
+        accelerator = self._normalize_accelerator_args(args)
+        self.normalize_paths(args)
+        accelerator = self.resolved_accelerator(args)
+
+        output_mode = resolve_output_mode(args, accelerator_kind=accelerator.kind)
+        args.output_mode = output_mode
+        validate_output_args(args, output_mode, accelerator_kind=accelerator.kind)
 
         # Dynamic region discovery + pin. When the user did NOT explicitly
         # set --gcs-output-dir or $OT_AGENT_GCS_OUTPUT_ROOT (i.e., the value
@@ -266,12 +333,13 @@ class IrisLauncher:
             or args.gcs_output_dir != DEFAULT_GCS_OUTPUT_ROOT
         )
         if (
-            not user_set_output
+            output_mode == "gcs"
+            and not user_set_output
             and not getattr(args, "resume_from", None)
-            and getattr(args, "tpu", None)
+            and accelerator.is_tpu
         ):
             try:
-                region, rows = discover_region_for_tpu(args.cluster_config, args.tpu)
+                region, rows = discover_region_for_tpu(args.cluster_config, accelerator.primary_tpu)
             except Exception as exc:
                 print(
                     f"[iris] Region discovery failed ({exc}); falling back to "
@@ -283,7 +351,7 @@ class IrisLauncher:
             else:
                 if region is None:
                     print(
-                        f"[iris] No workers visible for --tpu={args.tpu}; falling "
+                        f"[iris] No workers visible for --tpu={accelerator.primary_tpu}; falling "
                         f"back to static default {DEFAULT_GCS_OUTPUT_ROOT}.",
                         file=sys.stderr, flush=True,
                     )
@@ -297,7 +365,7 @@ class IrisLauncher:
                         for r in rows if r.get('region')
                     )
                     print(
-                        f"[iris] Region pin: --tpu={args.tpu} → {region} "
+                        f"[iris] Region pin: --tpu={accelerator.primary_tpu} → {region} "
                         f"(bucket {bucket}). Capacity: {summary or 'none reported'}.",
                         flush=True,
                     )
@@ -351,8 +419,17 @@ class IrisLauncher:
         remote_output_dir = resolve_remote_output_dir(
             args,
             job_name=job_name,
+            output_mode=output_mode,
             resume_target=resume_target,
         )
+        work_output_dir = resolve_work_output_dir(
+            args,
+            job_name=job_name,
+            output_mode=output_mode,
+            remote_output_dir=remote_output_dir,
+        )
+        args._work_output_dir = work_output_dir
+        args._harbor_jobs_dir = args.s3_output_dir if output_mode == "s3" else remote_output_dir
 
         # Make sure the local managed tree exists so the daemon (and any
         # downstream consumers) find LOCAL_PATHS.runs/ on first run.
@@ -363,39 +440,40 @@ class IrisLauncher:
         command = self.build_task_command(args, remote_output_dir)
         env_vars = self.build_env(args)
 
-        # Default extras = ["datagen-tpu"]; allow override via repeated --extras
-        # or --extras '' (single empty) to install nothing extra.
         if args.extras is None:
-            extras = ["datagen-tpu"]
+            extras = accelerator.default_extras
         else:
             extras = [e for e in args.extras if e]
 
         apply_iris_runtime_env(
             env_vars=env_vars,
             args=args,
+            accelerator=accelerator,
+            output_mode=output_mode,
             remote_output_dir=remote_output_dir,
             extras=extras,
         )
-
-        vm_count = parse_tpu_vm_count(args.tpu)
 
         local_dest = LOCAL_PATHS.runs / job_name
 
         print(f"[iris] Job:        /{user}/{job_name}", flush=True)
         print(f"[iris] Cluster:    {args.cluster_config}", flush=True)
         print(f"[iris] Image:      {args.task_image}", flush=True)
-        print(f"[iris] TPU:        {args.tpu}  (vm_count={vm_count})", flush=True)
+        print(f"[iris] {accelerator.label}", flush=True)
         print(f"[iris] Priority:   {args.priority}", flush=True)
         print(f"[iris] Extras:     {extras or '(none)'}", flush=True)
-        print(f"[iris] Output:     {remote_output_dir}", flush=True)
-        print(f"[iris] Fetch dest: {local_dest}/  (via hpc.iris_fetch_daemon)", flush=True)
+        print(f"[iris] Output:     {remote_output_dir}  (mode={output_mode})", flush=True)
+        if output_mode == "gcs":
+            print(f"[iris] Fetch dest: {local_dest}/  (via hpc.iris_fetch_daemon)", flush=True)
+        else:
+            print(f"[iris] Work dir:   {work_output_dir}  (pod-local runtime state)", flush=True)
         print(f"[iris] Command:    {shlex.join(command)}", flush=True)
 
         if args.dry_run:
             print("[iris] --dry-run: not submitting", flush=True)
             return 0
 
-        if vm_count > 1:
+        if accelerator.vm_count > 1:
             print(
                 "[iris] NOTE: multi-host TPU slice (vm_count > 1). Validated on v6e-8 "
                 "(2026-05-22 smoke #10); larger slices need their own validation pass.",
@@ -406,7 +484,9 @@ class IrisLauncher:
         from iris.client import IrisClient
         from iris.cluster.config import IrisConfig
         from iris.cluster.types import EnvironmentSpec, Entrypoint
-        from iris.cli.job import build_resources, build_job_constraints, resolve_multinode_defaults, build_tpu_alternatives
+        from iris.cli.job import (
+            build_job_constraints,
+        )
         from iris.rpc import job_pb2
 
         # Tunnel to the controller via the documented IrisConfig pattern
@@ -425,9 +505,8 @@ class IrisLauncher:
             )
 
         with bundle.controller.tunnel(controller_address) as controller_url:
-            resources = build_resources(args.tpu, None, cpu=args.cpu, memory=args.memory, disk=args.disk)
-            tpu_variants = build_tpu_alternatives(args.tpu)
-            primary_tpu = tpu_variants[0] if tpu_variants else None
+            resources = accelerator.build_resources(cpu=args.cpu, memory=args.memory, disk=args.disk)
+            tpu_variants = list(accelerator.tpu_variants)
             # --replicas defaults to 1; for a multi-host TPU iris's
             # adjust_tpu_replicas (in client.submit) auto-scales 1 -> vm_count
             # because every VM in the slice must run a task to join the one
@@ -435,9 +514,7 @@ class IrisLauncher:
             # multi-host slice (that is required for the mesh) — pass N*vm_count
             # to request N slices. The per-host *harbor* duplication is a
             # separate run_tracegen issue (run harbor on the driver rank only).
-            replicas, coscheduling = resolve_multinode_defaults(
-                primary_tpu, None, args.replicas
-            )
+            replicas, coscheduling = accelerator.resolve_multinode_defaults(args.replicas)
             resources_proto = resources.to_proto()
             # Pin the job to the region we discovered at submit time, so
             # preempt-retries land back in the same continent and our
@@ -464,7 +541,11 @@ class IrisLauncher:
 
             client = IrisClient.remote(controller_url, workspace=self.repo_root)
 
-            wrapped = wrap_task_command(command, extras=extras)
+            wrapped = wrap_task_command(
+                command,
+                extras=extras,
+                needs_tpu_runtime_patch=accelerator.needs_tpu_runtime_patch,
+            )
             entrypoint = Entrypoint.from_command(*wrapped)
 
             job = client.submit(
@@ -484,22 +565,28 @@ class IrisLauncher:
             full_job_id = str(job.job_id)
             print(f"[iris] Submitted: {full_job_id}", flush=True)
 
-            # Record the job in the local registry so the fetch daemon
-            # knows where to pull outputs from on completion. Failures
-            # here are non-fatal — the job is already submitted, and the
-            # user can re-register later via `python -m hpc.iris_fetch_daemon
-            # fetch <job-id>` once that module lands.
-            try:
-                register_submission(
-                    job_id=full_job_id,
-                    job_name=job_name,
-                    submitted_at_iso=datetime.now(timezone.utc).isoformat(),
-                    gcs_output_dir=remote_output_dir,
-                    local_dest=local_dest,
-                    cluster_config=str(args.cluster_config),
+            if output_mode == "gcs":
+                # Record the job in the local registry so the fetch daemon
+                # knows where to pull outputs from on completion. Failures
+                # here are non-fatal — the job is already submitted, and the
+                # user can re-register later via `python -m hpc.iris_fetch_daemon
+                # fetch <job-id>` once that module lands.
+                try:
+                    register_submission(
+                        job_id=full_job_id,
+                        job_name=job_name,
+                        submitted_at_iso=datetime.now(timezone.utc).isoformat(),
+                        gcs_output_dir=remote_output_dir,
+                        local_dest=local_dest,
+                        cluster_config=str(args.cluster_config),
+                    )
+                except Exception as e:
+                    print(f"[iris] WARN: could not register job locally: {e}", file=sys.stderr, flush=True)
+            else:
+                print(
+                    f"[iris] {output_mode.upper()} output mode: skipped GCS fetch-daemon registration.",
+                    flush=True,
                 )
-            except Exception as e:
-                print(f"[iris] WARN: could not register job locally: {e}", file=sys.stderr, flush=True)
 
             if args.no_wait:
                 return 0

@@ -37,9 +37,13 @@ def _add_arg_with_alias(
     """
     parser.add_argument(primary, **kwargs)
     if alias:
-        # Add hidden alias that maps to same dest
+        # Add hidden alias that maps to same dest and parser behavior.
         dest = primary.lstrip("-").replace("-", "_")
-        parser.add_argument(alias, dest=dest, help=argparse.SUPPRESS)
+        alias_kwargs = dict(kwargs)
+        alias_kwargs.pop("required", None)
+        alias_kwargs["dest"] = dest
+        alias_kwargs["help"] = argparse.SUPPRESS
+        parser.add_argument(alias, **alias_kwargs)
 
 
 def add_harbor_args(parser: ArgTarget, *, config_required: bool = True) -> None:

@@ -22,6 +22,7 @@ dependencies = [
     "harbor[daytona] @ git+https://github.com/marin-community/harbor.git@penfever/working",
     "dynamic-semaphore @ git+https://github.com/penfever/dynamic-semaphore",
     "google-cloud-storage",
+    "s3fs",
     "h5py",
     "certifi",
     "rapidfuzz",

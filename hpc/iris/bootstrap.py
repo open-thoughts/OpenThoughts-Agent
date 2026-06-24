@@ -6,7 +6,12 @@ import os
 import shlex
 
 
-def wrap_task_command(command: list[str], *, extras: list[str]) -> list[str]:
+def wrap_task_command(
+    command: list[str],
+    *,
+    extras: list[str],
+    needs_tpu_runtime_patch: bool,
+) -> list[str]:
     """Wrap Python entrypoints with the OT-Agent Iris runtime bootstrap."""
     if not (command and command[0] == "python" and len(command) >= 2):
         return command
@@ -29,9 +34,17 @@ def wrap_task_command(command: list[str], *, extras: list[str]) -> list[str]:
         f"uv sync {quiet} --frozen --reinstall --link-mode=copy "
         f"--all-packages --no-group dev {extras_flags}".rstrip()
     )
-    patch_cmd = "python scripts/iris/patch_tpu_inference.py"
+    patch_cmd = (
+        "python scripts/iris/patch_tpu_inference.py"
+        if needs_tpu_runtime_patch
+        else "true"
+    )
     py_invoke = shlex.join(
         ["python", "-c", py_bootstrap, script_path, *script_argv]
     )
-    bash_cmd = f"set -e; {resync_cmd}; {patch_cmd}; exec {py_invoke}"
+    bash_cmd = (
+        f"set -e; {resync_cmd}; "
+        "export PATH=/app/.venv/bin:$PATH; "
+        f"{patch_cmd}; exec {py_invoke}"
+    )
     return ["bash", "-c", bash_cmd]

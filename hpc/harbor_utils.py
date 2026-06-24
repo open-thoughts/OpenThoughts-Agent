@@ -690,8 +690,7 @@ def build_harbor_command(
         extra_agent_kwargs=extra_agent_kwargs,
     )
 
-    # Write the modified config to the experiment directory (jobs_dir).
-    # This keeps the merged config alongside the experiment outputs for reproducibility.
+    # Write the modified config locally for the Harbor subprocess.
     if jobs_dir:
         config_dir = Path(jobs_dir) / job_name
         config_dir.mkdir(parents=True, exist_ok=True)
@@ -717,8 +716,12 @@ def build_harbor_command(
         # own ValidationError downstream and we'll see it in the log.
         pass
 
-    with open(merged_config_path, "w") as f:
-        yaml.safe_dump(modified_config, f)
+    def _write_merged_config() -> None:
+        config_text = yaml.safe_dump(modified_config)
+        merged_config_path.parent.mkdir(parents=True, exist_ok=True)
+        merged_config_path.write_text(config_text, encoding="utf-8")
+
+    _write_merged_config()
     temp_config_path = str(merged_config_path)
 
     # Build base command using the temp config (no --model or --agent needed)
@@ -752,8 +755,7 @@ def build_harbor_command(
         # Clear YAML datasets so Harbor only sees the CLI --dataset flag.
         modified_config.pop("datasets", None)
         modified_config.pop("tasks", None)
-        with open(merged_config_path, "w") as f:
-            yaml.safe_dump(modified_config, f)
+        _write_merged_config()
         cmd.extend(["--dataset", dataset_slug])
     elif dataset_path:
         # ``dataset_path`` is overloaded: it can be a local FS path, a
@@ -771,8 +773,7 @@ def build_harbor_command(
         # harbor/src/harbor/cli/jobs.py:1226).
         modified_config.pop("datasets", None)
         modified_config.pop("tasks", None)
-        with open(merged_config_path, "w") as f:
-            yaml.safe_dump(modified_config, f)
+        _write_merged_config()
         # gs://, s3:// etc. are remote schemes; never local.
         looks_local = not dataset_path.startswith(("gs://", "s3://", "http://", "https://"))
         if looks_local and Path(dataset_path).expanduser().exists():
@@ -790,8 +791,7 @@ def build_harbor_command(
         ):
             modified_config.pop("datasets", None)
             modified_config.pop("tasks", None)
-            with open(merged_config_path, "w") as f:
-                yaml.safe_dump(modified_config, f)
+            _write_merged_config()
 
         # Final safety check: merged config must have datasets, tasks, or a
         # --dataset CLI flag.  Without any of these Harbor will error with
@@ -880,41 +880,41 @@ def build_harbor_command(
     # static fields correctly.
     if jobs_dir:
         config_json_path = Path(jobs_dir) / job_name / "config.json"
-        if config_json_path.exists():
-            print(
-                f"[build_harbor_command] Syncing runtime fields into {config_json_path}",
-                flush=True,
-            )
-            try:
-                _sync_runtime_fields_into_config_json(
-                    config_json_path=config_json_path,
-                    modified_config=modified_config,
-                    extra_args=extra_args,
-                    n_concurrent=n_concurrent,
-                    n_attempts=n_attempts,
-                )
-                # fsync to make sure the write is visible to the harbor
-                # subprocess we are about to spawn (NFS-style filesystems
-                # can return stale data on close-to-open).
-                with open(config_json_path, "rb") as _f:
-                    os.fsync(_f.fileno())
-                print(
-                    f"[build_harbor_command] Sync complete, fsync'd",
-                    flush=True,
-                )
-            except (OSError, json.JSONDecodeError, ValueError) as exc:
-                # Best-effort: if this fails, Harbor's equality check will
-                # surface the original drift with a clearer trace than
-                # whatever exception we'd add here.
-                print(
-                    f"[build_harbor_command] WARNING: could not sync runtime "
-                    f"fields into {config_json_path}: {exc}",
-                    file=sys.stderr,
-                    flush=True,
-                )
-        else:
+        if not config_json_path.exists():
             print(
                 f"[build_harbor_command] No config.json at {config_json_path}; skip sync",
+                flush=True,
+            )
+            return cmd
+        print(
+            f"[build_harbor_command] Syncing runtime fields into {config_json_path}",
+            flush=True,
+        )
+        try:
+            _sync_runtime_fields_into_config_json(
+                config_json_path=config_json_path,
+                modified_config=modified_config,
+                extra_args=extra_args,
+                n_concurrent=n_concurrent,
+                n_attempts=n_attempts,
+            )
+            # fsync to make sure the write is visible to the harbor
+            # subprocess we are about to spawn (NFS-style filesystems
+            # can return stale data on close-to-open).
+            with open(config_json_path, "rb") as _f:
+                os.fsync(_f.fileno())
+            print(
+                "[build_harbor_command] Sync complete, fsync'd",
+                flush=True,
+            )
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            # Best-effort: if this fails, Harbor's equality check will
+            # surface the original drift with a clearer trace than
+            # whatever exception we'd add here.
+            print(
+                f"[build_harbor_command] WARNING: could not sync runtime "
+                f"fields into {config_json_path}: {exc}",
+                file=sys.stderr,
                 flush=True,
             )
 

@@ -1,6 +1,6 @@
 ---
 name: eval-agentic-launch-iris
-description: Launch, monitor, and manually clean up an eval job on Marin's Iris TPU cluster via the OpenThoughts-Agent entrypoint. Use when asked to start, watch, or kill a model evaluation (evalchemy / agent-harness benchmarks) on Iris.
+description: Launch, monitor, and manually clean up an eval job on Marin's Iris TPU/GPU clusters via the OpenThoughts-Agent entrypoint. Use when asked to start, watch, or kill a model evaluation (evalchemy / agent-harness benchmarks) on Iris.
 ---
 
 # eval-agentic-launch-iris
@@ -144,6 +144,43 @@ python eval/cloud/launch_eval_iris.py \
 # or --dataset_path <tasks dir | HF id>, plus --n_concurrent <N>.
 ```
 
+CoreWeave H100x8 durable R2/S3 eval shape:
+```bash
+USER_NAME="${USER:-$(id -un)}"
+TS=$(date +%Y%m%d-%H%M%S)
+JOB_NAME="eval-qwen3coder30b-swebench-cw-h100x8-${USER_NAME}-${TS}"
+export OT_AGENT_S3_OUTPUT_ROOT="s3://marin-na/tmp/ttl=7d/ot-agent/evals/${USER_NAME}"
+export AWS_ENDPOINT_URL="https://74981a43be0de7712369306c7b19133d.r2.cloudflarestorage.com"
+export AWS_ACCESS_KEY_ID="<access-key>"
+export AWS_SECRET_ACCESS_KEY="<secret-key>"
+python eval/cloud/launch_eval_iris.py \
+  --cluster-config /path/to/marin/lib/iris/config/cw-us-east-02a.yaml \
+  --preset swebench \
+  --harbor_config hpc/harbor_yaml/eval/dcagent_eval_defaults.yaml \
+  --datagen_config hpc/datagen_yaml/extra/qwen3_coder_30b_a3b_vllm_serve_32k.yaml \
+  --gpu H100x8 \
+  --replicas 1 \
+  --s3-output-dir "${OT_AGENT_S3_OUTPUT_ROOT}" \
+  --n_concurrent 1 --n_attempts 1 \
+  --harbor_extra_arg=--n-tasks=1 \
+  --harbor_extra_arg=--max-retries=0 \
+  --cpu 16 --memory 128GB --disk 100GB \
+  --timeout 3600 \
+  --job_name "${JOB_NAME}" \
+  --secrets-env /Users/benjaminfeuer/Documents/secrets.env \
+  --dry-run
+
+# If the dry-run shows the CoreWeave config, GPU image, Extras: ['datagen'],
+# Output: s3://..., and harbor --jobs-dir=s3://..., rerun without --dry-run
+# and add --no-wait.
+```
+
+CoreWeave GPU eval is currently a single-node H100x8 path on
+`cw-use02a-h100-8x`. Do not pass `--replicas > 1`: task sharding and shared
+multi-node Ray/vLLM are not implemented.
+
+CoreWeave GPU runs must not use GCS output.
+
 Flag notes:
 - **Supabase sync = `--upload_to_database`** (the opposite of datagen's
   `--skip_register`). It registers result abstracts to Supabase **and** uploads
@@ -158,13 +195,15 @@ Flag notes:
 - `--upload_hf_repo` alone (no `--upload_to_database`) does **HF-only** upload,
   no Supabase. Pass an explicit repo if you want a fixed destination.
 - `--tpu` defaults to **v6e-4** for eval (vs v5p-8 for S1 datagen); set per the
-  model's footprint.
-- **Output mode**: by default eval outputs are **rsync'd back periodically to
-  `--local-sync-dir`** while the job runs (so local eval-analysis tooling sees
-  files). Pass `--output-mode gcs --gcs-output-dir gs://marin-models-us/ot-agent`
-  to write straight to GCS instead (and, as with datagen, this opts out of the
-  region pin — use it to dodge stuck-PENDING when a TPU pool has collapsed; keep
-  the bucket in the US region).
+  model's footprint. Pass `--gpu H100x8 --replicas 1` for the current CoreWeave
+  GPU eval path on `cw-use02a-h100-8x`; this clears the default TPU unless
+  `--tpu` is explicitly provided. For GPU, the launcher defaults to the
+  `gpu-8x` OT-Agent image and the `cw-us-east-02a` Iris config when
+  `--task-image` / `--cluster-config` are omitted.
+- **Output mode**: `--output-mode auto` writes TPU evals to GCS and CoreWeave
+  GPU evals to S3/R2. For GPU, set `OT_AGENT_S3_OUTPUT_ROOT` or pass
+  `--s3-output-dir s3://bucket/prefix`. The launcher passes that URI through
+  as Harbor `--jobs-dir`; Harbor/UPath owns the remote writes.
 - `--upload_hf_repo` pushes results to HF on completion (image `ae085bc8`+ wires
   harbor's `--export-push`); omit it if you only want local/GCS outputs.
 - `--model` is optional only when `--datagen_config` is given (model inferred);
@@ -191,7 +230,8 @@ For eval, the signal of interest is **completion + productive trial rate**
 than gen tok/s. Scores land in the synced outputs, not the analyzer sidecar:
 - default mode → `--local-sync-dir` on the launch host (point eval-analysis
   tooling at it);
-- `--output-mode gcs` → under `gs://marin-models-us/ot-agent/<job>/`.
+- `--output-mode gcs` → under `gs://marin-models-us/ot-agent/<job>/` for TPU.
+- `--output-mode s3` → under `s3://<bucket>/<prefix>/<job>/` for CoreWeave GPU.
 
 Per-task progress / resume helpers live in `scripts/iris/check_progress.py` and
 `check_resume_needed.py`.
@@ -204,8 +244,11 @@ Per-task progress / resume helpers live in `scripts/iris/check_progress.py` and
 ```
 
 **Recover partial results**: eval outputs are already on the launch host
-(`--local-sync-dir`) or in GCS (`--output-mode gcs`). To re-pull a GCS job dir:
+(`--local-sync-dir`), in GCS (`--output-mode gcs`, TPU), or in S3/R2
+(`--output-mode s3`, CoreWeave GPU). To re-pull a GCS job dir:
 `gsutil -m rsync -r gs://marin-models-us/ot-agent/<job>/<job>/ /tmp/<job>_eval/`.
+For S3/R2 use `aws s3 sync s3://<bucket>/<prefix>/<job>/ /tmp/<job>_eval/`
+with the same `AWS_ENDPOINT_URL` used at launch.
 If HF upload didn't fire (pre-`ae085bc8` image or non-state-4 exit) and you need
 the traces on the Hub, use the same `make_and_upload_trace_dataset.py` recipe as
 in **datagen-launch-iris** against the local job dir.
@@ -215,9 +258,11 @@ call `ensure_snapshots` (see "Snapshots" above), so `SnapshotCapExceeded` does
 not arise here. If you somehow see it, you're on the wrong (datagen) path or the
 wrong harbor config (eval configs use `force_build: true`).
 
-**Stuck PENDING**: relaunch with `--output-mode gcs --gcs-output-dir
+**Stuck PENDING on TPU**: relaunch with `--output-mode gcs --gcs-output-dir
 gs://marin-models-us/ot-agent` (unpinned) so iris places on any free TPU in the
-US region. Kill the stuck submission first only with user permission.
+US region. For CoreWeave GPU, keep `--output-mode s3` and adjust the requested
+pool/resources instead. Kill the stuck submission first only with user
+permission.
 
 ## Guardrails
 

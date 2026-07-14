@@ -399,11 +399,13 @@ We currently organize via the [terminal-bench Discord](https://discord.gg/6xWPKh
 ## Citation
 
 ```
-@misc{openthoughts-agent,
-  author = {Team, OpenThoughts-Agent},
-  month = Dec,
-  title = {{OpenThoughts-Agent}},
-  howpublished = {https://www.open-thoughts.ai/blog/agent},
-  year = {2025}
+@misc{raoof2026openthoughtsagentdatarecipesagentic,
+      title={OpenThoughts-Agent: Data Recipes for Agentic Models}, 
+      author={Negin Raoof and Richard Zhuang and Marianna Nezhurina and Etash Guha and Atula Tejaswi and Ryan Marten and Charlie F. Ruan and Tyler Griggs and Alexander Glenn Shaw and Hritik Bansal and E. Kelly Buchanan and Artem Gazizov and Reinhard Heckel and Chinmay Hegde and Sankalp Jajee and Daanish Khazi and Emmanouil Koukoumidis and Xiangyi Li and Hange Liu and Shlok Natarajan and Harsh Raj and Nicholas Roberts and Ethan Shen and Nishad Singhi and Michael Siu and Ashima Suvarna and Hanwen Xing and Patrick Yubeaton and Robert Zhang and Leon Liangyu Chen and Xiaokun Chen and Steven Dillmann and Saadia Gabriel and Xunyi Jiang and Anurag Kashyap and Boxuan Li and Yein Park and Minh Pham and Sujay Sanghavi and Lin Shi and Ke Sun and Yixin Wang and Zhiwei Xu and Erica Zhang and Siyan Zhao and Wanjia Zhao and Jenia Jitsev and Alex Dimakis and Benjamin Feuer and Ludwig Schmidt},
+      year={2026},
+      eprint={2606.24855},
+      archivePrefix={arXiv},
+      primaryClass={cs.AI},
+      url={https://arxiv.org/abs/2606.24855}, 
 }
 ```

@@ -19,17 +19,18 @@ def test_mint_requires_one_capability_url(monkeypatch):
     class Result:
         returncode = 0
         stderr = ""
-        stdout = (
-            "Capability API base: https://iris.oa.dev/proxy/t/token/serve.example/v1\n"
-        )
+        stdout = "Capability URL: https://iris.oa.dev/proxy/t/token/serve.example/\n"
 
     monkeypatch.setattr(_MODULE.subprocess, "run", lambda *a, **k: Result())
-    assert _MODULE.mint_capability_api_base(
-        iris_bin="iris",
-        cluster="cw-us-east-02a",
-        endpoint_name="/serve/example",
-        ttl_hours=24,
-    ).endswith("/v1")
+    assert (
+        _MODULE.mint_capability_api_base(
+            iris_bin="iris",
+            cluster="cw-us-east-02a",
+            endpoint_name="/serve/example",
+            ttl_hours=24,
+        )
+        == "https://iris.oa.dev/proxy/t/token/serve.example/v1"
+    )
 
 
 def test_mint_rejects_missing_or_ambiguous_urls(monkeypatch):

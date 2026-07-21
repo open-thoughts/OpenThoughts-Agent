@@ -22,7 +22,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_IRIS_BIN = "/Users/benjaminfeuer/miniconda3/envs/otagent/bin/iris"
-_CAPABILITY_URL_RE = re.compile(r"https://[^\s]+/v1")
+_CAPABILITY_URL_RE = re.compile(r"https://[^\s]+")
 
 
 def mint_capability_api_base(
@@ -54,7 +54,9 @@ def mint_capability_api_base(
         raise RuntimeError(
             "Iris endpoint mint returned no unambiguous capability URL; refusing to launch."
         )
-    return urls[0]
+    # Iris returns a scoped proxy base and directs callers to append the app
+    # path. OpenCode speaks the OpenAI-compatible ``/v1`` API.
+    return f"{urls[0].rstrip('/')}/v1"
 
 
 def require_secret(env: dict[str, str], name: str) -> str:

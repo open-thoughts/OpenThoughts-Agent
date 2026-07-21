@@ -82,3 +82,30 @@ def test_submit_uses_env_for_url_and_fails_fast_when_missing():
     assert "${EXTERNAL_AGENT_API_BASE:?missing minted endpoint URL}" in shell
     assert "api_base=${EXTERNAL_AGENT_API_BASE}" in shell
     assert "https://iris.oa.dev" not in shell
+
+
+def test_submit_uses_capability_no_auth_default_when_sidecar_bearer_is_absent():
+    args = argparse.Namespace(
+        iris_bin="iris",
+        cluster="cw-us-east-02a",
+        task_image="image@sha256:abc",
+        cpu=8,
+        memory="64GB",
+        disk="64GB",
+        priority="batch",
+        job_name="eval-v2",
+        harbor_config="config.yaml",
+        datagen_config="external.yaml",
+        model="vllm/model",
+        dataset_path="DCAgent/dev_set_v2",
+        n_concurrent=6,
+        n_attempts=3,
+        upload_hf_repo="laion/traces",
+    )
+    command = _MODULE.build_submit_command(
+        args,
+        {"DAYTONA_API_KEY": "daytona", "HF_TOKEN": "hf", "OPENAI_API_KEY": "judge"},
+        "https://iris.oa.dev/proxy/t/token/serve.example/v1",
+    )
+    key_index = command.index("OPENCODE_DUMMY_KEY")
+    assert command[key_index + 1] == "capability-url-no-auth-header"

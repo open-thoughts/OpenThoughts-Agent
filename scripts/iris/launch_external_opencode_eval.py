@@ -76,8 +76,12 @@ def build_submit_command(
         "DAYTONA_API_KEY": require_secret(env, "DAYTONA_API_KEY"),
         "HF_TOKEN": require_secret(env, "HF_TOKEN"),
         "OPENAI_API_KEY": require_secret(env, "OPENAI_API_KEY"),
-        # The pinggy sidecar's static bearer is separate from the capability URL.
-        "OPENCODE_DUMMY_KEY": require_secret(env, "IRIS_INGRESS_API_KEY"),
+        # Capability-proxy URLs authenticate in their path. Retain the static
+        # bearer for a sidecar endpoint, but do not require it for Iris-minted
+        # no-auth capability URLs.
+        "OPENCODE_DUMMY_KEY": env.get(
+            "IRIS_INGRESS_API_KEY", "capability-url-no-auth-header"
+        ),
         "EXTERNAL_AGENT_API_BASE": api_base,
     }
     command = [

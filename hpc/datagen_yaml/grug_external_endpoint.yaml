@@ -1,0 +1,13 @@
+# External-endpoint (hosted vLLM) config for the Grug agentic ID eval.
+# The OpenCode agent receives the scoped Iris capability URL at launch through
+# `api_base`; this file only selects the OpenAI engine and model shape.
+engine:
+  type: openai
+  model: vllm/laion/grug-67b-a2b-sft-s3-agentic-step1903
+  max_output_tokens: 4096
+  healthcheck_interval: 300
+  openai:
+    api_key_env: OPENAI_API_KEY
+backend:
+  type: none
+vllm_server: null

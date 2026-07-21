@@ -146,7 +146,7 @@ def main() -> int:
         default="hpc/harbor_yaml/eval/configs/eval_opencode_ctx64k.yaml",
     )
     parser.add_argument(
-        "--datagen-config", default="scratch_grug_external_endpoint.yaml"
+        "--datagen-config", default="hpc/datagen_yaml/grug_external_endpoint.yaml"
     )
     parser.add_argument("--model", required=True)
     parser.add_argument("--dataset-path", required=True)

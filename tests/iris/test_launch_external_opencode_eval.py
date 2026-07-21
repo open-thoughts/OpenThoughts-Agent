@@ -3,6 +3,7 @@ import importlib.util
 from pathlib import Path
 
 import pytest
+import yaml
 
 
 _SCRIPT = (
@@ -13,6 +14,13 @@ _SPEC = importlib.util.spec_from_file_location("launch_external_opencode_eval", 
 assert _SPEC and _SPEC.loader
 _MODULE = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_MODULE)
+
+
+def test_grug_external_endpoint_config_is_packaged_and_uses_openai():
+    config_path = _SCRIPT.parents[2] / "hpc/datagen_yaml/grug_external_endpoint.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    assert config["engine"]["type"] == "openai"
+    assert config["backend"]["type"] == "none"
 
 
 def test_mint_requires_one_capability_url(monkeypatch):

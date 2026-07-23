@@ -146,9 +146,16 @@ module purge 2>/dev/null || true
 module load gcc/13.2.0 cuda/12.8 2>/dev/null || true
 
 # --- Conda activation: otagent (harbor + fork vLLM + DB client + uploader) ---
-source "${SCRATCH}/miniconda3/etc/profile.d/conda.sh"
-conda activate otagent
-echo "Conda env: otagent (prefix $CONDA_PREFIX)"
+# OTAGENT_CONDA_PREFIX (full path to the env) lets a borrowing operator point at a shared read-only
+# env instead of building their own $SCRATCH/miniconda3. Defaults to the operator's own
+# $SCRATCH/miniconda3/envs/otagent — byte-identical for penfever, and picks up an operator's own env
+# automatically once built. Activate by full prefix path (not by bare name, which needs the env
+# registered in the active conda root). The conda root is derived from the prefix.
+OTAGENT_CONDA_PREFIX="${OTAGENT_CONDA_PREFIX:-${SCRATCH}/miniconda3/envs/otagent}"
+_OTAGENT_CONDA_ROOT="${OTAGENT_CONDA_PREFIX%/envs/*}"
+source "${_OTAGENT_CONDA_ROOT}/etc/profile.d/conda.sh"
+conda activate "${OTAGENT_CONDA_PREFIX}"
+echo "Conda env: ${OTAGENT_CONDA_PREFIX} (prefix $CONDA_PREFIX)"
 
 # Prepend conda's lib so its libstdc++ wins over the system/module versions.
 export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"

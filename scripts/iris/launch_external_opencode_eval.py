@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -29,6 +30,10 @@ DEFAULT_PARENT_CLUSTER = "marin"
 DEFAULT_PARENT_INGRESS_HOST = "https://iris.oa.dev"
 DEFAULT_MIRROR_TIMEOUT_SECONDS = 180.0
 DEFAULT_MIRROR_POLL_SECONDS = 3.0
+# This wrapper exclusively submits external-endpoint evals to CoreWeave
+# ``cw-us-east-02a``.  Match the Iris datagen launcher's durable CW object-store
+# convention instead of leaving Harbor's trial directory on the ephemeral pod.
+DEFAULT_S3_OUTPUT_ROOT = "s3://marin-us-east-02a/iris"
 # OpenAI-compatible installed agents require a non-empty value, but the scoped
 # capability URL is the credential. Do not use a sidecar bearer here.
 DUMMY_API_KEY = "capability-url-no-auth-header"
@@ -157,6 +162,23 @@ def load_secrets_env(path: Path, environ: dict[str, str]) -> None:
             environ[key] = value.strip().strip('"').strip("'")
 
 
+def durable_harbor_jobs_dir(*, s3_output_root: str, iris_job_name: str) -> str:
+    """Return the durable Harbor jobs root for one external-endpoint eval.
+
+    This deliberately follows the Iris datagen launcher pattern: object-store
+    artifacts are isolated by the Iris job name, while ``run_eval`` receives a
+    ``--jobs-dir`` root and Harbor creates its own deterministic run directory
+    beneath it.  Keeping the ``trace_jobs`` component makes terminal-job
+    recovery discoverable with the standard CoreWeave artifact readers.
+    """
+    root = s3_output_root.rstrip("/")
+    if not root.startswith("s3://"):
+        raise ValueError("--s3-output-dir must start with s3://")
+    if not iris_job_name or "/" in iris_job_name:
+        raise ValueError("--job-name must be a non-empty Iris job-name component")
+    return f"{root}/{iris_job_name}/trace_jobs"
+
+
 def build_submit_command(
     args: argparse.Namespace, env: dict[str, str], api_base: str
 ) -> list[str]:
@@ -168,6 +190,13 @@ def build_submit_command(
         "OPENCODE_DUMMY_KEY": DUMMY_API_KEY,
         "EXTERNAL_AGENT_API_BASE": api_base,
     }
+    durable_jobs_dir = durable_harbor_jobs_dir(
+        s3_output_root=args.s3_output_dir, iris_job_name=args.job_name
+    )
+    # ``run_eval`` needs a real local directory for its short-lived endpoint
+    # metadata and process logs.  Harbor's long-lived trial artifacts are sent
+    # to ``durable_jobs_dir`` instead (the same split as Iris datagen S3 mode).
+    work_dir = f"/tmp/ot-agent-runs/{args.job_name}"
     command = [
         args.iris_bin,
         "--cluster",
@@ -208,6 +237,8 @@ def build_submit_command(
             '--agent_kwarg "api_base=${EXTERNAL_AGENT_API_BASE}" '
             f"--n_concurrent {args.n_concurrent} "
             f"--n_attempts {args.n_attempts} "
+            f"--experiments_dir {shlex.quote(work_dir)} "
+            f"--harbor_extra_arg={shlex.quote(f'--jobs-dir={durable_jobs_dir}')} "
             f"--upload_hf_repo {args.upload_hf_repo}",
         ]
     )
@@ -246,6 +277,14 @@ def main() -> int:
     # without launching duplicate full-dataset evaluations.
     parser.add_argument("--n-concurrent", type=int, default=256)
     parser.add_argument("--n-attempts", type=int, default=3)
+    parser.add_argument(
+        "--s3-output-dir",
+        default=DEFAULT_S3_OUTPUT_ROOT,
+        help=(
+            "Durable CoreWeave object-store root for raw Harbor artifacts. "
+            "Each launch writes under <root>/<job-name>/trace_jobs/."
+        ),
+    )
     parser.add_argument("--upload-hf-repo", required=True)
     parser.add_argument("--cpu", type=float, default=32)
     parser.add_argument("--memory", default="128GB")
@@ -254,6 +293,16 @@ def main() -> int:
         "--priority", choices=["production", "interactive", "batch"], default="batch"
     )
     args = parser.parse_args()
+
+    # Reject an invalid durable destination before minting a capability token or
+    # contacting the controller.  ``build_submit_command`` repeats this check
+    # because it is also called directly by unit tests and other tooling.
+    try:
+        durable_harbor_jobs_dir(
+            s3_output_root=args.s3_output_dir, iris_job_name=args.job_name
+        )
+    except ValueError as error:
+        parser.error(str(error))
 
     secret_path = Path(args.secrets_env).expanduser()
     if not secret_path.is_file():

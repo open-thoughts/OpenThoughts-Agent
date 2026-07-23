@@ -790,6 +790,18 @@ export UPLOAD_USERNAME="${UPLOAD_USERNAME:-$USER}"
 export UPLOAD_MODE="${UPLOAD_MODE:-skip_on_error}"
 export RUN_TAG
 
+# Local-only smoke/canary guard (mirrors the leonardo sbatch): EVAL_SKIP_UPLOAD=1 preserves the
+# results on disk and skips the HF/DB uploader entirely, so a subset/canary is NEVER registered as a
+# full-benchmark leaderboard result. upload_eval_results() does HF upload AND Supabase registration in
+# one call, so this single exit covers both. Also side-steps the bare os.environ["HF_TOKEN"] below when
+# no token is configured (canary path).
+case "${EVAL_SKIP_UPLOAD:-0}" in
+    1|true|TRUE|yes|YES)
+        echo "EVAL_SKIP_UPLOAD=${EVAL_SKIP_UPLOAD}: preserving local results at $RUN_DIR, skipping HF/DB upload"
+        exit 0
+        ;;
+esac
+
 UPLOAD_LOG="$RUN_DIR/upload.log"
 echo "Uploading results from: $RUN_DIR" | tee -a "$UPLOAD_LOG"
 

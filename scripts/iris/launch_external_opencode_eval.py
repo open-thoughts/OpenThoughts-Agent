@@ -48,7 +48,7 @@ DEFAULT_HF_TRACE_REPO = "laion/grug-agentic-eval-v2-traces"
 # mutable tag could silently revert those runtime fixes between launch and retry.
 DEFAULT_TASK_IMAGE = (
     "ghcr.io/open-thoughts/openthoughts-agent@sha256:"
-    "a172ed5a83df94775684bc66ea6afa7b530162c21d872b3bd185ec663eb9f1a2"
+    "bbe79e82991ed11f16654d9d06f02490f6b043ebd18ed8e4d13dd78ba1704fe7"
 )
 DEFAULT_SERVE_READY_TIMEOUT_SECONDS = 1800.0
 # The serve watches only model-inference requests (not readiness/health probes)

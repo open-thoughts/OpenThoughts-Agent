@@ -29,9 +29,15 @@ def wrap_task_command(
         f"--extra {shlex.quote(e.split(':', 1)[-1])}" for e in extras
     )
     quiet = "" if os.environ.get("IRIS_DEBUG_UV_RESYNC") else "--quiet"
+    # The workspace is mounted at /app for every Iris task, so we still need a
+    # frozen sync there even when the task image has a baked environment.  Do
+    # not use ``--reinstall``: it needlessly clobbers the image environment on
+    # every retry and, more importantly, lets a runtime bootstrap hide a stale
+    # image/dependency declaration.  ``--frozen`` makes the checked-in uv.lock
+    # the sole dependency authority.
     resync_cmd = (
         "cd /app && "
-        f"uv sync {quiet} --frozen --reinstall --link-mode=copy "
+        f"uv sync {quiet} --frozen --link-mode=copy "
         f"--all-packages --no-group dev {extras_flags}".rstrip()
     )
     patch_cmd = (

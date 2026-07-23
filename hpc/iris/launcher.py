@@ -305,6 +305,21 @@ class IrisLauncher:
         """
         return {}
 
+    def required_runtime_extras(
+        self,
+        args: argparse.Namespace,
+        accelerator: ResolvedIrisAccelerator,
+    ) -> list[str]:
+        """Extras this task needs even when a caller overrides ``--extras``.
+
+        Keep this separate from accelerator defaults: a task may have a
+        storage/runtime dependency unrelated to its backend.  Subclasses use
+        this to make it part of the frozen worker closure rather than relying
+        on an image-layer or runtime pip install.
+        """
+        del args, accelerator
+        return []
+
     # ------------------------------------------------------------------
     # Main entry
     # ------------------------------------------------------------------
@@ -563,6 +578,9 @@ class IrisLauncher:
             extras = accelerator.default_extras
         else:
             extras = [e for e in args.extras if e]
+        for required in self.required_runtime_extras(args, accelerator):
+            if required not in extras:
+                extras.append(required)
 
         apply_iris_runtime_env(
             env_vars=env_vars,

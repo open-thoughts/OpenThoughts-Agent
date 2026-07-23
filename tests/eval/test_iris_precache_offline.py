@@ -254,3 +254,31 @@ def test_launcher_miss_auto_no_offline_no_serve_uri(monkeypatch):
     cmd = launcher.build_task_command(args, "gs://x/y")
     assert "--vllm_model_uri" not in cmd
     assert "HF_HUB_OFFLINE" not in " ".join(cmd)
+
+
+def test_coreweave_gpu_uses_pod_local_hf_cache(monkeypatch):
+    """GPU evals must not turn a cache hit into a RunAI S3 serve URI."""
+    from eval.cloud.launch_eval_iris import EvalIrisLauncher
+
+    launcher = EvalIrisLauncher(PROJECT_ROOT)
+    args = _eval_args(gpu="H100x8")
+
+    def _unexpected_precache(*_args, **_kwargs):
+        raise AssertionError("CoreWeave GPU must not select the RunAI mirror path")
+
+    monkeypatch.setattr(precache, "precache_for_eval", _unexpected_precache)
+    env = launcher.pre_submit_precache(args, remote_output_dir="s3://marin-us-east-02a/eval")
+
+    assert env == {}
+    assert getattr(args, "_vllm_model_uri", None) is None
+    cmd = launcher.build_task_command(args, "s3://marin-us-east-02a/eval")
+    assert "--vllm_model_uri" not in cmd
+
+
+def test_gpu_eval_requires_cloud_extra_for_locked_s3fs():
+    from eval.cloud.launch_eval_iris import EvalIrisLauncher
+
+    launcher = EvalIrisLauncher(PROJECT_ROOT)
+    assert launcher.required_runtime_extras(
+        argparse.Namespace(), argparse.Namespace(is_gpu=True)
+    ) == ["cloud"]

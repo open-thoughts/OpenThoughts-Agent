@@ -29,6 +29,7 @@ if str(_repo_root) not in sys.path:
     sys.path.append(str(_repo_root))
 
 from hpc.iris_launch_utils import IrisLauncher
+from hpc.iris.accelerator import ResolvedIrisAccelerator
 from hpc.cloud_launch_utils import repo_relative, infer_harbor_env_from_config
 from hpc.arg_groups import (
     add_harbor_args,
@@ -112,6 +113,17 @@ class EvalIrisLauncher(IrisLauncher):
     task_name = "ot-eval-iris"
     job_name_prefix = "eval-iris"
     default_n_concurrent = 16
+
+    def required_runtime_extras(
+        self,
+        args: argparse.Namespace,
+        accelerator: ResolvedIrisAccelerator,
+    ) -> list[str]:
+        """Keep S3 trace persistence in the locked GPU-eval environment."""
+        del args
+        # CoreWeave agentic evals always pass Harbor an s3:// jobs directory.
+        # ``cloud`` owns the lock-pinned s3fs backend required by fsspec/upath.
+        return ["cloud"] if accelerator.is_gpu else []
 
     def add_task_specific_args(self, parser: argparse.ArgumentParser) -> None:
         """Mirror EvalCloudLauncher's args exactly so users don't have to relearn flags."""
@@ -476,12 +488,27 @@ class EvalIrisLauncher(IrisLauncher):
     ) -> dict:
         """Ensure the model + dataset are region-cached, then wire the offline plan.
 
+        CoreWeave GPU workers intentionally do *not* use the region mirror as
+        a RunAI-streamer source.  They have ample node-local NVMe and the
+        normal Hugging Face/vLLM path materializes weights there once per pod;
+        this is both more reliable than S3 range streaming and matches the
+        production GPU datagen path.  TPU workers retain the mirror/offline
+        path because their per-VM disk is constrained.
+
         Runs after the region pin. On a full cache-HIT: serve the model from the
         region-local GCS mirror via runai_streamer (``args._vllm_model_uri``),
         route the dataset read through GCS (``args.dataset_path`` -> gs://), and
         return HF_HUB_OFFLINE=1 / TRANSFORMERS_OFFLINE=1 / the GCS S3 endpoint.
         On a MISS (auto mode) it returns {} -> the launch runs online, unchanged.
         """
+        if getattr(args, "gpu", None):
+            print(
+                "[eval-iris] CoreWeave GPU: serving from the pod-local Hugging Face "
+                "cache (RunAI S3 streaming disabled by default).",
+                flush=True,
+            )
+            return {}
+
         mode = getattr(args, "hf_offline_mode", "auto")
         if mode == "off":
             return {}

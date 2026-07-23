@@ -274,6 +274,7 @@ def test_iris_bootstrap_uses_synced_venv_and_gates_tpu_patch():
     )[2]
     assert "uv sync" in gpu_script
     assert "--extra datagen" in gpu_script
+    assert "--reinstall" not in gpu_script
     assert "export PATH=/app/.venv/bin:$PATH" in gpu_script
     assert "patch_tpu_inference.py" not in gpu_script
 

@@ -1,5 +1,6 @@
 import argparse
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -85,6 +86,7 @@ def test_submit_uses_env_for_url_and_fails_fast_when_missing():
     assert "api_base=${EXTERNAL_AGENT_API_BASE}" in shell
     assert "https://iris.oa.dev" not in shell
     assert "--n_concurrent 256" in shell
+    assert "--job_name eval-v2" in shell
     assert "--experiments_dir /tmp/ot-agent-runs/eval-v2" in shell
     assert (
         "--harbor_extra_arg=--jobs-dir=s3://marin-us-east-02a/iris/eval-v2/trace_jobs"
@@ -174,3 +176,65 @@ def test_selected_secrets_file_replaces_stale_inherited_values(tmp_path):
         "HF_TOKEN": "hf",
         "UNCHANGED": "value",
     }
+
+
+def test_main_submits_federated_serve_then_parent_minted_durable_eval(tmp_path, monkeypatch):
+    """The default profile must run the full parent→peer→eval launch sequence."""
+    secret_path = tmp_path / "secrets.env"
+    secret_path.write_text("DAYTONA_API_KEY=daytona\nHF_TOKEN=hf\nOPENAI_API_KEY=judge\n")
+    marin_repo = tmp_path / "marin"
+    marin_repo.mkdir()
+    calls: list[tuple[list[str], dict]] = []
+
+    class Result:
+        def __init__(self, stdout="", returncode=0):
+            self.stdout = stdout
+            self.returncode = returncode
+            self.stderr = ""
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        if "endpoints" in command and "list" in command:
+            return Result("NAME ACCESS PEER ADDRESS TASK\n/serve/grug-r7-serve link cw-us-east-02a 10.0.0.1 task\n")
+        if "endpoints" in command and "mint" in command:
+            return Result("Capability URL: https://iris.oa.dev/proxy/t/token/serve.grug-r7-serve/\n")
+        return Result()
+
+    monkeypatch.setattr(_MODULE.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(_SCRIPT),
+            "--job-name",
+            "grug-r7",
+            "--secrets-env",
+            str(secret_path),
+            "--marin-repo",
+            str(marin_repo),
+        ],
+    )
+
+    assert _MODULE.main() == 0
+
+    serve_command, serve_kwargs = calls[0]
+    assert serve_command[:8] == [
+        "uv",
+        "run",
+        "--project",
+        "lib/marin",
+        "marin-serve",
+        "iris",
+        _MODULE.DEFAULT_SERVE_MODEL,
+        "--cluster",
+    ]
+    assert "--target-cluster" in serve_command
+    assert serve_command[serve_command.index("--target-cluster") + 1] == "cw-us-east-02a"
+    assert serve_kwargs["env"]["KUBECONFIG"] == _MODULE.DEFAULT_KUBECONFIG
+
+    eval_command, eval_kwargs = calls[-1]
+    assert eval_command[eval_command.index("--job-name") + 1] == "grug-r7"
+    assert eval_command[eval_command.index("--task-image") + 1] == _MODULE.DEFAULT_TASK_IMAGE
+    assert eval_kwargs["env"]["KUBECONFIG"] == _MODULE.DEFAULT_KUBECONFIG
+    assert "https://iris.oa.dev" not in eval_command[-1]
+    assert "--jobs-dir=s3://marin-us-east-02a/iris/grug-r7/trace_jobs" in eval_command[-1]

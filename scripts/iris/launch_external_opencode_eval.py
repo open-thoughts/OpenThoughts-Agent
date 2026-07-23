@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Launch an external-endpoint OpenCode eval on CoreWeave Iris.
+"""Launch a federated external-endpoint OpenCode eval on CoreWeave Iris.
 
-The evaluated model is served separately (for example by Marin's vLLM fork),
-so this is deliberately a small launch-host wrapper around ``run_eval`` rather
-than the self-serving ``eval.cloud.launch_eval_iris`` path.  It mints the
-endpoint capability URL *on the launch host* through the supported Iris CLI;
-the generic task image intentionally does not include the Iris controller
-client.  The minted URL is passed only as a task environment variable and is
-never printed or written to disk.
+This is the one-command Grug profile: it submits the serving job to the Marin
+parent, waits for its peer endpoint to mirror back to the parent, mints the
+parent-scoped capability URL, and then submits the durable Harbor eval.  The
+capability URL is passed only as a task environment variable; it is never
+printed or persisted by this launcher.
 """
 
 from __future__ import annotations
@@ -19,8 +17,9 @@ import shlex
 import subprocess
 import sys
 import time
-from urllib.parse import urlsplit
+from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -34,6 +33,18 @@ DEFAULT_MIRROR_POLL_SECONDS = 3.0
 # ``cw-us-east-02a``.  Match the Iris datagen launcher's durable CW object-store
 # convention instead of leaving Harbor's trial directory on the ephemeral pod.
 DEFAULT_S3_OUTPUT_ROOT = "s3://marin-us-east-02a/iris"
+DEFAULT_KUBECONFIG = "/Users/benjaminfeuer/.kube/coreweave-iris-gpu"
+DEFAULT_MARIN_REPO = "/Users/benjaminfeuer/Documents/marin"
+DEFAULT_SERVE_MODEL = "laion/grug-67b-a2b-sft-s3-agentic-step1903"
+DEFAULT_DATASET_PATH = "DCAgent/dev_set_v2"
+DEFAULT_HF_TRACE_REPO = "laion/grug-agentic-eval-v2-traces"
+# This image carries the Harbor fixes validated for the canonical Grug eval. A
+# mutable tag could silently revert those runtime fixes between launch and retry.
+DEFAULT_TASK_IMAGE = (
+    "ghcr.io/open-thoughts/openthoughts-agent@sha256:"
+    "a172ed5a83df94775684bc66ea6afa7b530162c21d872b3bd185ec663eb9f1a2"
+)
+DEFAULT_SERVE_READY_TIMEOUT_SECONDS = 1800.0
 # OpenAI-compatible installed agents require a non-empty value, but the scoped
 # capability URL is the credential. Do not use a sidecar bearer here.
 DUMMY_API_KEY = "capability-url-no-auth-header"
@@ -78,7 +89,7 @@ def wait_for_parent_endpoint_mirror(
         if result.returncode:
             raise RuntimeError(
                 "Iris parent endpoint lookup failed "
-                f"(exit {result.returncode}): {result.stderr[-800:]}"
+                f"(exit {result.returncode}); inspect client diagnostics locally."
             )
         if _is_mirrored_parent_endpoint(result.stdout, endpoint_name):
             return
@@ -117,8 +128,9 @@ def mint_capability_api_base(
     )
     if result.returncode:
         raise RuntimeError(
-            f"Iris endpoint mint failed (exit {result.returncode}): "
-            f"{result.stderr[-800:]}"
+            f"Iris endpoint mint failed (exit {result.returncode}); "
+            "the launcher will not expose controller diagnostics that may contain "
+            "a capability URL."
         )
     urls = _CAPABILITY_URL_RE.findall(result.stdout)
     if len(urls) != 1:
@@ -179,6 +191,114 @@ def durable_harbor_jobs_dir(*, s3_output_root: str, iris_job_name: str) -> str:
     return f"{root}/{iris_job_name}/trace_jobs"
 
 
+def default_job_name(now: datetime | None = None) -> str:
+    """Return a unique, descriptive Iris job name for the default Grug profile."""
+    timestamp = (now or datetime.now(timezone.utc)).strftime("%Y%m%d-%H%M%S")
+    return f"grug-agentic-eval-v2-65k-{timestamp}"
+
+
+def default_secrets_env(environ: dict[str, str]) -> str:
+    """Match the Iris launcher's safe local secrets-file convention."""
+    return (
+        environ.get("DC_AGENT_SECRET_ENV")
+        or environ.get("OT_AGENT_SECRETS_ENV")
+        or str(Path.home() / "Documents/secrets.env")
+    )
+
+
+def build_serve_command(args: argparse.Namespace) -> list[str]:
+    """Build the parent-delegated Marin serve submission for this eval."""
+    command = [
+        "uv",
+        "run",
+        "--project",
+        "lib/marin",
+        "marin-serve",
+        "iris",
+        args.serve_model,
+        "--cluster",
+        args.parent_cluster,
+        "--target-cluster",
+        args.cluster,
+        "--gpu",
+        "H100x8",
+        "--name",
+        args.serve_name,
+        "--endpoint-name",
+        args.endpoint_name,
+        "--max-model-len",
+        str(args.serve_max_model_len),
+        "--max-num-batched-tokens",
+        str(args.serve_max_num_batched_tokens),
+        "--tensor-parallel-size",
+        str(args.serve_tensor_parallel_size),
+        "--dtype",
+        "bfloat16",
+        "--vllm-source",
+        "marin-fork",
+        "--proxy-timeout",
+        "600",
+        "--cpu",
+        "48",
+        "--memory",
+        "1024g",
+        "--disk",
+        "512g",
+        "--wait-timeout",
+        str(args.serve_ready_timeout_seconds),
+        "--no-wait",
+        f"--vllm-arg=--data-parallel-size={args.serve_data_parallel_size}",
+        f"--vllm-arg=--max-num-seqs={args.serve_max_num_seqs}",
+        "--vllm-arg=--enable-expert-parallel",
+        '--vllm-arg=--model-loader-extra-config={"distributed":true}',
+        "--vllm-arg=--enable-auto-tool-choice",
+        "--vllm-arg=--tool-call-parser=hermes",
+        f"--vllm-arg=--served-model-name={args.serve_model}",
+    ]
+    for value in args.serve_vllm_arg:
+        command.append(f"--vllm-arg={value}")
+    return command
+
+
+def build_worker_command(
+    args: argparse.Namespace, durable_jobs_dir: str, work_dir: str
+) -> str:
+    """Return a shell-safe eval command while preserving runtime URL expansion."""
+    before_api_base = [
+        "python",
+        "-m",
+        "eval.local.run_eval",
+        "--harbor_config",
+        args.harbor_config,
+        "--datagen_config",
+        args.datagen_config,
+        "--model",
+        args.model,
+        "--dataset_path",
+        args.dataset_path,
+    ]
+    after_api_base = [
+        "--n_concurrent",
+        str(args.n_concurrent),
+        "--n_attempts",
+        str(args.n_attempts),
+        "--job_name",
+        args.job_name,
+        "--experiments_dir",
+        work_dir,
+        f"--harbor_extra_arg=--jobs-dir={durable_jobs_dir}",
+        "--upload_hf_repo",
+        args.upload_hf_repo,
+    ]
+    return (
+        "set -eu\n"
+        'test -n "${EXTERNAL_AGENT_API_BASE:?missing minted endpoint URL}"\n'
+        f"exec {shlex.join(before_api_base)} "
+        '--agent_kwarg "api_base=${EXTERNAL_AGENT_API_BASE}" '
+        f"{shlex.join(after_api_base)}"
+    )
+
+
 def build_submit_command(
     args: argparse.Namespace, env: dict[str, str], api_base: str
 ) -> list[str]:
@@ -223,36 +343,45 @@ def build_submit_command(
     for key, value in task_env.items():
         command.extend(["-e", key, value])
     command.extend(
-        [
-            "--",
-            "bash",
-            "-lc",
-            "set -eu\n"
-            'test -n "${EXTERNAL_AGENT_API_BASE:?missing minted endpoint URL}"\n'
-            "exec python -m eval.local.run_eval "
-            f"--harbor_config {args.harbor_config} "
-            f"--datagen_config {args.datagen_config} "
-            f"--model {args.model} "
-            f"--dataset_path {args.dataset_path} "
-            '--agent_kwarg "api_base=${EXTERNAL_AGENT_API_BASE}" '
-            f"--n_concurrent {args.n_concurrent} "
-            f"--n_attempts {args.n_attempts} "
-            f"--experiments_dir {shlex.quote(work_dir)} "
-            f"--harbor_extra_arg={shlex.quote(f'--jobs-dir={durable_jobs_dir}')} "
-            f"--upload_hf_repo {args.upload_hf_repo}",
-        ]
+        ["--", "bash", "-lc", build_worker_command(args, durable_jobs_dir, work_dir)]
     )
     return command
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--job-name", required=True)
-    parser.add_argument("--endpoint-name", required=True)
+    parser.add_argument("--job-name", default=default_job_name())
+    parser.add_argument(
+        "--existing-endpoint",
+        help="Use an already-running federated endpoint instead of submitting a new serve.",
+    )
+    parser.add_argument("--serve-name", help="Serving job name (default: <job-name>-serve).")
+    parser.add_argument(
+        "--endpoint-name", help="Endpoint name (default: /serve/<serve-name>)."
+    )
     parser.add_argument("--cluster", default="cw-us-east-02a")
     parser.add_argument("--parent-cluster", default=DEFAULT_PARENT_CLUSTER)
     parser.add_argument("--parent-ingress-host", default=DEFAULT_PARENT_INGRESS_HOST)
-    parser.add_argument("--task-image", required=True)
+    parser.add_argument("--kubeconfig", default=DEFAULT_KUBECONFIG)
+    parser.add_argument("--marin-repo", default=DEFAULT_MARIN_REPO)
+    parser.add_argument("--serve-model", default=DEFAULT_SERVE_MODEL)
+    parser.add_argument("--serve-max-model-len", type=int, default=65536)
+    parser.add_argument("--serve-max-num-batched-tokens", type=int, default=7168)
+    parser.add_argument("--serve-tensor-parallel-size", type=int, default=1)
+    parser.add_argument("--serve-data-parallel-size", type=int, default=8)
+    parser.add_argument("--serve-max-num-seqs", type=int, default=32)
+    parser.add_argument(
+        "--serve-ready-timeout-seconds",
+        type=float,
+        default=DEFAULT_SERVE_READY_TIMEOUT_SECONDS,
+    )
+    parser.add_argument(
+        "--serve-vllm-arg",
+        action="append",
+        default=[],
+        help="Extra raw vLLM flag for Marin serve; repeatable.",
+    )
+    parser.add_argument("--task-image", default=DEFAULT_TASK_IMAGE)
     parser.add_argument(
         "--iris-bin", default=os.environ.get("IRIS_BIN", DEFAULT_IRIS_BIN)
     )
@@ -260,16 +389,16 @@ def main() -> int:
     parser.add_argument(
         "--mirror-timeout-seconds", type=float, default=DEFAULT_MIRROR_TIMEOUT_SECONDS
     )
-    parser.add_argument("--secrets-env", required=True)
+    parser.add_argument("--secrets-env", default=default_secrets_env(dict(os.environ)))
     parser.add_argument(
         "--harbor-config",
         default="hpc/harbor_yaml/eval/configs/eval_opencode_ctx64k.yaml",
     )
     parser.add_argument(
-        "--datagen-config", default="scratch_grug_external_endpoint.yaml"
+        "--datagen-config", default="hpc/datagen_yaml/grug_external_endpoint.yaml"
     )
-    parser.add_argument("--model", required=True)
-    parser.add_argument("--dataset-path", required=True)
+    parser.add_argument("--model", help="Eval model id (default: vllm/<serve-model>).")
+    parser.add_argument("--dataset-path", default=DEFAULT_DATASET_PATH)
     # One coordinator is intentionally task-sharded; Iris GPU eval replicas are
     # not.  A high Harbor concurrency feeds the separately served DP=8 model
     # without launching duplicate full-dataset evaluations.
@@ -283,7 +412,7 @@ def main() -> int:
             "Each launch writes under <root>/<job-name>/trace_jobs/."
         ),
     )
-    parser.add_argument("--upload-hf-repo", required=True)
+    parser.add_argument("--upload-hf-repo", default=DEFAULT_HF_TRACE_REPO)
     parser.add_argument("--cpu", type=float, default=32)
     parser.add_argument("--memory", default="128GB")
     parser.add_argument("--disk", default="128GB")
@@ -291,6 +420,12 @@ def main() -> int:
         "--priority", choices=["production", "interactive", "batch"], default="batch"
     )
     args = parser.parse_args()
+
+    args.serve_name = args.serve_name or f"{args.job_name}-serve"
+    args.endpoint_name = (
+        args.existing_endpoint or args.endpoint_name or f"/serve/{args.serve_name}"
+    )
+    args.model = args.model or f"vllm/{args.serve_model}"
 
     # Reject an invalid durable destination before minting a capability token or
     # contacting the controller.  ``build_submit_command`` repeats this check
@@ -309,6 +444,23 @@ def main() -> int:
     # DAYTONA_API_KEY otherwise produces a full, but completely invalid, eval.
     load_secrets_env(secret_path, os.environ)
 
+    submit_environment = dict(os.environ)
+    submit_environment["KUBECONFIG"] = args.kubeconfig
+    if not args.existing_endpoint:
+        marin_repo = Path(args.marin_repo).expanduser()
+        if not marin_repo.is_dir():
+            parser.error(f"Marin checkout not found: {marin_repo}")
+        print(f"[external-eval] submitting federated serve {args.serve_name}", flush=True)
+        serve_result = subprocess.run(
+            build_serve_command(args), cwd=marin_repo, env=submit_environment, check=False
+        )
+        if serve_result.returncode:
+            return serve_result.returncode
+
+    print(
+        f"[external-eval] waiting for parent-mirrored ready endpoint {args.endpoint_name}",
+        flush=True,
+    )
     wait_for_parent_endpoint_mirror(
         iris_bin=args.iris_bin,
         parent_cluster=args.parent_cluster,
@@ -324,7 +476,8 @@ def main() -> int:
     )
     submit = build_submit_command(args, dict(os.environ), api_base)
     # Never log ``submit``: it contains task environment values, including the scoped URL.
-    result = subprocess.run(submit, cwd=REPO_ROOT, check=False)
+    print(f"[external-eval] submitting durable eval {args.job_name}", flush=True)
+    result = subprocess.run(submit, cwd=REPO_ROOT, env=submit_environment, check=False)
     return result.returncode
 
 

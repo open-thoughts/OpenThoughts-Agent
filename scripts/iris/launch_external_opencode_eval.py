@@ -251,9 +251,7 @@ def main() -> int:
     parser.add_argument("--endpoint-name", required=True)
     parser.add_argument("--cluster", default="cw-us-east-02a")
     parser.add_argument("--parent-cluster", default=DEFAULT_PARENT_CLUSTER)
-    parser.add_argument(
-        "--parent-ingress-host", default=DEFAULT_PARENT_INGRESS_HOST
-    )
+    parser.add_argument("--parent-ingress-host", default=DEFAULT_PARENT_INGRESS_HOST)
     parser.add_argument("--task-image", required=True)
     parser.add_argument(
         "--iris-bin", default=os.environ.get("IRIS_BIN", DEFAULT_IRIS_BIN)

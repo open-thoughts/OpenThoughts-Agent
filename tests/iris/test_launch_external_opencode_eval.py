@@ -93,10 +93,13 @@ def test_submit_uses_env_for_url_and_fails_fast_when_missing():
 
 
 def test_durable_harbor_jobs_dir_isolated_per_iris_job():
-    assert _MODULE.durable_harbor_jobs_dir(
-        s3_output_root="s3://marin-us-east-02a/iris/",
-        iris_job_name="eval-v2",
-    ) == "s3://marin-us-east-02a/iris/eval-v2/trace_jobs"
+    assert (
+        _MODULE.durable_harbor_jobs_dir(
+            s3_output_root="s3://marin-us-east-02a/iris/",
+            iris_job_name="eval-v2",
+        )
+        == "s3://marin-us-east-02a/iris/eval-v2/trace_jobs"
+    )
 
 
 @pytest.mark.parametrize("root", ["", "/tmp/jobs", "gs://marin/jobs"])

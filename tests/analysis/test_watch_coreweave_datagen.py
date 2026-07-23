@@ -5,6 +5,7 @@ import subprocess
 from scripts.iris import watch_iris_harbor as monitor
 from scripts.iris import iris_ops
 
+
 def test_run_iris_retries_transient_dns_failure(monkeypatch):
     results = iter(
         [
@@ -26,7 +27,9 @@ def test_run_iris_retries_transient_dns_failure(monkeypatch):
     monkeypatch.setattr(iris_ops.subprocess, "run", fake_run)
     monkeypatch.setattr(iris_ops.time, "sleep", delays.append)
 
-    result = iris_ops.run_iris_command(["query", "SELECT 1"], cluster="marin", iris_bin="/fake/iris")
+    result = iris_ops.run_iris_command(
+        ["query", "SELECT 1"], cluster="marin", iris_bin="/fake/iris"
+    )
 
     assert result.returncode == 0
     assert len(calls) == 2
@@ -43,7 +46,9 @@ def test_run_iris_does_not_retry_non_dns_failure(monkeypatch):
     monkeypatch.setattr(iris_ops.subprocess, "run", fake_run)
     monkeypatch.setattr(iris_ops.time, "sleep", lambda _delay: None)
 
-    result = iris_ops.run_iris_command(["query", "SELECT 1"], cluster="marin", iris_bin="/fake/iris")
+    result = iris_ops.run_iris_command(
+        ["query", "SELECT 1"], cluster="marin", iris_bin="/fake/iris"
+    )
 
     assert result.returncode == 1
     assert len(calls) == 1
@@ -96,8 +101,8 @@ def test_harbor_job_from_row_classifies_datagen_and_keeps_durable_identity():
         "state": "3",
         "submitted_at_ms": "1",
         "entrypoint_json": (
-            'python run_tracegen.py --tasks_input_path DCAgent/tasks --job_name tracegen-test '
-            '--harbor_extra_arg=--jobs-dir=s3://bucket/runs'
+            "python run_tracegen.py --tasks_input_path DCAgent/tasks --job_name tracegen-test "
+            "--harbor_extra_arg=--jobs-dir=s3://bucket/runs"
         ),
     }
 
@@ -119,8 +124,8 @@ def test_harbor_job_from_row_classifies_eval_without_hiding_legacy_log_only_job(
         "state": "3",
         "submitted_at_ms": "1",
         "entrypoint_json": (
-            'exec python -m eval.local.run_eval --dataset_path DCAgent/dev_set '
-            '--harbor_config hpc/harbor_yaml/eval.yaml'
+            "exec python -m eval.local.run_eval --dataset_path DCAgent/dev_set "
+            "--harbor_config hpc/harbor_yaml/eval.yaml"
         ),
     }
 

@@ -29,11 +29,8 @@ jobs:
       - name: Set up Python 3.12
         run: uv python pin 3.12
 
-      - name: Create virtualenv
-        run: uv venv --python 3.12
-
-      - name: Install base package + pytest (no accelerator extras)
-        run: uv pip install -e . pytest
+      - name: Install locked CI test environment
+        run: uv sync --group dev --python 3.12
 
       - name: Run CI-safe unit tests (tests/)
         run: uv run pytest tests/ -q

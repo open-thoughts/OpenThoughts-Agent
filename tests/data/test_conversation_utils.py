@@ -22,7 +22,10 @@ def test_extracts_role_and_from_conversation_variants():
 def test_preserves_empty_and_last_message_fallbacks():
     assert extract_user_prompt([]) == ""
     assert extract_system_prompt([]) is None
-    assert extract_user_prompt([{"role": "assistant", "content": "Fallback"}]) == "Fallback"
+    assert (
+        extract_user_prompt([{"role": "assistant", "content": "Fallback"}])
+        == "Fallback"
+    )
 
 
 class _TokenCounter:
@@ -52,7 +55,10 @@ def test_token_representations_are_explicit_and_preserve_their_distinct_inputs()
         '[{"from":"human","value":"Hello"},{"from":"gpt","value":"Hi"}]'
     )
     assert render_token_representation(record, "conversation_text") == "Hello\nHi"
-    assert render_token_representation(record, "chat_template", tokenizer=tokenizer) == "<chat-template>"
+    assert (
+        render_token_representation(record, "chat_template", tokenizer=tokenizer)
+        == "<chat-template>"
+    )
     assert tokenizer.template_messages == [
         {"role": "user", "content": "Hello"},
         {"role": "assistant", "content": "Hi"},

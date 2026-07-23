@@ -59,12 +59,15 @@ from typing import Any
 # Iris implementation from Marin main, not a copy vendored into this repo.
 MARIN_MAIN_ROOT = Path(os.environ.get("MARIN_MAIN_ROOT", "/Users/benjaminfeuer/Documents/marin"))
 MARIN_IRIS_SOURCE = MARIN_MAIN_ROOT / "lib" / "iris" / "src"
-if not MARIN_IRIS_SOURCE.exists():
-    raise RuntimeError(f"Marin Iris source is unavailable at {MARIN_IRIS_SOURCE}.")
-if str(MARIN_IRIS_SOURCE) not in sys.path:
+if MARIN_IRIS_SOURCE.exists() and str(MARIN_IRIS_SOURCE) not in sys.path:
     sys.path.insert(0, str(MARIN_IRIS_SOURCE))
-
-from iris.cluster.types import JobName  # noqa: E402
+try:
+    from iris.cluster.types import JobName  # noqa: E402
+except ModuleNotFoundError as exc:
+    raise RuntimeError(
+        "Marin Iris is unavailable: install the locked dev dependency or provide "
+        f"MARIN_MAIN_ROOT (looked for {MARIN_IRIS_SOURCE})."
+    ) from exc
 
 # --- iris invocation ------------------------------------------------------
 # The CoreWeave GPU (k8s) backend needs a `kubernetes` install that the bare

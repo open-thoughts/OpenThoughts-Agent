@@ -17,7 +17,9 @@ from hpc.iris.capability_tokens import (
 
 def test_resolver_reads_the_controller_owned_constant():
     module = SimpleNamespace(MAX_ENDPOINT_TOKEN_TTL_SECONDS=345)
-    assert controller_max_endpoint_token_ttl_seconds(module_loader=lambda _: module) == 345
+    assert (
+        controller_max_endpoint_token_ttl_seconds(module_loader=lambda _: module) == 345
+    )
 
 
 def test_terminus_two_keeps_unlimited_timeout_and_needs_no_controller_lookup():

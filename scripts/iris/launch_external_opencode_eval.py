@@ -366,7 +366,9 @@ def main() -> int:
         "--existing-endpoint",
         help="Use an already-running federated endpoint instead of submitting a new serve.",
     )
-    parser.add_argument("--serve-name", help="Serving job name (default: <job-name>-serve).")
+    parser.add_argument(
+        "--serve-name", help="Serving job name (default: <job-name>-serve)."
+    )
     parser.add_argument(
         "--endpoint-name", help="Endpoint name (default: /serve/<serve-name>)."
     )
@@ -497,9 +499,14 @@ def main() -> int:
         marin_repo = Path(args.marin_repo).expanduser()
         if not marin_repo.is_dir():
             parser.error(f"Marin checkout not found: {marin_repo}")
-        print(f"[external-eval] submitting federated serve {args.serve_name}", flush=True)
+        print(
+            f"[external-eval] submitting federated serve {args.serve_name}", flush=True
+        )
         serve_result = subprocess.run(
-            build_serve_command(args), cwd=marin_repo, env=submit_environment, check=False
+            build_serve_command(args),
+            cwd=marin_repo,
+            env=submit_environment,
+            check=False,
         )
         if serve_result.returncode:
             return serve_result.returncode

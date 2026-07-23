@@ -171,7 +171,9 @@ class CapabilityTokenCache:
     and lease renewers touch it from different threads.
     """
 
-    def __init__(self, minter: CapabilityMinter, *, ttl_hours: float | None = None) -> None:
+    def __init__(
+        self, minter: CapabilityMinter, *, ttl_hours: float | None = None
+    ) -> None:
         self._minter = minter
         # Read the controller-owned maximum lazily instead of maintaining an
         # OT-Agent copy. Tests can still inject an explicit TTL.
@@ -187,7 +189,10 @@ class CapabilityTokenCache:
         now = time.time() if now is None else now
         with self._lock:
             cached = self._cache.get(endpoint_name)
-            if cached is not None and cached.expires_at - now > TOKEN_REFRESH_MARGIN_SECONDS:
+            if (
+                cached is not None
+                and cached.expires_at - now > TOKEN_REFRESH_MARGIN_SECONDS
+            ):
                 return cached.token
             token, expires_at = self._minter.mint(endpoint_name, self._ttl_hours)
             if not token:
@@ -195,7 +200,9 @@ class CapabilityTokenCache:
                     f"minting a capability token for {endpoint_name} returned an empty "
                     "token; refusing to build an unreachable api_base."
                 )
-            self._cache[endpoint_name] = _CachedToken(token=token, expires_at=expires_at)
+            self._cache[endpoint_name] = _CachedToken(
+                token=token, expires_at=expires_at
+            )
             return token
 
 
@@ -378,7 +385,9 @@ class _LeasedEndpointRegistrar:
     ) -> str:
         from iris.cluster.types import EndpointAccess
 
-        access_mode = access if access is not None else EndpointAccess.ENDPOINT_ACCESS_LINK
+        access_mode = (
+            access if access is not None else EndpointAccess.ENDPOINT_ACCESS_LINK
+        )
         return self._client.register(
             name, address, self._task_attempt, metadata or {}, access=access_mode
         )
@@ -623,7 +632,10 @@ class FederatedCapabilityTokenCache:
         now = time.time() if now is None else now
         with self._lock:
             cached = self._cache.get(endpoint_name)
-            if cached is not None and cached.expires_at - now > TOKEN_REFRESH_MARGIN_SECONDS:
+            if (
+                cached is not None
+                and cached.expires_at - now > TOKEN_REFRESH_MARGIN_SECONDS
+            ):
                 return cached.token
             state = self._state.setdefault(endpoint_name, _FederatedTokenState())
             if not state.mirrored:
@@ -640,7 +652,9 @@ class FederatedCapabilityTokenCache:
                     f"parent-minting a capability token for {endpoint_name} returned an "
                     "empty token; refusing to build an unreachable api_base."
                 )
-            self._cache[endpoint_name] = _CachedToken(token=token, expires_at=expires_at)
+            self._cache[endpoint_name] = _CachedToken(
+                token=token, expires_at=expires_at
+            )
             return token
 
 
@@ -674,7 +688,9 @@ class _ParentControllerClient:
         from iris.rpc import controller_pb2
 
         resp = self._client.list_endpoints(
-            controller_pb2.Controller.ListEndpointsRequest(prefix=endpoint_name, exact=True)
+            controller_pb2.Controller.ListEndpointsRequest(
+                prefix=endpoint_name, exact=True
+            )
         )
         # A mirrored (federated) row carries a non-empty peer_id; a purely-local
         # parent endpoint of the same name (there should be none) would not.
@@ -749,7 +765,11 @@ def federated_capability_api_base(
     it MUST be the marin host (a peer-signed token 401s at iris.oa.dev). ``cache`` is
     injectable for tests; production uses the process-wide parent-authenticated cache.
     """
-    host = ingress_host or os.environ.get(PARENT_INGRESS_HOST_ENV) or DEFAULT_PARENT_INGRESS_HOST
+    host = (
+        ingress_host
+        or os.environ.get(PARENT_INGRESS_HOST_ENV)
+        or DEFAULT_PARENT_INGRESS_HOST
+    )
     token_cache = cache if cache is not None else _default_federated_token_cache()
     token = token_cache.token_for(endpoint_name, now=now)
     return build_capability_api_base(host, endpoint_name, token)

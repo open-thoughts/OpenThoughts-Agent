@@ -49,7 +49,10 @@ def _env_vars_from_datagen_yaml(path: Path) -> dict:
         with path.open() as f:
             cfg = yaml.safe_load(f) or {}
     except Exception as e:
-        print(f"[tracegen-iris] WARNING: failed to parse {path} for env_vars: {e}", file=sys.stderr)
+        print(
+            f"[tracegen-iris] WARNING: failed to parse {path} for env_vars: {e}",
+            file=sys.stderr,
+        )
         return {}
     env = cfg.get("env_vars") or {}
     if not isinstance(env, dict):
@@ -82,9 +85,14 @@ class TracegenIrisLauncher(IrisLauncher):
             legacy_names=["--trace-env", "--trace_env"],
         )
 
-        parser.add_argument("--datagen_config", required=True,
-                            help="Datagen config with vLLM settings (required).")
-        parser.add_argument("--datagen-config", dest="datagen_config", help=argparse.SUPPRESS)
+        parser.add_argument(
+            "--datagen_config",
+            required=True,
+            help="Datagen config with vLLM settings (required).",
+        )
+        parser.add_argument(
+            "--datagen-config", dest="datagen_config", help=argparse.SUPPRESS
+        )
 
         add_tasks_input_arg(parser, required=True)
 
@@ -95,17 +103,25 @@ class TracegenIrisLauncher(IrisLauncher):
         # not touch). Re-declare just the health knobs here so users can
         # extend the startup-wait timeout for slow XLA compiles (e.g.
         # large MoE models on cold-cache iris workers).
-        parser.add_argument("--health_max_attempts", "--health-max-attempts",
-                            type=int, default=None,
-                            help="Override the worker's run_tracegen.py "
-                                 "--health_max_attempts (default 100 on the "
-                                 "worker; 100 × --health_retry_delay seconds "
-                                 "is the hard cap on cold-start XLA compile + "
-                                 "engine warmup). Bump for large MoE models.")
-        parser.add_argument("--health_retry_delay", "--health-retry-delay",
-                            type=int, default=None,
-                            help="Override the worker's run_tracegen.py "
-                                 "--health_retry_delay (default 30s).")
+        parser.add_argument(
+            "--health_max_attempts",
+            "--health-max-attempts",
+            type=int,
+            default=None,
+            help="Override the worker's run_tracegen.py "
+            "--health_max_attempts (default 100 on the "
+            "worker; 100 × --health_retry_delay seconds "
+            "is the hard cap on cold-start XLA compile + "
+            "engine warmup). Bump for large MoE models.",
+        )
+        parser.add_argument(
+            "--health_retry_delay",
+            "--health-retry-delay",
+            type=int,
+            default=None,
+            help="Override the worker's run_tracegen.py "
+            "--health_retry_delay (default 30s).",
+        )
 
         # NOTE: --job_name comes from add_harbor_args above.
 
@@ -115,12 +131,16 @@ class TracegenIrisLauncher(IrisLauncher):
         add_ingress_literal_args(parser)
 
         parser.add_argument(
-            "--baked-venv", "--baked_venv", dest="baked_venv", action="store_true",
+            "--baked-venv",
+            "--baked_venv",
+            dest="baked_venv",
+            action="store_true",
             help="Run the worker from the image's baked /opt/openthoughts/.venv instead of "
-                 "letting Iris run its default setup or rebuild /app/.venv from uv.lock. Required for "
-                 "images whose venv carries deps NOT in the locked pin (e.g. the gpu-glm52 "
-                 "image's fork vLLM for GLM-5.2, which a `uv sync --reinstall` would clobber "
-                 "back to the pinned version).")
+            "letting Iris run its default setup or rebuild /app/.venv from uv.lock. Required for "
+            "images whose venv carries deps NOT in the locked pin (e.g. the gpu-glm52 "
+            "image's fork vLLM for GLM-5.2, which a `uv sync --reinstall` would clobber "
+            "back to the pinned version).",
+        )
 
     def normalize_paths(self, args: argparse.Namespace) -> None:
         # --gpus drives vLLM tensor_parallel_size. On the GPU path it is the whole-node
@@ -144,9 +164,13 @@ class TracegenIrisLauncher(IrisLauncher):
         # path or raise ValueError if CWD escapes the repo.
         if not args.tasks_input_path.startswith("/"):
             if (self.repo_root / args.tasks_input_path).exists():
-                args.tasks_input_path = repo_relative(args.tasks_input_path, self.repo_root)
+                args.tasks_input_path = repo_relative(
+                    args.tasks_input_path, self.repo_root
+                )
 
-        infer_harbor_env_from_config(args, args.harbor_config, log_prefix="[tracegen-iris]")
+        infer_harbor_env_from_config(
+            args, args.harbor_config, log_prefix="[tracegen-iris]"
+        )
 
         # Resolve per-model serve config from model_config/ (single source of
         # truth). agent_kwargs are merged + forwarded here; max_model_len /
@@ -156,6 +180,7 @@ class TracegenIrisLauncher(IrisLauncher):
         # passed (model inferred from the datagen config on the worker), resolution
         # is deferred to the worker.
         from hpc.model_config_apply import apply_to_launcher
+
         apply_to_launcher(args, log_prefix="[tracegen-iris]", iris=True)
 
         if args.harbor_env == "docker":
@@ -171,7 +196,9 @@ class TracegenIrisLauncher(IrisLauncher):
         # get_daytona_api_key_override). The same file is also parsed into
         # the iris worker's env_vars later in run() so the worker sees the
         # same values.
-        loaded = self.load_secrets_env_into_os_environ(getattr(args, "secrets_env", None))
+        loaded = self.load_secrets_env_into_os_environ(
+            getattr(args, "secrets_env", None)
+        )
         if loaded:
             print(
                 f"[tracegen-iris] Secrets:    loaded {loaded} entries from "
@@ -196,6 +223,7 @@ class TracegenIrisLauncher(IrisLauncher):
                 maybe_prebuild_daytona_snapshots,
             )
             from hpc.snapshot_manager import OrgConfig
+
             api_key = get_daytona_api_key_override(vars(args))
             orgs = [OrgConfig(name="cli", api_key=api_key)] if api_key else []
             if not orgs:
@@ -203,11 +231,15 @@ class TracegenIrisLauncher(IrisLauncher):
                     "[tracegen-iris] WARNING: harbor_env=daytona but DAYTONA_API_KEY unset on "
                     "launch host; skipping snapshot pre-build. Expect 'Sandbox not found' "
                     "at trial time unless snapshots are already warm in Daytona.",
-                    file=sys.stderr, flush=True,
+                    file=sys.stderr,
+                    flush=True,
                 )
             else:
                 from hpc.hf_utils import is_raw_tasks_directory
-                resolved_tasks = resolve_dataset_path(args.tasks_input_path, verbose=True)
+
+                resolved_tasks = resolve_dataset_path(
+                    args.tasks_input_path, verbose=True
+                )
                 # HF datasets ship a single tasks.parquet; explode into task
                 # directories so snapshot_manager can hash the environments.
                 # hpc/launch.py:232 + hpc/datagen_launch_utils.py do this.
@@ -226,24 +258,37 @@ class TracegenIrisLauncher(IrisLauncher):
                     orgs=orgs,
                 )
 
-    def build_task_command(self, args: argparse.Namespace, remote_output_dir: str) -> List[str]:
+    def build_task_command(
+        self, args: argparse.Namespace, remote_output_dir: str
+    ) -> List[str]:
         cmd: List[str] = [
-            "python", "data/local/run_tracegen.py",
-            "--harbor_config", args.harbor_config,
-            "--datagen_config", args.datagen_config,
-            "--tasks_input_path", args.tasks_input_path,
+            "python",
+            "data/local/run_tracegen.py",
+            "--harbor_config",
+            args.harbor_config,
+            "--datagen_config",
+            args.datagen_config,
+            "--tasks_input_path",
+            args.tasks_input_path,
         ]
 
         if args.model:
             cmd.extend(["--model", args.model])
 
-        cmd.extend([
-            "--agent", args.agent,
-            "--n_concurrent", str(args.n_concurrent),
-            "--n_attempts", str(args.n_attempts),
-            "--gpus", str(args.gpus),
-            "--experiments_dir", remote_output_dir,
-        ])
+        cmd.extend(
+            [
+                "--agent",
+                args.agent,
+                "--n_concurrent",
+                str(args.n_concurrent),
+                "--n_attempts",
+                str(args.n_attempts),
+                "--gpus",
+                str(args.gpus),
+                "--experiments_dir",
+                remote_output_dir,
+            ]
+        )
 
         # Health-check passthrough (run_tracegen.py worker-side args).
         if args.health_max_attempts is not None:
@@ -267,7 +312,9 @@ class TracegenIrisLauncher(IrisLauncher):
         # the OLD job's name so harbor's _maybe_init_existing_job picks up
         # the existing config.json / trials. IrisLauncher.run() stashes the
         # old name on args._harbor_job_name_override.
-        harbor_job_name = getattr(args, "_harbor_job_name_override", None) or args.job_name
+        harbor_job_name = (
+            getattr(args, "_harbor_job_name_override", None) or args.job_name
+        )
         if harbor_job_name:
             cmd.extend(["--job_name", harbor_job_name])
         if args.dry_run:
@@ -296,7 +343,8 @@ class TracegenIrisLauncher(IrisLauncher):
             # its editable install.
             bash = (
                 "cd /app && export PYTHONPATH=/app:${PYTHONPATH:-} && "
-                "export PATH=/opt/openthoughts/.venv/bin:$PATH && exec " + shlex.join(cmd)
+                "export PATH=/opt/openthoughts/.venv/bin:$PATH && exec "
+                + shlex.join(cmd)
             )
             return ["bash", "-c", bash]
 

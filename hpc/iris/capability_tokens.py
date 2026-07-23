@@ -29,7 +29,9 @@ def is_token_required_agent(agent: str | None) -> bool:
     return bool(agent) and agent.strip().lower() != "terminus-2"
 
 
-def infer_harbor_agent(agent: str | None, harbor_config: str | Path | None) -> str | None:
+def infer_harbor_agent(
+    agent: str | None, harbor_config: str | Path | None
+) -> str | None:
     """Use the configured first Harbor agent when the CLI omitted ``--agent``."""
     if agent:
         return agent
@@ -38,7 +40,9 @@ def infer_harbor_agent(agent: str | None, harbor_config: str | Path | None) -> s
     try:
         loaded = yaml.safe_load(Path(harbor_config).read_text()) or {}
     except (OSError, yaml.YAMLError) as exc:
-        raise ValueError(f"Could not read Harbor config {harbor_config!s}: {exc}") from exc
+        raise ValueError(
+            f"Could not read Harbor config {harbor_config!s}: {exc}"
+        ) from exc
     agents = loaded.get("agents") if isinstance(loaded, dict) else None
     first = agents[0] if isinstance(agents, list) and agents else None
     name = first.get("name") if isinstance(first, dict) else None
@@ -114,7 +118,10 @@ def resolve_token_duration_policy(
     maximum = max_ttl_resolver()
     if requested_token_ttl_seconds is not None and requested_token_ttl_seconds <= 0:
         raise ValueError("Requested capability-token TTL must be positive.")
-    if requested_token_ttl_seconds is not None and requested_token_ttl_seconds > maximum:
+    if (
+        requested_token_ttl_seconds is not None
+        and requested_token_ttl_seconds > maximum
+    ):
         raise ValueError(
             "Requested capability-token TTL "
             f"({requested_token_ttl_seconds}s) exceeds Marin controller maximum ({maximum}s)."

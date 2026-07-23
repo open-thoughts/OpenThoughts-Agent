@@ -40,7 +40,11 @@ from typing import List, Optional
 
 from hpc.local_paths import PATHS as LOCAL_PATHS, ensure as ensure_local_paths
 from hpc.iris_job_registry import register_submission, get_latest_by_job_name
-from hpc.iris.accelerator import DEFAULT_IRIS_JOB_API, IrisJobApi, ResolvedIrisAccelerator
+from hpc.iris.accelerator import (
+    DEFAULT_IRIS_JOB_API,
+    IrisJobApi,
+    ResolvedIrisAccelerator,
+)
 from hpc.iris.bootstrap import wrap_task_command
 from hpc.iris.env import (
     apply_iris_runtime_env,
@@ -124,117 +128,195 @@ class IrisLauncher:
 
     def _add_iris_common_args(self, parser: argparse.ArgumentParser) -> None:
         g = parser.add_argument_group("iris")
-        g.add_argument("--cluster-config", "--cluster_config",
-                       default=None,
-                       help="Path to the iris cluster YAML (default: marin for TPU, "
-                            "cw-us-east-02a for GPU, resolved in the marin repo).")
-        g.add_argument("--cluster", default=None,
-                       help="Named iris cluster: resolves lib/iris/config/<name>.yaml in "
-                            "the marin repo (e.g. --cluster cw-rno2a). Convenience over "
-                            "--cluster-config; --cluster-config wins if both are given.")
-        g.add_argument("--task-image", "--task_image",
-                       default=None,
-                       help="Container image for the task (default: "
-                            f"{DEFAULT_TASK_IMAGE} for TPU, {DEFAULT_GPU_TASK_IMAGE} for GPU).")
-        g.add_argument("--tpu", default=None,
-                       help=f"TPU variant (default: {self.default_tpu} when --gpu is omitted).")
-        g.add_argument("--gpu", default=None,
-                       help="GPU variant in Iris format, e.g. H100x8. Mutually "
-                            "exclusive with --tpu (selects the CoreWeave GPU path).")
-        g.add_argument("--replicas", type=int, default=1,
-                       help="Replica count passed to iris submit (default 1). "
-                            "For a multi-host TPU slice iris REQUIRES one task "
-                            "per VM and auto-scales replicas=1 -> vm_count "
-                            "(iris adjust_tpu_replicas); those tasks form ONE "
-                            "JAX device mesh (jax.distributed.initialize) that a "
-                            "single engine spans — this is required, not "
-                            "duplication. Use N*vm_count to request N slices. "
-                            "NOTE: run_tracegen currently runs harbor on EVERY "
-                            "task; the per-host duplication is the harbor layer, "
-                            "not the replica count (fix = gate harbor to the "
-                            "driver rank, see #69).")
-        g.add_argument("--cpu", type=float, default=8.0,
-                       help="CPU cores for the entrypoint task (default 8).")
-        g.add_argument("--memory", default="256GB",
-                       help="Memory for the entrypoint task (default 256GB). "
-                            "v6e workers have 720GB total, so 256GB covers "
-                            "HF weight loading for models up to ~120B bf16 "
-                            "or ~400B AWQ-4-bit with comfortable headroom. "
-                            "Bump for larger models; drop to 64GB for small "
-                            "smokes if you want to be polite to the queue.")
-        g.add_argument("--disk", default=None,
-                       help=f"Ephemeral disk (default {DEFAULT_DISK} on marin TPU, "
-                            f"{DEFAULT_GPU_DISK} on CoreWeave GPU). marin's v6e/v5p "
-                            "workers cap per-VM disk at 100GB; requests above that "
-                            "queue forever waiting on an autoscaler that can't "
-                            "provision a larger-disk worker (on TPU, for weights "
-                            ">100GB use --load-format runai_streamer + gs://-hosted "
-                            "weights instead of bumping disk). CoreWeave GPU nodes "
-                            "have large local disk, so the GPU default is higher to "
-                            "fit big model weight downloads without an ephemeral-"
-                            "storage eviction.")
-        g.add_argument("--priority", default=DEFAULT_PRIORITY,
-                       choices=["production", "interactive", "batch"],
-                       help="Iris priority band (default interactive).")
-        g.add_argument("--max-retries", "--max_retries", type=int, default=0,
-                       help="Max retries on failure (does NOT cover preemption — iris retries "
-                            "preemptions automatically up to its own limit).")
-        g.add_argument("--timeout", type=int, default=0,
-                       help="Job timeout in seconds (0 = no timeout).")
-        g.add_argument("--preemptible", dest="preemptible", action="store_true", default=None,
-                       help="Force scheduling on preemptible workers (overrides iris heuristic).")
-        g.add_argument("--no-preemptible", dest="preemptible", action="store_false",
-                       help="Force scheduling on non-preemptible workers.")
-        g.add_argument("--no-wait", dest="no_wait", action="store_true", default=False,
-                       help="Submit and detach instead of streaming logs.")
-        g.add_argument("--extras", action="append", default=None,
-                       help="OpenThoughts-Agent extras to install in the iris worker's "
-                            "/app/.venv via `uv sync --extra <name>`. Repeatable. "
-                            "Default: ['datagen-tpu'] for TPU and ['datagen'] for GPU. "
-                            "Pass --extras '' to install no extras.")
+        g.add_argument(
+            "--cluster-config",
+            "--cluster_config",
+            default=None,
+            help="Path to the iris cluster YAML (default: marin for TPU, "
+            "cw-us-east-02a for GPU, resolved in the marin repo).",
+        )
+        g.add_argument(
+            "--cluster",
+            default=None,
+            help="Named iris cluster: resolves lib/iris/config/<name>.yaml in "
+            "the marin repo (e.g. --cluster cw-rno2a). Convenience over "
+            "--cluster-config; --cluster-config wins if both are given.",
+        )
+        g.add_argument(
+            "--task-image",
+            "--task_image",
+            default=None,
+            help="Container image for the task (default: "
+            f"{DEFAULT_TASK_IMAGE} for TPU, {DEFAULT_GPU_TASK_IMAGE} for GPU).",
+        )
+        g.add_argument(
+            "--tpu",
+            default=None,
+            help=f"TPU variant (default: {self.default_tpu} when --gpu is omitted).",
+        )
+        g.add_argument(
+            "--gpu",
+            default=None,
+            help="GPU variant in Iris format, e.g. H100x8. Mutually "
+            "exclusive with --tpu (selects the CoreWeave GPU path).",
+        )
+        g.add_argument(
+            "--replicas",
+            type=int,
+            default=1,
+            help="Replica count passed to iris submit (default 1). "
+            "For a multi-host TPU slice iris REQUIRES one task "
+            "per VM and auto-scales replicas=1 -> vm_count "
+            "(iris adjust_tpu_replicas); those tasks form ONE "
+            "JAX device mesh (jax.distributed.initialize) that a "
+            "single engine spans — this is required, not "
+            "duplication. Use N*vm_count to request N slices. "
+            "NOTE: run_tracegen currently runs harbor on EVERY "
+            "task; the per-host duplication is the harbor layer, "
+            "not the replica count (fix = gate harbor to the "
+            "driver rank, see #69).",
+        )
+        g.add_argument(
+            "--cpu",
+            type=float,
+            default=8.0,
+            help="CPU cores for the entrypoint task (default 8).",
+        )
+        g.add_argument(
+            "--memory",
+            default="256GB",
+            help="Memory for the entrypoint task (default 256GB). "
+            "v6e workers have 720GB total, so 256GB covers "
+            "HF weight loading for models up to ~120B bf16 "
+            "or ~400B AWQ-4-bit with comfortable headroom. "
+            "Bump for larger models; drop to 64GB for small "
+            "smokes if you want to be polite to the queue.",
+        )
+        g.add_argument(
+            "--disk",
+            default=None,
+            help=f"Ephemeral disk (default {DEFAULT_DISK} on marin TPU, "
+            f"{DEFAULT_GPU_DISK} on CoreWeave GPU). marin's v6e/v5p "
+            "workers cap per-VM disk at 100GB; requests above that "
+            "queue forever waiting on an autoscaler that can't "
+            "provision a larger-disk worker (on TPU, for weights "
+            ">100GB use --load-format runai_streamer + gs://-hosted "
+            "weights instead of bumping disk). CoreWeave GPU nodes "
+            "have large local disk, so the GPU default is higher to "
+            "fit big model weight downloads without an ephemeral-"
+            "storage eviction.",
+        )
+        g.add_argument(
+            "--priority",
+            default=DEFAULT_PRIORITY,
+            choices=["production", "interactive", "batch"],
+            help="Iris priority band (default interactive).",
+        )
+        g.add_argument(
+            "--max-retries",
+            "--max_retries",
+            type=int,
+            default=0,
+            help="Max retries on failure (does NOT cover preemption — iris retries "
+            "preemptions automatically up to its own limit).",
+        )
+        g.add_argument(
+            "--timeout",
+            type=int,
+            default=0,
+            help="Job timeout in seconds (0 = no timeout).",
+        )
+        g.add_argument(
+            "--preemptible",
+            dest="preemptible",
+            action="store_true",
+            default=None,
+            help="Force scheduling on preemptible workers (overrides iris heuristic).",
+        )
+        g.add_argument(
+            "--no-preemptible",
+            dest="preemptible",
+            action="store_false",
+            help="Force scheduling on non-preemptible workers.",
+        )
+        g.add_argument(
+            "--no-wait",
+            dest="no_wait",
+            action="store_true",
+            default=False,
+            help="Submit and detach instead of streaming logs.",
+        )
+        g.add_argument(
+            "--extras",
+            action="append",
+            default=None,
+            help="OpenThoughts-Agent extras to install in the iris worker's "
+            "/app/.venv via `uv sync --extra <name>`. Repeatable. "
+            "Default: ['datagen-tpu'] for TPU and ['datagen'] for GPU. "
+            "Pass --extras '' to install no extras.",
+        )
 
         og = parser.add_argument_group("outputs")
-        og.add_argument("--output-mode", "--output_mode",
-                        choices=["auto", "gcs", "s3", "local"],
-                        default=os.environ.get("OT_AGENT_OUTPUT_MODE", "auto"),
-                        help="Where workload outputs are written. 'auto' uses GCS for TPU "
-                             "and pod-local for GPU (Harbor writes trace_jobs to local NVMe, "
-                             "run_eval registers to Supabase/HF in-pod). 'gcs' writes to "
-                             "--gcs-output-dir/<job-name> (TPU); 's3' writes durable Harbor "
-                             "artifacts to --s3-output-dir/<job-name> (CoreWeave R2); 'local' "
-                             "writes to --local-output-dir/<job-name> (GPU, default).")
-        og.add_argument("--gcs-output-dir", "--gcs_output_dir",
-                        default=os.environ.get("OT_AGENT_GCS_OUTPUT_ROOT", DEFAULT_GCS_OUTPUT_ROOT),
-                        help=f"GCS prefix for workload outputs; workload writes to "
-                             f"<this>/<job-name>/. Defaults to $OT_AGENT_GCS_OUTPUT_ROOT or "
-                             f"{DEFAULT_GCS_OUTPUT_ROOT}. The fetch daemon "
-                             f"(hpc.iris_fetch_daemon) pulls completed jobs from here into "
-                             f"{LOCAL_PATHS.runs}/<job-name>/.")
-        og.add_argument("--s3-output-dir", "--s3_output_dir",
-                        default=os.environ.get("OT_AGENT_S3_OUTPUT_ROOT", DEFAULT_S3_OUTPUT_ROOT),
-                        help="S3-compatible prefix for durable GPU outputs, e.g. "
-                             "s3://marin-us-east-02a/tmp/ttl=7d/ot-agent/evals/<user>. Defaults "
-                             "to $OT_AGENT_S3_OUTPUT_ROOT. The pod uses the cluster-injected "
-                             "creds+endpoint (iris-task-env envFrom); launch-host storage creds "
-                             "are withheld so they cannot clobber them. NOTE: default store moved "
-                             "R2 (s3://marin-na) -> CW (s3://marin-us-east-02a) 2026-07-05 (marin "
-                             "c7caecc95a); s3://marin-na is no longer reachable from pods.")
-        og.add_argument("--local-output-dir", "--local_output_dir",
-                        default=os.environ.get("OT_AGENT_LOCAL_OUTPUT_ROOT", DEFAULT_LOCAL_OUTPUT_ROOT),
-                        help="Pod-local runtime scratch root used with --output-mode local/s3. "
-                             f"Defaults to {DEFAULT_LOCAL_OUTPUT_ROOT}.")
+        og.add_argument(
+            "--output-mode",
+            "--output_mode",
+            choices=["auto", "gcs", "s3", "local"],
+            default=os.environ.get("OT_AGENT_OUTPUT_MODE", "auto"),
+            help="Where workload outputs are written. 'auto' uses GCS for TPU "
+            "and pod-local for GPU (Harbor writes trace_jobs to local NVMe, "
+            "run_eval registers to Supabase/HF in-pod). 'gcs' writes to "
+            "--gcs-output-dir/<job-name> (TPU); 's3' writes durable Harbor "
+            "artifacts to --s3-output-dir/<job-name> (CoreWeave R2); 'local' "
+            "writes to --local-output-dir/<job-name> (GPU, default).",
+        )
+        og.add_argument(
+            "--gcs-output-dir",
+            "--gcs_output_dir",
+            default=os.environ.get("OT_AGENT_GCS_OUTPUT_ROOT", DEFAULT_GCS_OUTPUT_ROOT),
+            help=f"GCS prefix for workload outputs; workload writes to "
+            f"<this>/<job-name>/. Defaults to $OT_AGENT_GCS_OUTPUT_ROOT or "
+            f"{DEFAULT_GCS_OUTPUT_ROOT}. The fetch daemon "
+            f"(hpc.iris_fetch_daemon) pulls completed jobs from here into "
+            f"{LOCAL_PATHS.runs}/<job-name>/.",
+        )
+        og.add_argument(
+            "--s3-output-dir",
+            "--s3_output_dir",
+            default=os.environ.get("OT_AGENT_S3_OUTPUT_ROOT", DEFAULT_S3_OUTPUT_ROOT),
+            help="S3-compatible prefix for durable GPU outputs, e.g. "
+            "s3://marin-us-east-02a/tmp/ttl=7d/ot-agent/evals/<user>. Defaults "
+            "to $OT_AGENT_S3_OUTPUT_ROOT. The pod uses the cluster-injected "
+            "creds+endpoint (iris-task-env envFrom); launch-host storage creds "
+            "are withheld so they cannot clobber them. NOTE: default store moved "
+            "R2 (s3://marin-na) -> CW (s3://marin-us-east-02a) 2026-07-05 (marin "
+            "c7caecc95a); s3://marin-na is no longer reachable from pods.",
+        )
+        og.add_argument(
+            "--local-output-dir",
+            "--local_output_dir",
+            default=os.environ.get(
+                "OT_AGENT_LOCAL_OUTPUT_ROOT", DEFAULT_LOCAL_OUTPUT_ROOT
+            ),
+            help="Pod-local runtime scratch root used with --output-mode local/s3. "
+            f"Defaults to {DEFAULT_LOCAL_OUTPUT_ROOT}.",
+        )
 
         rg = parser.add_argument_group("resume")
-        rg.add_argument("--resume-from", "--resume_from", dest="resume_from", default=None,
-                        help="Resume harbor state from a previously-submitted iris job "
-                             "(by job_name; looked up in the local registry "
-                             f"at {LOCAL_PATHS.state}/iris_jobs.db). The new iris job gets a "
-                             "fresh timestamped name (for iris-level uniqueness), but the "
-                             "harbor --job_name and --jobs-dir are routed at the old job's "
-                             "GCS path so harbor's _maybe_init_existing_job picks up the "
-                             "existing trial results and only runs the unmatched remaining "
-                             "trials. No config gating: per the user's direction (2026-05-24), "
-                             "OT-Agent and harbor already validate compatibility on resume.")
+        rg.add_argument(
+            "--resume-from",
+            "--resume_from",
+            dest="resume_from",
+            default=None,
+            help="Resume harbor state from a previously-submitted iris job "
+            "(by job_name; looked up in the local registry "
+            f"at {LOCAL_PATHS.state}/iris_jobs.db). The new iris job gets a "
+            "fresh timestamped name (for iris-level uniqueness), but the "
+            "harbor --job_name and --jobs-dir are routed at the old job's "
+            "GCS path so harbor's _maybe_init_existing_job picks up the "
+            "existing trial results and only runs the unmatched remaining "
+            "trials. No config gating: per the user's direction (2026-05-24), "
+            "OT-Agent and harbor already validate compatibility on resume.",
+        )
 
         sg = parser.add_argument_group("secrets")
         # Default to $OT_AGENT_SECRETS_ENV, then ~/Documents/secrets.env if it
@@ -245,21 +327,27 @@ class IrisLauncher:
         # auto_snapshot path to fail with "Sandbox not found" even when the
         # snapshot is ACTIVE on the right org.
         _default_secrets = default_secrets_env()
-        sg.add_argument("--secrets-env", "--secrets_env", default=_default_secrets,
-                        help="Path to a KEY=VALUE env file (~/Documents/secrets.env style). "
-                             "Every entry is loaded into the iris task's env_vars at submit "
-                             "time. Pairs with the hardcoded launcher passthrough list "
-                             "(DAYTONA_API_KEY, OPENAI_API_KEY, etc.) — file values win on "
-                             "conflict, explicit `-e` iris-CLI flags can't override since we "
-                             "use IrisClient.submit() directly. Lines starting with '#' and "
-                             "blank lines are ignored; leading 'export ' is stripped. "
-                             "Defaults to $OT_AGENT_SECRETS_ENV, else ~/Documents/secrets.env "
-                             "if it exists.")
+        sg.add_argument(
+            "--secrets-env",
+            "--secrets_env",
+            default=_default_secrets,
+            help="Path to a KEY=VALUE env file (~/Documents/secrets.env style). "
+            "Every entry is loaded into the iris task's env_vars at submit "
+            "time. Pairs with the hardcoded launcher passthrough list "
+            "(DAYTONA_API_KEY, OPENAI_API_KEY, etc.) — file values win on "
+            "conflict, explicit `-e` iris-CLI flags can't override since we "
+            "use IrisClient.submit() directly. Lines starting with '#' and "
+            "blank lines are ignored; leading 'export ' is stripped. "
+            "Defaults to $OT_AGENT_SECRETS_ENV, else ~/Documents/secrets.env "
+            "if it exists.",
+        )
         # NOTE: --dry-run / --dry_run is provided by hpc.arg_groups.add_model_compute_args
         # which subclass launchers call from add_task_specific_args. We don't redeclare
         # it here to avoid argparse conflicts.
 
-    def _resolve_cluster_config_default(self, default_config: str = DEFAULT_CLUSTER_CONFIG) -> str:
+    def _resolve_cluster_config_default(
+        self, default_config: str = DEFAULT_CLUSTER_CONFIG
+    ) -> str:
         """Find the marin repo's cluster config relative to common locations."""
         candidates = [
             Path.home() / "Documents/marin" / default_config,
@@ -287,7 +375,9 @@ class IrisLauncher:
     def normalize_paths(self, args: argparse.Namespace) -> None:
         """Subclass hook: validate/normalize paths and infer defaults."""
 
-    def build_task_command(self, args: argparse.Namespace, remote_output_dir: str) -> List[str]:
+    def build_task_command(
+        self, args: argparse.Namespace, remote_output_dir: str
+    ) -> List[str]:
         """Subclass hook: build the ``python data/...py ...`` invocation."""
         raise NotImplementedError
 
@@ -300,7 +390,9 @@ class IrisLauncher:
         """
         return {}
 
-    def pre_submit_precache(self, args: argparse.Namespace, *, remote_output_dir: str) -> dict:
+    def pre_submit_precache(
+        self, args: argparse.Namespace, *, remote_output_dir: str
+    ) -> dict:
         """Subclass hook: pre-cache artifacts + return extra env, after region pin.
 
         Runs in ``run()`` AFTER the region pin (so ``args._pinned_region`` is
@@ -323,7 +415,9 @@ class IrisLauncher:
         ts = time.strftime("%Y%m%d-%H%M%S")
         return f"{self.job_name_prefix}-{ts}"
 
-    def _normalize_accelerator_args(self, args: argparse.Namespace) -> ResolvedIrisAccelerator:
+    def _normalize_accelerator_args(
+        self, args: argparse.Namespace
+    ) -> ResolvedIrisAccelerator:
         """Resolve the default TPU vs explicit GPU accelerator choice."""
         accelerator = ResolvedIrisAccelerator.from_args(
             args,
@@ -342,7 +436,9 @@ class IrisLauncher:
         accelerator: ResolvedIrisAccelerator,
     ) -> None:
         if args.task_image is None:
-            args.task_image = DEFAULT_GPU_TASK_IMAGE if accelerator.is_gpu else DEFAULT_TASK_IMAGE
+            args.task_image = (
+                DEFAULT_GPU_TASK_IMAGE if accelerator.is_gpu else DEFAULT_TASK_IMAGE
+            )
         elif accelerator.is_gpu and args.task_image == DEFAULT_TASK_IMAGE:
             raise SystemExit(
                 "--gpu requires a GPU task image. Omit --task-image to use "
@@ -355,7 +451,11 @@ class IrisLauncher:
             )
 
         if args.cluster_config is None:
-            config = DEFAULT_GPU_CLUSTER_CONFIG if accelerator.is_gpu else DEFAULT_CLUSTER_CONFIG
+            config = (
+                DEFAULT_GPU_CLUSTER_CONFIG
+                if accelerator.is_gpu
+                else DEFAULT_CLUSTER_CONFIG
+            )
             args.cluster_config = self._resolve_cluster_config_default(config)
 
         if args.disk is None:
@@ -380,7 +480,9 @@ class IrisLauncher:
                 )
             except ValueError as exc:
                 raise SystemExit(str(exc)) from exc
-            args.timeout = args._capability_token_duration_policy.effective_timeout_seconds
+            args.timeout = (
+                args._capability_token_duration_policy.effective_timeout_seconds
+            )
         accelerator = self.resolved_accelerator(args)
 
         output_mode = resolve_output_mode(args, accelerator_kind=accelerator.kind)
@@ -429,7 +531,9 @@ class IrisLauncher:
             and accelerator.is_tpu
         ):
             try:
-                region, rows = discover_region_for_tpu(args.cluster_config, accelerator.primary_tpu)
+                region, rows = discover_region_for_tpu(
+                    args.cluster_config, accelerator.primary_tpu
+                )
             except Exception as exc:
                 raise RuntimeError(
                     f"Region discovery failed ({exc}). Refusing to fall back to the static "
@@ -453,7 +557,8 @@ class IrisLauncher:
             summary = ", ".join(
                 f"{r['region']}: {r.get('unassigned', 0)} warm / "
                 f"{r.get('total', 0)} total"
-                for r in rows if r.get('region')
+                for r in rows
+                if r.get("region")
             )
             print(
                 f"[iris] Region pin: --tpu={accelerator.primary_tpu} → {region} "
@@ -482,8 +587,13 @@ class IrisLauncher:
         # We don't auto-rewrite — that masks broken mirrors. We refuse to
         # submit and tell the user exactly which field is wrong.
         if args._pinned_region:
-            yaml_attrs = ("datagen_config", "harbor_config", "eval_config",
-                          "config", "harbor_yaml")
+            yaml_attrs = (
+                "datagen_config",
+                "harbor_config",
+                "eval_config",
+                "config",
+                "harbor_yaml",
+            )
             yaml_paths = [
                 Path(getattr(args, attr))
                 for attr in yaml_attrs
@@ -501,7 +611,9 @@ class IrisLauncher:
         if resume_target:
             prev = resume_prev
             ts = time.strftime("%Y%m%d-%H%M%S")
-            args.job_name = getattr(args, "job_name", None) or f"{prev.job_name}-resume-{ts}"
+            args.job_name = (
+                getattr(args, "job_name", None) or f"{prev.job_name}-resume-{ts}"
+            )
             args._harbor_job_name_override = prev.job_name
             args._resume_gcs_output_dir = prev.gcs_output_dir
             print(
@@ -560,14 +672,19 @@ class IrisLauncher:
         # Make sure the local managed tree exists so the daemon (and any
         # downstream consumers) find LOCAL_PATHS.runs/ on first run.
         ensure_local_paths(
-            LOCAL_PATHS.home, LOCAL_PATHS.state, LOCAL_PATHS.runs, LOCAL_PATHS.logs,
+            LOCAL_PATHS.home,
+            LOCAL_PATHS.state,
+            LOCAL_PATHS.runs,
+            LOCAL_PATHS.logs,
         )
 
         # Pre-submit artifact pre-cache (offline staging). Runs after the region
         # pin so a subclass can target the region-local mirror; may rewrite
         # args.model / args.dataset_path and returns extra env (e.g. offline
         # flags). Default no-op -> byte-identical for non-eval launchers.
-        precache_env = self.pre_submit_precache(args, remote_output_dir=remote_output_dir)
+        precache_env = self.pre_submit_precache(
+            args, remote_output_dir=remote_output_dir
+        )
 
         command = self.build_task_command(args, remote_output_dir)
         env_vars = self.build_env(args)
@@ -611,7 +728,9 @@ class IrisLauncher:
         print(f"[iris] {accelerator.label}", flush=True)
         print(f"[iris] Priority:   {args.priority}", flush=True)
         print(f"[iris] Extras:     {extras or '(none)'}", flush=True)
-        print(f"[iris] Output:     {remote_output_dir}  (mode={output_mode})", flush=True)
+        print(
+            f"[iris] Output:     {remote_output_dir}  (mode={output_mode})", flush=True
+        )
         if token_policy_path is not None:
             policy = args._capability_token_duration_policy
             print(
@@ -621,10 +740,19 @@ class IrisLauncher:
                 flush=True,
             )
         if output_mode == "gcs":
-            print(f"[iris] Fetch dest: {local_dest}/  (via hpc.iris_fetch_daemon)", flush=True)
+            print(
+                f"[iris] Fetch dest: {local_dest}/  (via hpc.iris_fetch_daemon)",
+                flush=True,
+            )
         else:
-            print(f"[iris] Work dir:   {work_output_dir}  (pod-local runtime state)", flush=True)
-            print(f"[iris] Jobs dir:   {args._harbor_jobs_dir}  (harbor --jobs-dir)", flush=True)
+            print(
+                f"[iris] Work dir:   {work_output_dir}  (pod-local runtime state)",
+                flush=True,
+            )
+            print(
+                f"[iris] Jobs dir:   {args._harbor_jobs_dir}  (harbor --jobs-dir)",
+                flush=True,
+            )
         print(f"[iris] Command:    {shlex.join(command)}", flush=True)
 
         if args.dry_run:
@@ -635,7 +763,8 @@ class IrisLauncher:
             print(
                 "[iris] NOTE: multi-host TPU slice (vm_count > 1). Validated on v6e-8 "
                 "(2026-05-22 smoke #10); larger slices need their own validation pass.",
-                file=sys.stderr, flush=True,
+                file=sys.stderr,
+                flush=True,
             )
 
         # Defer the heavy iris imports so --dry-run / --help stay snappy.
@@ -651,7 +780,9 @@ class IrisLauncher:
         # Tunnel to the controller via the current pydantic config API
         # (mirrors iris.cli.connect.require_controller_url's SSH-tunnel branch).
         config = load_config(args.cluster_config)
-        cluster_name = resolve_cluster_name(config, None, Path(args.cluster_config).stem)
+        cluster_name = resolve_cluster_name(
+            config, None, Path(args.cluster_config).stem
+        )
         credentials = client_credentials(config, cluster_name)
         bundle = provider_bundle(config)
         if config.controller.controller_kind() == "local":
@@ -664,7 +795,9 @@ class IrisLauncher:
             )
 
         with bundle.controller.tunnel(address=controller_address) as controller_url:
-            resources = accelerator.build_resources(cpu=args.cpu, memory=args.memory, disk=args.disk)
+            resources = accelerator.build_resources(
+                cpu=args.cpu, memory=args.memory, disk=args.disk
+            )
             tpu_variants = list(accelerator.tpu_variants)
             # --replicas defaults to 1; for a multi-host TPU iris's
             # adjust_tpu_replicas (in client.submit) auto-scales 1 -> vm_count
@@ -675,7 +808,9 @@ class IrisLauncher:
             # separate run_tracegen issue (run harbor on the driver rank only).
             # GPU is single-node (vm_count 1); resolve_multinode_defaults is a
             # no-op passthrough there.
-            replicas, coscheduling = accelerator.resolve_multinode_defaults(args.replicas)
+            replicas, coscheduling = accelerator.resolve_multinode_defaults(
+                args.replicas
+            )
             resources_proto = resources.to_proto()
             # Pin the job to the region we discovered at submit time, so
             # preempt-retries land back in the same continent and our
@@ -700,7 +835,9 @@ class IrisLauncher:
                 }
                 priority_band = _PRIO.get(args.priority, priority_band)
 
-            client = IrisClient.remote(controller_url, workspace=self.repo_root, credentials=credentials)
+            client = IrisClient.remote(
+                controller_url, workspace=self.repo_root, credentials=credentials
+            )
 
             wrapped = wrap_task_command(
                 command,
@@ -725,7 +862,9 @@ class IrisLauncher:
                 # Iris auto-retries on preemption; leave at default (1000).
                 task_image=args.task_image,
                 priority_band=priority_band,
-                timeout=None if args.timeout == 0 else _seconds_to_duration(args.timeout),
+                timeout=None
+                if args.timeout == 0
+                else _seconds_to_duration(args.timeout),
             )
             full_job_id = str(job.job_id)
             print(f"[iris] Submitted: {full_job_id}", flush=True)
@@ -746,7 +885,11 @@ class IrisLauncher:
                         cluster_config=str(args.cluster_config),
                     )
                 except Exception as e:
-                    print(f"[iris] WARN: could not register job locally: {e}", file=sys.stderr, flush=True)
+                    print(
+                        f"[iris] WARN: could not register job locally: {e}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
             else:
                 print(
                     f"[iris] {output_mode.upper()} output mode: GPU eval registers to "
@@ -762,12 +905,17 @@ class IrisLauncher:
                 status = job.wait(stream_logs=True, timeout=float("inf"))
                 exit_code = 0 if status.state == job_pb2.JOB_STATE_SUCCEEDED else 1
             except KeyboardInterrupt:
-                print(f"[iris] Terminating job {full_job_id}...", file=sys.stderr, flush=True)
+                print(
+                    f"[iris] Terminating job {full_job_id}...",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 client.terminate_job(job.job_id)
                 exit_code = 130
 
             print(f"[iris] Job exit: {exit_code}", flush=True)
             return exit_code
+
 
 # Imported lazily inside .run() to keep CLI startup fast, but tiny enough
 # to define here.
@@ -775,4 +923,5 @@ def _seconds_to_duration(secs: int):
     # Duration moved from iris.cluster.types to rigging.timing on a
     # marin/iris refactor; iris.client imports from rigging.timing now.
     from rigging.timing import Duration
+
     return Duration.from_seconds(secs)

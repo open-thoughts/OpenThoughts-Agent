@@ -62,7 +62,7 @@ def test_submit_uses_env_for_url_and_fails_fast_when_missing():
         disk="128GB",
         priority="batch",
         timeout=86400,
-        capability_token_duration_policy_json="{\"token_required\": true}",
+        capability_token_duration_policy_json='{"token_required": true}',
         job_name="eval-v2",
         harbor_config="config.yaml",
         datagen_config="external.yaml",

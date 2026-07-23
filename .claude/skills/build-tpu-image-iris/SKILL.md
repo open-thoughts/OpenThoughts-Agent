@@ -31,11 +31,12 @@ description: >-
 > uncommitted *tracked* edits ARE included — you do NOT have to commit/push a Dockerfile edit before a build).
 > Never hand-edit on a remote / patch-by-rsync.
 
-The **`:tpu` image** is the Iris **TPU datagen + eval runtime** — `linux/amd64` (TPU host VMs are x86_64),
+The **`:tpu` image** is the Iris **TPU datagen runtime** — `linux/amd64` (TPU host VMs are x86_64),
 single-stage `python:3.12-slim` + `uv pip install -e ".[datagen-tpu,cloud]"` (vLLM-TPU 0.20.0 PyTorch/XLA+JAX,
 tpu-inference 0.20.0, transformers 5.5.3 for Qwen3.5 hybrid GDN) + Harbor with the Daytona sandbox backend. It
-is consumed by every datagen/eval launch (`data/cloud/launch_tracegen_iris.py`, `eval/cloud/launch_eval_iris.py`
-— see the `datagen-launch-iris` skill). This skill is the **how-to to BUILD + PUSH it**.
+is consumed by `data/cloud/launch_tracegen_iris.py` (see the `datagen-launch-iris` skill).
+Agentic evals use Marin's standalone `experiments/agentic_evals` package. This skill is the
+**how-to to BUILD + PUSH** the OT-Agent image.
 
 > **This image is MUCH simpler than gpu-rl.** No CUDA / nvcc / vLLM-fork wheels / `WHEEL_SOURCE` / wheelhouse
 > — `Dockerfile.tpu` is single-stage and TPU slice size is a *submit-time* iris arg (`--tpu v5p-8`), not a

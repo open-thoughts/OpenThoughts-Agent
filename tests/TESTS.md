@@ -25,10 +25,10 @@ test_literal_rescue, test_literal_to_sft, test_resolve_rl_repo_dir,
 test_resume_determinism, test_resume_manager, test_rl_chain_overshoot_guard,
 test_snapshot_manager` — pure unit; mock Daytona/Harbor in-process. No move.
 
-### `tests/eval/` (7 test files)
-`test_iris_precache_offline, test_iris_thinking_kwarg, test_listener_agent_kwargs,
-test_per_model_agent_kwargs, test_per_model_timeout_multiplier,
-test_vllm_parallelism_sizing` (pre-existing) **+ `test_model_registry_resolve`
+### `tests/eval/` (6 test files)
+`test_iris_thinking_kwarg, test_listener_agent_kwargs, test_per_model_agent_kwargs,
+test_per_model_timeout_multiplier, test_vllm_parallelism_sizing` (pre-existing)
+**+ `test_model_registry_resolve`
 (migrated Stage B, reshaped script→pytest)**.
 
 ---

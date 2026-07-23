@@ -1,8 +1,8 @@
 # Serve-parity re-SFT'd dense arm (task #23 Run 1). Intrinsics live at TOP LEVEL
 # (base intrinsics) — NOT in a variants: block — because the iris eval path resolves
 # model_config with hardware=None, so any variants: key (gh200/v6e/…) is INERT there
-# (model_config/resolver.py:163-165; hpc/model_config_apply.py via launch_eval_iris.py
-# apply_to_launcher(iris=True) with no hardware=). Top-level fields reach the vLLM serve
+# (model_config/resolver.py:163-165; hpc/model_config_apply.py with an Iris
+# launcher and no hardware=). Top-level fields reach the vLLM serve
 # on iris. max_model_len=32768 (NOT 65536): the 30B-A3B MoE is proven on v6e-4 at
 # TP=4/32768/enforce-eager (agent_logs/2026-07-02_30b-coder-eval-fused-moe-export-bug.md);
 # 65536 has no TPU precedent and TPU has no swap_space CPU-offload. The 4049-char

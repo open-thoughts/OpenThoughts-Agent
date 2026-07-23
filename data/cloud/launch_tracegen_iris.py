@@ -2,9 +2,9 @@
 """Launch OpenThoughts trace generation on Marin's Iris TPU cluster.
 
 Iris analog of ``data/cloud/launch_tracegen_cloud.py``. See
-``eval/cloud/launch_eval_iris.py`` and ``hpc/iris_launch_utils.py`` for
-the shared design notes (rsync vs gcs outputs, daytona-default Harbor env,
-docker-not-gated, multi-host TPU is scaffolded but untested).
+``hpc/iris_launch_utils.py`` for the shared design notes (rsync vs GCS outputs,
+Daytona-default Harbor env, docker-not-gated, multi-host TPU is scaffolded but
+untested).
 """
 
 from __future__ import annotations
@@ -274,11 +274,10 @@ class TracegenIrisLauncher(IrisLauncher):
 
         for kwarg in args.agent_kwarg:
             cmd.extend(["--agent_kwarg", kwarg])
-        # Auto-inject --jobs-dir — see comment in eval/cloud/launch_eval_iris.py.
+        # Auto-inject --jobs-dir so Harbor persists trial artifacts remotely.
         cmd.append(f"--harbor_extra_arg=--jobs-dir={remote_output_dir}")
         for extra in args.harbor_extra_arg:
-            # `=` form for argparse accept of `-`-prefixed values; see
-            # the same comment in eval/cloud/launch_eval_iris.py.
+            # `=` form lets argparse accept `-`-prefixed values.
             cmd.append(f"--harbor_extra_arg={extra}")
 
         if args.upload_hf_repo:

@@ -791,8 +791,9 @@ MISSES them — reap ~1–2h later (or let the monitor/harvest cron catch them a
   submitted via the OLD-STYLE SSH TUNNEL** (to keep legacy non-OA users off CW).
 - **Our EXISTING paths still work (validated 2026-07-09):** the current CW submission
   (MarinSkyRL `cloud/iris/launch_rl_iris.py` → `bundle.controller.tunnel()` +
-  `KUBECONFIG=~/.kube/coreweave-iris-gpu`) and the marin-TPU eval submission (`launch_eval_iris`
-  `--cluster=marin`) are NOT the rejected "old-style SSH tunnel". `iris.oa.dev` is an EASIER path
+  `KUBECONFIG=~/.kube/coreweave-iris-gpu`) and the Marin standalone agentic-eval
+  submission (`experiments/agentic_evals`, `--cluster=marin`) are NOT the rejected
+  "old-style SSH tunnel". `iris.oa.dev` is an EASIER path
   that becomes the default as bugs are fixed; NOT mandatory yet.
 - ⚠ **Known-rough:** (1) NO queuing at the main server yet — an H100 request WITHOUT
   `--target-cluster` is RANDOMLY dispatched to a CW cluster → on the new path ALWAYS pass an
@@ -843,20 +844,13 @@ TPU cloud. Canonical upstream ops: `marin:lib/iris/OPS.md`. Conventions in §0; 
 > NOT the rejected "old-style SSH tunnel". On the new path always pass an explicit cluster
 > (no-target ⇒ random dispatch).
 
-Two entrypoints (both submit `--no-wait`; a launchd fetch daemon mirrors outputs back — see Monitor):
+Two entrypoints submit `--no-wait`:
 - **datagen / tracegen** → `data/cloud/launch_tracegen_iris.py`
-- **eval** → `eval/cloud/launch_eval_iris.py`
+- **agentic eval** → Marin `experiments/agentic_evals` (`python -m agentic_evals.launch`)
 
-Both forward `--harbor_config`, `--model` (or infer from `--datagen_config`), `--tpu`,
-`--n_concurrent`, `--secrets-env`, `--upload_hf_repo`, `--gcs-output-dir`, `--no-wait`, and
-auto-inject `--harbor_extra_arg=--jobs-dir=<gcs_output_dir>/<job>` so harbor writes through
-fsspec/UPath straight to GCS. (Full templates: `run-datagen-iris` / `run-eval-iris` skills.)
-
-**Eval on `dev_set_v2` — pass `--hf-offline-mode off`.** The default `auto` runs an inline
-`snapshot_download` of the full `dev_set_v2` tree (300 task-environment folders, hundreds of tiny
-files) + GCS mirror **before** submit → a 15–25 min submit-stall. Only heavy unmirrored datasets
-bite. Safe to kill a stalled launcher mid-`snapshot_download` (GCS upload only starts after the
-snapshot completes) — clean the tmp mirror dir.
+The standalone eval package owns its model-serving, durable-output, and
+federated-endpoint behavior. See `eval-agentic-launch-iris` for the current
+launch form; do not revive an OT-Agent Iris eval wrapper.
 
 #### Before you submit — region, disk, node shape
 
@@ -1048,16 +1042,10 @@ runs. (Launch host; distinct from the 100 GB worker-node ceiling in §Launch.)
 Workload didn't route through UPath. Confirm `--harbor_extra_arg=--jobs-dir=<gcs>` is in the
 submitted command (`iris job bug-report <id>`) and the harbor pin is the UPath-aware build.
 
-#### TPU agentic eval `--upload_to_database` is a NO-OP (GCS-only results)
-`eval/cloud/launch_eval_iris.py` eval with `--upload_to_database` does NOT push traces to HF and
-does NOT register the score to Supabase — post-eval upload keys off a local Harbor job dir
-(`/app/jobs/<job>`) that doesn't exist on the TPU runtime (trials stream to GCS). Log tell:
-`[upload] Expected Harbor job directory /app/jobs/<job> does not exist; upload skipped.`
-GPU/SLURM has the local dir so upload works there; TPU is the broken path. Results land in **GCS
-only**, under the job's recorded output prefix `<job_output_dir>/<job>/` (resolve via
-`python -m hpc.iris.job_output_resolver <job> --cluster …/marin.yaml`, don't hardcode
-`gs://marin-models-us`).
-- **Harvest scores from GCS**, not Supabase: `result.json` → `stats.evals.<id>.reward_stats`
+#### Agentic eval result sinks
+The standalone Marin `agentic_evals` package owns result publication. Configure
+its durable-output/result-sink options at launch and inspect the recorded job
+output prefix; do not assume OT-Agent's former GCS-only upload behavior applies.
   (+ `exception_stats`).
 - **Traces to the Hub:** `gsutil rsync` the GCS job dir, then
   `scripts/harbor/make_and_upload_trace_dataset.py --episodes last --filter none --skip_register

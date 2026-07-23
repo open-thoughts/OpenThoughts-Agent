@@ -916,9 +916,8 @@ class LocalHarborRunner:
         # Set parallelism defaults (only relevant for local vLLM)
         if args.tensor_parallel_size is None:
             # On the iris TPU serve path, derive TP from the TPU chip count (the
-            # launcher puts it in args.gpus: v6e-N -> gpus=N; see the "--gpus is
-            # the downstream knob for vLLM tensor_parallel_size" note in
-            # launch_eval_iris.py). Sharding across ALL chips is what lets the KV
+            # launcher puts it in args.gpus: v6e-N -> gpus=N). Sharding across
+            # ALL chips is what lets the KV
             # cache span their aggregate HBM. TP=1 on a v6e-4 strands the 8B model
             # on ONE chip (15.3 GiB weights + ~13.5 GiB KV -> a 98k-token cache ->
             # 2.39x concurrency), so under 32-way agentic concurrency prefixes

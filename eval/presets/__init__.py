@@ -2,10 +2,9 @@
 
 Each preset is a flat dict of eval-run defaults (datasets, n_concurrent,
 agent_parser, agent_kwargs, etc.), stored as one ``<name>.yaml`` per preset
-in this package directory. Both the SLURM orchestrator
-(``eval/unified_eval_listener.py``) and the Iris launcher
-(``eval/cloud/launch_eval_iris.py``) load presets from here, so the two paths
-stay in sync.
+in this package directory. The SLURM orchestrator
+(``eval/unified_eval_listener.py``) loads them from here. Iris agentic evals
+are maintained in Marin's standalone ``experiments/agentic_evals`` package.
 """
 
 from pathlib import Path

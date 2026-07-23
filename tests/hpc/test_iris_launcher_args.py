@@ -3,18 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from eval.cloud.launch_eval_iris import EvalIrisLauncher
 from hpc.iris.bootstrap import wrap_task_command
 from hpc.iris.env import _GPU_STORAGE_CRED_KEYS, _alias_s3_credentials
 from hpc.iris_launch_utils import IrisLauncher, ResolvedIrisAccelerator
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-HARBOR_CONFIG = REPO_ROOT / "hpc/harbor_yaml/eval/dcagent_eval_defaults.yaml"
-DATAGEN_CONFIG = (
-    REPO_ROOT / "hpc/datagen_yaml/extra/qwen3_coder_30b_a3b_vllm_serve_32k.yaml"
-)
-HF_DATASET = "DCAgent2/swebench-verified-random-100-folders"
 
 
 @dataclass(frozen=True)
@@ -91,45 +85,12 @@ class DummyIrisLauncher(IrisLauncher):
         return ["true"]
 
 
-class CapturingEvalIrisLauncher(EvalIrisLauncher):
-    def build_task_command(self, args, remote_output_dir):
-        self.remote_output_dir = remote_output_dir
-        self.command = super().build_task_command(args, remote_output_dir)
-        return self.command
-
-
 def _parse_dummy_args(*argv):
     launcher = DummyIrisLauncher(REPO_ROOT, iris_api=FakeIrisJobApi())
     parser = launcher.create_argument_parser()
     args = parser.parse_args(list(argv))
     launcher._normalize_accelerator_args(args)
     return args
-
-
-def _parse_eval_args(*extra):
-    argv = [
-        "--harbor_config",
-        str(HARBOR_CONFIG),
-        "--datagen_config",
-        str(DATAGEN_CONFIG),
-        "--dataset_path",
-        HF_DATASET,
-        "--gpu",
-        "H100x8",
-        *extra,
-    ]
-    launcher = CapturingEvalIrisLauncher(REPO_ROOT, iris_api=FakeIrisJobApi())
-    parser = launcher.create_argument_parser()
-    return launcher, parser.parse_args(argv)
-
-
-def _option_value(command, flag):
-    return command[command.index(flag) + 1]
-
-
-def _equals_option_values(command, flag):
-    prefix = f"{flag}="
-    return [arg[len(prefix) :] for arg in command if arg.startswith(prefix)]
 
 
 def test_gpu_parsing_and_accelerator_resolution_cover_iris_specs():
@@ -170,72 +131,6 @@ def test_gpu_parsing_and_accelerator_resolution_cover_iris_specs():
 
     with pytest.raises(SystemExit, match="mutually exclusive"):
         _parse_dummy_args("--gpu", "H100x8", "--tpu", "v5p-32")
-
-
-def test_eval_iris_gpu_local_default_registers_in_pod():
-    """Default GPU output mode is pod-local: Harbor writes to a local root and
-    run_eval registers to Supabase/HF in-pod. --upload_to_database is allowed."""
-    launcher, args = _parse_eval_args(
-        "--job_name",
-        "gpu-local-smoke",
-        "--upload_to_database",
-        "--dry_run",
-    )
-    assert launcher.run(args) == 0
-
-    assert args.output_mode == "local"
-    assert launcher.remote_output_dir == "/tmp/ot-agent-runs/gpu-local-smoke"
-    assert (
-        _option_value(launcher.command, "--experiments_dir")
-        == "/tmp/ot-agent-runs/gpu-local-smoke"
-    )
-    # Harbor jobs-dir root is DISTINCT from the experiments dir so the harbor
-    # job dir holds only trial subdirs; run_eval reads <root>/<job_name>.
-    assert "--jobs-dir=/tmp/ot-agent-runs/harbor_jobs" in _equals_option_values(
-        launcher.command, "--harbor_extra_arg"
-    )
-    assert "--upload_to_database" in launcher.command
-    assert (args.dataset_path, args.gpus) == (HF_DATASET, 8)
-
-
-def test_eval_iris_gpu_s3_dry_run_covers_runtime_paths():
-    launcher, args = _parse_eval_args(
-        "--output-mode",
-        "s3",
-        "--s3-output-dir",
-        "s3://marin-us-east-02a/evals",
-        "--job_name",
-        "gpu-infra-smoke",
-        "--dry_run",
-    )
-    assert launcher.run(args) == 0
-
-    expected_remote_output = "s3://marin-us-east-02a/evals/gpu-infra-smoke"
-    expected_work_output = "/tmp/ot-agent-runs/gpu-infra-smoke"
-    assert launcher.remote_output_dir == expected_remote_output
-    assert args._work_output_dir == expected_work_output
-    assert _option_value(launcher.command, "--experiments_dir") == expected_work_output
-    assert "--jobs-dir=s3://marin-us-east-02a/evals" in _equals_option_values(
-        launcher.command, "--harbor_extra_arg"
-    )
-    assert (args.dataset_path, args.gpus) == (HF_DATASET, 8)
-
-
-@pytest.mark.parametrize(
-    ("extra", "message"),
-    [
-        (("--output-mode", "s3", "--s3-output-dir", ""), "--s3-output-dir is required"),
-        (("--output-mode", "gcs"), "must not write to GCS"),
-        (
-            ("--replicas", "2"),
-            "GPU eval replicas > 1 need task sharding",
-        ),
-    ],
-)
-def test_eval_iris_gpu_rejects_unsafe_output_and_replica_modes(extra, message):
-    launcher, args = _parse_eval_args("--dry_run", *extra)
-    with pytest.raises(SystemExit, match=message):
-        launcher.run(args)
 
 
 def test_gpu_storage_creds_withheld_and_tpu_aliasing_preserved():

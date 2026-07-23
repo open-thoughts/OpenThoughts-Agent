@@ -12,7 +12,7 @@ job is already region-pinned to one region at submit time).
 
 ## Non-goals / out of scope (do NOT touch)
 
-- **Model-weight mirror** (`hpc/iris/precache.py`, `scripts/iris/mirror_hf_to_gcs.py`,
+- **Model-weight mirror** (`scripts/iris/mirror_hf_to_gcs.py`,
   `scripts/iris/launch_hf_mirror.py`). Weights live at
   `gs://marin-models-{us,eu}/ot-agent/models/...`. Re-mirroring is an expensive
   internet pull; these are **inputs that stay put** on multi-region. Follow-up
@@ -243,11 +243,13 @@ It will fetch single-region outputs for new jobs and multi-region for old jobs
 automatically. (Confirm the watchdog `result.json` probe at line 371 also uses
 `record.gcs_output_dir` — it does.)
 
-### 3.5 precache / mirror — NO change (out of scope)
+### 3.5 mirror — NO change (out of scope)
 
-`hpc/iris/precache.py`, `mirror_hf_to_gcs.py`, `launch_hf_mirror.py` operate on
-the **model-weight** mirror (`marin-models-{us,eu}`), which stays multi-region.
-Leave `FANOUT_BUCKETS`/`DEFAULT_BUCKET`/`gcs_bucket_for_region` as-is.
+`mirror_hf_to_gcs.py` and `launch_hf_mirror.py` operate on the **model-weight**
+mirror (`marin-models-{us,eu}`), which stays multi-region. Leave
+`FANOUT_BUCKETS`/`DEFAULT_BUCKET`/`gcs_bucket_for_region` as-is. The former
+OT-Agent Iris eval pre-cache helper was retired with the standalone Marin
+agentic-evals package.
 
 ### 3.6 Dashboards / misc
 

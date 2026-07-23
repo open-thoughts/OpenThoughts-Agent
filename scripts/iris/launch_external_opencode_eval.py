@@ -307,7 +307,12 @@ def build_submit_command(
         "DAYTONA_API_KEY": require_secret(env, "DAYTONA_API_KEY"),
         "HF_TOKEN": require_secret(env, "HF_TOKEN"),
         "OPENAI_API_KEY": require_secret(env, "OPENAI_API_KEY"),
-        "OPENCODE_DUMMY_KEY": DUMMY_API_KEY,
+        # Capability-proxy URLs authenticate in their path. Retain the static
+        # bearer for a sidecar endpoint, but do not require it for Iris-minted
+        # no-auth capability URLs.
+        "OPENCODE_DUMMY_KEY": env.get(
+            "IRIS_INGRESS_API_KEY", "capability-url-no-auth-header"
+        ),
         "EXTERNAL_AGENT_API_BASE": api_base,
     }
     durable_jobs_dir = durable_harbor_jobs_dir(

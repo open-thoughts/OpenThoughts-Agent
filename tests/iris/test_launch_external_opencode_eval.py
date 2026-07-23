@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 
 _SCRIPT = (
@@ -15,6 +16,12 @@ assert _SPEC and _SPEC.loader
 _MODULE = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_MODULE)
 
+
+def test_grug_external_endpoint_config_is_packaged_and_uses_openai():
+    config_path = _SCRIPT.parents[2] / "hpc/datagen_yaml/grug_external_endpoint.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    assert config["engine"]["type"] == "openai"
+    assert config["backend"]["type"] == "none"
 
 def test_mint_requires_one_capability_url(monkeypatch):
     class Result:
@@ -238,3 +245,31 @@ def test_main_submits_federated_serve_then_parent_minted_durable_eval(tmp_path, 
     assert eval_kwargs["env"]["KUBECONFIG"] == _MODULE.DEFAULT_KUBECONFIG
     assert "https://iris.oa.dev" not in eval_command[-1]
     assert "--jobs-dir=s3://marin-us-east-02a/iris/grug-r7/trace_jobs" in eval_command[-1]
+
+
+def test_submit_uses_capability_no_auth_default_when_sidecar_bearer_is_absent():
+    args = argparse.Namespace(
+        iris_bin="iris",
+        cluster="cw-us-east-02a",
+        task_image="image@sha256:abc",
+        cpu=8,
+        memory="64GB",
+        disk="64GB",
+        priority="batch",
+        job_name="eval-v2",
+        harbor_config="config.yaml",
+        datagen_config="external.yaml",
+        model="vllm/model",
+        dataset_path="DCAgent/dev_set_v2",
+        n_concurrent=6,
+        n_attempts=3,
+        s3_output_dir="s3://marin-us-east-02a/iris",
+        upload_hf_repo="laion/traces",
+    )
+    command = _MODULE.build_submit_command(
+        args,
+        {"DAYTONA_API_KEY": "daytona", "HF_TOKEN": "hf", "OPENAI_API_KEY": "judge"},
+        "https://iris.oa.dev/proxy/t/token/serve.example/v1",
+    )
+    key_index = command.index("OPENCODE_DUMMY_KEY")
+    assert command[key_index + 1] == "capability-url-no-auth-header"

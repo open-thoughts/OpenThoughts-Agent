@@ -61,6 +61,8 @@ def test_submit_uses_env_for_url_and_fails_fast_when_missing():
         memory="128GB",
         disk="128GB",
         priority="batch",
+        timeout=86400,
+        capability_token_duration_policy_json="{\"token_required\": true}",
         job_name="eval-v2",
         harbor_config="config.yaml",
         datagen_config="external.yaml",
@@ -88,6 +90,7 @@ def test_submit_uses_env_for_url_and_fails_fast_when_missing():
     assert "--n_concurrent 256" in shell
     assert "--job_name eval-v2" in shell
     assert "--experiments_dir /tmp/ot-agent-runs/eval-v2" in shell
+    assert command[command.index("--timeout") + 1] == "86400"
     assert (
         "--harbor_extra_arg=--jobs-dir=s3://marin-us-east-02a/iris/eval-v2/trace_jobs"
         in shell
@@ -253,3 +256,4 @@ def test_main_submits_federated_serve_then_parent_minted_durable_eval(
     assert (
         "--jobs-dir=s3://marin-us-east-02a/iris/grug-r7/trace_jobs" in eval_command[-1]
     )
+    assert eval_command[eval_command.index("--timeout") + 1] == "86400"

@@ -63,6 +63,7 @@ class TracegenIrisLauncher(IrisLauncher):
     task_name = "ot-tracegen-iris"
     job_name_prefix = "tracegen-iris"
     default_n_concurrent = 64
+    enforce_capability_token_duration = True
 
     def add_task_specific_args(self, parser: argparse.ArgumentParser) -> None:
         add_harbor_args(parser, config_required=True)

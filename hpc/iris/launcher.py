@@ -29,6 +29,7 @@ larger slices.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shlex
 import sys
@@ -45,6 +46,11 @@ from hpc.iris.env import (
     apply_iris_runtime_env,
     default_secrets_env,
     load_secrets_env_into_os_environ,
+)
+from hpc.iris.capability_tokens import (
+    infer_harbor_agent,
+    persist_token_duration_policy,
+    resolve_token_duration_policy,
 )
 from hpc.iris.outputs import (
     DEFAULT_GCS_OUTPUT_ROOT,
@@ -91,6 +97,7 @@ class IrisLauncher:
     # Users may still pass --harbor_env docker; iris workers don't mount
     # /var/run/docker.sock so the job will fail at runtime — by design.
     default_harbor_env: str = "daytona"
+    enforce_capability_token_duration: bool = False
 
     def __init__(self, repo_root: Path, iris_api: IrisJobApi = DEFAULT_IRIS_JOB_API):
         self.repo_root = Path(repo_root).resolve()
@@ -363,6 +370,17 @@ class IrisLauncher:
     def run(self, args: argparse.Namespace) -> int:
         accelerator = self._normalize_accelerator_args(args)
         self.normalize_paths(args)
+        if self.enforce_capability_token_duration:
+            try:
+                args.agent = infer_harbor_agent(
+                    getattr(args, "agent", None), getattr(args, "harbor_config", None)
+                )
+                args._capability_token_duration_policy = resolve_token_duration_policy(
+                    agent=args.agent, timeout_seconds=args.timeout
+                )
+            except ValueError as exc:
+                raise SystemExit(str(exc)) from exc
+            args.timeout = args._capability_token_duration_policy.effective_timeout_seconds
         accelerator = self.resolved_accelerator(args)
 
         output_mode = resolve_output_mode(args, accelerator_kind=accelerator.kind)
@@ -553,6 +571,13 @@ class IrisLauncher:
 
         command = self.build_task_command(args, remote_output_dir)
         env_vars = self.build_env(args)
+        if self.enforce_capability_token_duration:
+            # Keep the same secret-free policy with the remote job as well as
+            # the local control-plane manifest. This must never contain the
+            # capability URL or its JWT.
+            env_vars["OT_AGENT_CAPABILITY_TOKEN_DURATION_POLICY"] = json.dumps(
+                args._capability_token_duration_policy.to_dict(), sort_keys=True
+            )
         if precache_env:
             for _k, _v in precache_env.items():
                 env_vars.setdefault(_k, _v)
@@ -574,6 +599,11 @@ class IrisLauncher:
         )
 
         local_dest = LOCAL_PATHS.runs / job_name
+        token_policy_path = None
+        if self.enforce_capability_token_duration:
+            token_policy_path = persist_token_duration_policy(
+                job_name=job_name, policy=args._capability_token_duration_policy
+            )
 
         print(f"[iris] Job:        /{user}/{job_name}", flush=True)
         print(f"[iris] Cluster:    {args.cluster_config}", flush=True)
@@ -582,6 +612,14 @@ class IrisLauncher:
         print(f"[iris] Priority:   {args.priority}", flush=True)
         print(f"[iris] Extras:     {extras or '(none)'}", flush=True)
         print(f"[iris] Output:     {remote_output_dir}  (mode={output_mode})", flush=True)
+        if token_policy_path is not None:
+            policy = args._capability_token_duration_policy
+            print(
+                "[iris] Capability-token policy: "
+                f"required={policy.token_required} timeout={policy.effective_timeout_seconds}s "
+                f"manifest={token_policy_path}",
+                flush=True,
+            )
         if output_mode == "gcs":
             print(f"[iris] Fetch dest: {local_dest}/  (via hpc.iris_fetch_daemon)", flush=True)
         else:

@@ -112,6 +112,7 @@ class EvalIrisLauncher(IrisLauncher):
     task_name = "ot-eval-iris"
     job_name_prefix = "eval-iris"
     default_n_concurrent = 16
+    enforce_capability_token_duration = True
 
     def add_task_specific_args(self, parser: argparse.ArgumentParser) -> None:
         """Mirror EvalCloudLauncher's args exactly so users don't have to relearn flags."""

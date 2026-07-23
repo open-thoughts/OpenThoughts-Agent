@@ -19,11 +19,11 @@ wire). ``<encoded_endpoint>`` is the registered wire name with a leading ``/``
 dropped and ``/`` -> ``.`` (the exact encoding of ``rigging.connect.capability_path``
 / ``proxy_path``); our single-segment ``otagent-<slug>`` name encodes to itself.
 
-TOKEN LIFETIME. The controller clamps a minted token to
-``MAX_ENDPOINT_TOKEN_TTL_SECONDS`` = 24h (``DEFAULT`` = 1h). The endpoint
+TOKEN LIFETIME. The controller clamps a minted token to its own
+``MAX_ENDPOINT_TOKEN_TTL_SECONDS`` (``DEFAULT`` = 1h). The endpoint
 REGISTRATION is separately lease-renewed for the whole run (see
 :class:`ControllerEndpointRegistration`); only the token expires. So the api_base
-is resolved through :func:`capability_api_base`, which mints a 24h token, caches
+is resolved through :func:`capability_api_base`, which requests that maximum, caches
 it worker-side keyed by endpoint name, and re-mints when within
 ``TOKEN_REFRESH_MARGIN_SECONDS`` of expiry.
 
@@ -34,7 +34,7 @@ uses one api_base string for its whole lifetime. The worker-side cache therefore
 refreshes the token across harbor RE-SPAWNS (resume / campaign refills), not
 across trials within one running harbor process. A harbor run that stays up
 longer than the token TTL will outlive its token — keep individual harbor runs
-under 24h, or re-spawn to re-mint. There is no per-trial base_url resolution hook
+within the controller maximum, or re-spawn to re-mint. There is no per-trial base_url resolution hook
 in the current OT-Agent->harbor plumbing.
 """
 
@@ -46,6 +46,8 @@ import threading
 import time
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional, Protocol, Tuple
+
+from hpc.iris.capability_tokens import controller_max_endpoint_token_ttl_seconds
 
 # The sandbox-facing api_key. The capability token rides in the URL path, so no
 # bearer is needed; but installed OpenAI-compatible agents refuse to start
@@ -77,10 +79,8 @@ DEFAULT_ADVERTISE_HOST = "127.0.0.1"
 # The raw vLLM HTTP port the RL/datagen servers bind on the task node.
 DEFAULT_VLLM_PORT = 8000
 
-# Token TTL we request when minting (clamped server-side to the controller's
-# MAX_ENDPOINT_TOKEN_TTL_SECONDS, currently 24h) and the safety margin at which a
-# cached token is re-minted rather than reused.
-DEFAULT_TOKEN_TTL_HOURS = 24.0
+# Safety margin at which a cached token is re-minted rather than reused. The
+# request lifetime itself is resolved from the controller at runtime.
 TOKEN_REFRESH_MARGIN_SECONDS = 2 * 3600  # re-mint when <2h remains
 
 
@@ -171,9 +171,15 @@ class CapabilityTokenCache:
     and lease renewers touch it from different threads.
     """
 
-    def __init__(self, minter: CapabilityMinter, *, ttl_hours: float = DEFAULT_TOKEN_TTL_HOURS) -> None:
+    def __init__(self, minter: CapabilityMinter, *, ttl_hours: float | None = None) -> None:
         self._minter = minter
-        self._ttl_hours = ttl_hours
+        # Read the controller-owned maximum lazily instead of maintaining an
+        # OT-Agent copy. Tests can still inject an explicit TTL.
+        self._ttl_hours = (
+            ttl_hours
+            if ttl_hours is not None
+            else controller_max_endpoint_token_ttl_seconds() / 3600.0
+        )
         self._lock = threading.Lock()
         self._cache: Dict[str, _CachedToken] = {}
 
@@ -596,13 +602,17 @@ class FederatedCapabilityTokenCache:
         minter: CapabilityMinter,
         resolver: ParentEndpointResolver,
         *,
-        ttl_hours: float = DEFAULT_TOKEN_TTL_HOURS,
+        ttl_hours: float | None = None,
         mirror_timeout_s: float = DEFAULT_MIRROR_TIMEOUT_SECONDS,
         mirror_interval_s: float = DEFAULT_MIRROR_POLL_INTERVAL_SECONDS,
     ) -> None:
         self._minter = minter
         self._resolver = resolver
-        self._ttl_hours = ttl_hours
+        self._ttl_hours = (
+            ttl_hours
+            if ttl_hours is not None
+            else controller_max_endpoint_token_ttl_seconds() / 3600.0
+        )
         self._mirror_timeout_s = mirror_timeout_s
         self._mirror_interval_s = mirror_interval_s
         self._lock = threading.Lock()

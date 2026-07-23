@@ -300,7 +300,7 @@ def generate_served_model_id(job_name: Optional[str] = None) -> str:
     deterministic-per-job ID makes the YAML stable across launches so the
     equality check passes on resume.
 
-    When ``job_name`` is omitted, falls back to a microsecond timestamp
+    When ``job_name`` is omitted, falls back to a nanosecond timestamp
     (legacy behavior; used by ad-hoc paths like
     ``hpc/local_runner_utils.py`` that don't have a job name in hand).
     """
@@ -310,7 +310,10 @@ def generate_served_model_id(job_name: Optional[str] = None) -> str:
         # Take the top 64 bits, convert to decimal, truncate to 16 chars.
         # 64 bits → up to 20 decimal digits; truncate for vLLM-friendly length.
         return str(int(digest_hex[:16], 16))[:16]
-    return str(int(time.time() * 1_000_000))
+    # A microsecond timestamp can collide when two local serves are assembled in
+    # the same tick (including ordinary sequential Python calls). Keep the
+    # legacy 16-digit numeric shape while using the clock's finer-grained value.
+    return f"{time.time_ns() % 10**16:016d}"
 
 
 def hosted_vllm_alias(served_id: str) -> str:

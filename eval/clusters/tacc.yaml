@@ -15,17 +15,20 @@ conda_envs:
   otagent: /scratch/10635/penfever/miniconda3/envs/otagent
 
 paths:
-  project_root: /scratch/10635/penfever/OpenThoughts-Agent
-  hf_cache: /scratch/10635/penfever/hub
-  eval_jobs_dir: /scratch/10635/penfever/eval_jobs
+  # $SCRATCH-parameterized (load_cluster_config expands $SCRATCH at load time); each operator's
+  # $SCRATCH encodes their /scratch/<allocnum>/<user> root. Byte-identical for penfever
+  # ($SCRATCH=/scratch/10635/penfever). conda_envs/cuda_home stay penfever's = shared read-only borrow.
+  project_root: $SCRATCH/OpenThoughts-Agent
+  hf_cache: $SCRATCH/hub
+  eval_jobs_dir: $SCRATCH/eval_jobs
   eval_logs_dir: eval/tacc/logs
   listener_logs_dir: experiments/listener_logs
   sbatch_script: eval/tacc/eval_harbor.sbatch
   dp_sbatch_script: eval/tacc/eval_harbor.sbatch
-  harbor_src: /scratch/10635/penfever/harbor/src
+  harbor_src: $SCRATCH/harbor/src
   datasets_dirs:
-    - /scratch/10635/penfever/hub
-  secrets_file: /scratch/10635/penfever/keys.env
+    - $SCRATCH/hub
+  secrets_file: $SCRATCH/keys.env
 
 proxy:
   enabled: false

@@ -7,11 +7,10 @@ import sys
 import tempfile
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 import yaml
 
-from hpc.arguments import LlamaFactoryArgs
 from hpc.data_argument_keys import DATA_ARGUMENT_KEYS
 from hpc.launch_utils import (
     resolve_job_and_paths,
@@ -161,7 +160,7 @@ def prebuild_arrow_cache(base_config: dict, train_config_path: str = "") -> None
         print("[arrow-cache] No train_config_path provided, skipping pre-build.")
         return
 
-    print(f"[arrow-cache] Pre-building tokenization cache via LlamaFactory pipeline...")
+    print("[arrow-cache] Pre-building tokenization cache via LlamaFactory pipeline...")
     os.makedirs(cache_dir, exist_ok=True)
 
     try:
@@ -178,7 +177,8 @@ def prebuild_arrow_cache(base_config: dict, train_config_path: str = "") -> None
         # This uses the real template, tokenizer, and preprocessing — the
         # exact same .map() calls that training will use — so the cache
         # fingerprints match and compute nodes skip tokenization.
-        import subprocess, sys
+        import subprocess
+        import sys
         result = subprocess.run(
             [
                 sys.executable, "-c",
@@ -202,7 +202,7 @@ def prebuild_arrow_cache(base_config: dict, train_config_path: str = "") -> None
         else:
             # Common failure: bf16 validation on CPU. Fall back to raw cache only.
             stderr_short = result.stderr.strip().split("\n")[-3:]
-            print(f"[arrow-cache] LlamaFactory pipeline failed (non-fatal):")
+            print("[arrow-cache] LlamaFactory pipeline failed (non-fatal):")
             for line in stderr_short:
                 print(f"[arrow-cache]   {line}")
             print("[arrow-cache] Falling back to raw dataset cache only.")

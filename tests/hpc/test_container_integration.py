@@ -13,6 +13,7 @@ from hpc.hpc import HPC, clusters
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def plain_cluster():
     """A minimal non-container cluster for flag-off testing."""
@@ -56,6 +57,7 @@ def container_cluster():
 # Stage 1: HPC container fields
 # ---------------------------------------------------------------------------
 
+
 class TestContainerFields:
     """Verify the container fields exist and have correct defaults."""
 
@@ -87,6 +89,7 @@ class TestContainerFields:
 # Stage 1: get_container_srun_flags
 # ---------------------------------------------------------------------------
 
+
 class TestContainerSrunFlags:
     """Verify the srun container flag generation."""
 
@@ -112,19 +115,34 @@ class TestContainerSrunFlags:
     def test_container_remap_root_when_set(self):
         """--container-remap-root IS included when True."""
         c = HPC(
-            name="test", hostname_pattern="t", dotenv_filename="t.env",
-            account="a", partition="p", gpus_per_node=1, cpus_per_node=1,
-            internet_node=True, gpus_type="T", total_partition_nodes=1,
-            container_image="/img.sqsh", container_remap_root=True,
+            name="test",
+            hostname_pattern="t",
+            dotenv_filename="t.env",
+            account="a",
+            partition="p",
+            gpus_per_node=1,
+            cpus_per_node=1,
+            internet_node=True,
+            gpus_type="T",
+            total_partition_nodes=1,
+            container_image="/img.sqsh",
+            container_remap_root=True,
         )
         assert "--container-remap-root" in c.get_container_srun_flags()
 
     def test_container_extra_args(self):
         """container_extra_args is appended to the flags."""
         c = HPC(
-            name="test", hostname_pattern="t", dotenv_filename="t.env",
-            account="a", partition="p", gpus_per_node=1, cpus_per_node=1,
-            internet_node=True, gpus_type="T", total_partition_nodes=1,
+            name="test",
+            hostname_pattern="t",
+            dotenv_filename="t.env",
+            account="a",
+            partition="p",
+            gpus_per_node=1,
+            cpus_per_node=1,
+            internet_node=True,
+            gpus_type="T",
+            total_partition_nodes=1,
             container_image="/img.sqsh",
             container_extra_args="--container-mounts=/data:/data",
         )
@@ -135,6 +153,7 @@ class TestContainerSrunFlags:
 # ---------------------------------------------------------------------------
 # Stage 2: get_sbatch_directives with segment
 # ---------------------------------------------------------------------------
+
 
 class TestSegmentDirective:
     """Verify the --segment SBATCH directive."""
@@ -147,9 +166,16 @@ class TestSegmentDirective:
     def test_segment_emitted_when_set(self):
         """slurm_segment>0 → #SBATCH --segment=N."""
         c = HPC(
-            name="test", hostname_pattern="t", dotenv_filename="t.env",
-            account="a", partition="p", gpus_per_node=4, cpus_per_node=144,
-            internet_node=True, gpus_type="B200", total_partition_nodes=72,
+            name="test",
+            hostname_pattern="t",
+            dotenv_filename="t.env",
+            account="a",
+            partition="p",
+            gpus_per_node=4,
+            cpus_per_node=144,
+            internet_node=True,
+            gpus_type="B200",
+            total_partition_nodes=72,
             slurm_segment=2,
         )
         directives = c.get_sbatch_directives()
@@ -160,19 +186,24 @@ class TestSegmentDirective:
 # Stage 2: resolve_conda_activate container-aware
 # ---------------------------------------------------------------------------
 
+
 class TestResolveCondaActivate:
     """Verify conda activation is skipped for containerized clusters."""
 
     def test_conda_for_plain_cluster(self, plain_cluster):
         """Non-container cluster gets its conda_activate string."""
         from hpc.launch_utils import resolve_conda_activate
-        plain_cluster.conda_activate = "source /opt/conda/etc/profile.d/conda.sh && conda activate myenv"
+
+        plain_cluster.conda_activate = (
+            "source /opt/conda/etc/profile.d/conda.sh && conda activate myenv"
+        )
         result = resolve_conda_activate(plain_cluster, {})
         assert "conda activate myenv" in result
 
     def test_conda_empty_for_container_cluster(self, container_cluster):
         """Container cluster gets empty string (env is in the .sqsh)."""
         from hpc.launch_utils import resolve_conda_activate
+
         result = resolve_conda_activate(container_cluster, {})
         assert result == ""
 
@@ -180,6 +211,7 @@ class TestResolveCondaActivate:
 # ---------------------------------------------------------------------------
 # Stage 3: EmpireAI HPC config
 # ---------------------------------------------------------------------------
+
 
 class TestEmpireAIConfig:
     """Verify the EmpireAI cluster registration is complete and correct."""
@@ -204,6 +236,7 @@ class TestEmpireAIConfig:
     def test_empireai_hostname_pattern(self, empireai):
         """EmpireAI hostname pattern matches Bright cluster node names."""
         import re
+
         pattern = re.compile(empireai.hostname_pattern)
         assert pattern.match("b1-11-s1-dgx-01-c01")
         assert pattern.match("b6-21-s1-mgmt-01")

@@ -23,7 +23,7 @@ import sys
 import time
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from hpc.hf_utils import is_hf_dataset_path
 from hpc.launch_utils import get_daytona_api_key_override
@@ -373,9 +373,9 @@ def resolve_rl_train_data(
                 break
         else:
             scratch_dir = "/tmp"
-            print(f"[rl_launch_utils] WARNING: Using /tmp for task extraction. "
-                  f"This is local to each node and may fail on multi-node jobs. "
-                  f"Set $SCRATCH, $DCFT, or $DCFT_PRIVATE to a shared filesystem path.")
+            print("[rl_launch_utils] WARNING: Using /tmp for task extraction. "
+                  "This is local to each node and may fail on multi-node jobs. "
+                  "Set $SCRATCH, $DCFT, or $DCFT_PRIVATE to a shared filesystem path.")
     tasks_base = Path(scratch_dir) / "tasks"
 
     resolved_paths = []
@@ -1556,17 +1556,17 @@ class RLJobRunner:
         # Upload traces after training (success or failure — partial traces are valuable)
         upload_proc = self._launch_trace_upload(training_exit_code)
         if upload_proc is not None:
-            print(f"[RLJobRunner] Waiting for trace upload to complete...", flush=True)
+            print("[RLJobRunner] Waiting for trace upload to complete...", flush=True)
             upload_exit_code = upload_proc.wait()
             if upload_exit_code == 0:
-                print(f"[RLJobRunner] Trace upload completed successfully.", flush=True)
+                print("[RLJobRunner] Trace upload completed successfully.", flush=True)
                 if self.config.trace_upload_cleanup:
                     trace_jobs_dir = Path(self.config.experiments_dir) / self.config.job_name / "trace_jobs"
                     if trace_jobs_dir.exists():
                         import shutil
                         print(f"[RLJobRunner] Cleaning up traces directory: {trace_jobs_dir}", flush=True)
                         shutil.rmtree(trace_jobs_dir, ignore_errors=True)
-                        print(f"[RLJobRunner] Traces directory removed.", flush=True)
+                        print("[RLJobRunner] Traces directory removed.", flush=True)
             else:
                 print(f"[RLJobRunner] Trace upload failed with exit code {upload_exit_code}.", flush=True)
 
@@ -1642,7 +1642,7 @@ class RLJobRunner:
             Popen handle if upload was launched, None if skipped.
         """
         if not self.config.trace_upload_enabled:
-            print(f"[RLJobRunner] Trace upload disabled, skipping.", flush=True)
+            print("[RLJobRunner] Trace upload disabled, skipping.", flush=True)
             return None
 
         # The trace jobs directory is where Harbor stores trial artifacts
@@ -1737,7 +1737,7 @@ class RLJobRunner:
             if supabase_url:
                 print(f"  SUPABASE_URL={supabase_url[:30]}... (direct Supabase config)", flush=True)
 
-        print(f"Environment configured:", flush=True)
+        print("Environment configured:", flush=True)
         print(f"  TENSOR_PARALLEL_SIZE={os.environ['TENSOR_PARALLEL_SIZE']}", flush=True)
         print(f"  NUM_INFERENCE_ENGINES={os.environ['NUM_INFERENCE_ENGINES']}", flush=True)
         print(f"  POLICY_NUM_NODES={os.environ['POLICY_NUM_NODES']}", flush=True)
@@ -1753,7 +1753,6 @@ class RLJobRunner:
             RayCluster,
             RayClusterConfig,
             compute_ray_memory_from_slurm,
-            DEFAULT_OBJECT_STORE_MEMORY_BYTES,
         )
 
         hpc = self._get_hpc()
@@ -1953,7 +1952,7 @@ class RLJobRunner:
                         os.environ["HARBOR_MODEL_ENDPOINT"] = literal_endpoint
                         print(f"[RLJobRunner] record_literal: HARBOR_MODEL_ENDPOINT={literal_endpoint}", flush=True)
                         return self._run_skyrl()
-                    print(f"[RLJobRunner] No Pinggy tunnel needed, using local vLLM", flush=True)
+                    print("[RLJobRunner] No Pinggy tunnel needed, using local vLLM", flush=True)
                     return self._run_skyrl()
 
     def _run_skyrl(self) -> int:
@@ -1979,7 +1978,7 @@ class RLJobRunner:
             cmd = [sys.executable, "-m", self.config.skyrl_entrypoint]
         cmd.extend(self.config.skyrl_hydra_args)
 
-        print(f"\nRunning SkyRL:", flush=True)
+        print("\nRunning SkyRL:", flush=True)
         if container_sif:
             print(f"  Runtime: Apptainer SIF {container_sif}", flush=True)
         else:

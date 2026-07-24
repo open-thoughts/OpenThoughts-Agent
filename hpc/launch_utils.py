@@ -17,7 +17,6 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Union
 
-from hpc.hpc import detect_hpc
 
 # Re-export HuggingFace utilities for backwards compatibility
 from hpc.hf_utils import sanitize_hf_repo_id
@@ -363,7 +362,7 @@ def setup_hosted_vllm_api_key(*, force: bool = False) -> bool:
             os.environ[key] = _HOSTED_VLLM_DUMMY_API_KEY
             changed = True
     if changed:
-        print(f"[launch_utils] Set placeholder API keys for hosted_vllm models")
+        print("[launch_utils] Set placeholder API keys for hosted_vllm models")
     return changed
 
 
@@ -2030,7 +2029,6 @@ def sync_eval_to_database(
         RuntimeError: If the database upload module is unavailable.
     """
     import getpass
-    import hashlib
 
     if dry_run:
         print(f"[upload] DRY RUN: Would sync eval results from {job_dir} to database")

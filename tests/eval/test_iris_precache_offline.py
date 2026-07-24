@@ -267,7 +267,9 @@ def test_coreweave_gpu_uses_pod_local_hf_cache(monkeypatch):
         raise AssertionError("CoreWeave GPU must not select the RunAI mirror path")
 
     monkeypatch.setattr(precache, "precache_for_eval", _unexpected_precache)
-    env = launcher.pre_submit_precache(args, remote_output_dir="s3://marin-us-east-02a/eval")
+    env = launcher.pre_submit_precache(
+        args, remote_output_dir="s3://marin-us-east-02a/eval"
+    )
 
     assert env == {}
     assert getattr(args, "_vllm_model_uri", None) is None

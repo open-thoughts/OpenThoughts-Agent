@@ -1,6 +1,10 @@
 import pytest
 
-from scripts.analysis.failure_mode_judge import batched, request_json_array, strip_json_code_fence
+from scripts.analysis.failure_mode_judge import (
+    batched,
+    request_json_array,
+    strip_json_code_fence,
+)
 
 
 class _FakeCompletions:
@@ -73,14 +77,17 @@ def test_shared_judge_retries_transient_client_errors():
     client = _FlakyClient("[]")
     retries = []
 
-    assert request_json_array(
-        client,
-        model="judge",
-        temperature=0.0,
-        system_prompt="system",
-        user_prompt="user",
-        max_attempts=2,
-        on_retry=lambda attempt, exc: retries.append((attempt, str(exc))),
-    ) == []
+    assert (
+        request_json_array(
+            client,
+            model="judge",
+            temperature=0.0,
+            system_prompt="system",
+            user_prompt="user",
+            max_attempts=2,
+            on_retry=lambda attempt, exc: retries.append((attempt, str(exc))),
+        )
+        == []
+    )
     assert retries == [(1, "temporary failure")]
     assert len(client.completions.calls) == 1

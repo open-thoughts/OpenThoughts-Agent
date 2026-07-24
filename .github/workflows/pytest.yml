@@ -20,6 +20,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Checkout Marin Iris source
+        uses: actions/checkout@v4
+        with:
+          repository: marin-community/marin
+          ref: main
+          path: marin
+          sparse-checkout: |
+            lib/iris/src
+            lib/rigging/src
+
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -32,8 +42,11 @@ jobs:
       - name: Create virtualenv
         run: uv venv --python 3.12
 
-      - name: Install base package + pytest (no accelerator extras)
-        run: uv pip install -e . pytest
+      - name: Install test dependencies (no accelerator extras)
+        run: uv sync --group dev
 
       - name: Run CI-safe unit tests (tests/)
-        run: uv run pytest tests/ -q
+        env:
+          MARIN_MAIN_ROOT: ${{ github.workspace }}/marin
+          PYTHONPATH: ${{ github.workspace }}/marin/lib/rigging/src
+        run: uv run --group dev pytest tests/ -q

@@ -12,13 +12,29 @@ from scripts.analysis.trace_runtime_report import (
 
 def test_stage_runtime_analysis_reports_quantiles_and_top_exception_paths():
     samples = [
-        StageSample(Path("task-1/result.json"), {"overall": 12.0, "agent_execution": 10.0}, False),
-        StageSample(Path("task-2/result.json"), {"overall": 24.0, "agent_execution": 20.0}, True),
-        StageSample(Path("task-3/result.json"), {"overall": 36.0, "agent_execution": 30.0}, False),
-        StageSample(Path("task-4/result.json"), {"overall": 48.0, "agent_execution": 40.0}, True),
+        StageSample(
+            Path("task-1/result.json"),
+            {"overall": 12.0, "agent_execution": 10.0},
+            False,
+        ),
+        StageSample(
+            Path("task-2/result.json"), {"overall": 24.0, "agent_execution": 20.0}, True
+        ),
+        StageSample(
+            Path("task-3/result.json"),
+            {"overall": 36.0, "agent_execution": 30.0},
+            False,
+        ),
+        StageSample(
+            Path("task-4/result.json"), {"overall": 48.0, "agent_execution": 40.0}, True
+        ),
     ]
     analysis, top_exception_paths = stage_runtime_analysis(
-        [ExperimentRuntime("experiment", [JobRuntime("job", None, stage_samples=samples)])],
+        [
+            ExperimentRuntime(
+                "experiment", [JobRuntime("job", None, stage_samples=samples)]
+            )
+        ],
         [0.0, 0.5, 1.0],
     )
 

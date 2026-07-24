@@ -12,22 +12,35 @@ import pytest
 from botocore.exceptions import ClientError
 
 from scripts.iris import coreweave_ops
-from scripts.iris.iris_ops import job_bundle, job_id_parts, load_bundle_manifest, write_bundle_manifest
+from scripts.iris.iris_ops import (
+    job_bundle,
+    job_id_parts,
+    load_bundle_manifest,
+    write_bundle_manifest,
+)
 from scripts.iris import watch_coreweave_rl
 
 
 def test_job_bundle_uses_cluster_and_full_iris_identity(tmp_path):
     bundle = job_bundle(tmp_path, "cw-rno2a", "/benjaminfeuer/glm52-r10")
 
-    assert bundle.directory == tmp_path / "jobs" / "cw-rno2a" / "benjaminfeuer" / "glm52-r10"
+    assert (
+        bundle.directory
+        == tmp_path / "jobs" / "cw-rno2a" / "benjaminfeuer" / "glm52-r10"
+    )
 
     write_bundle_manifest(bundle, {"kind": "harbor", "progress": {"completed": 4}})
 
-    assert json.loads(bundle.manifest_path.read_text())["job_id"] == "/benjaminfeuer/glm52-r10"
+    assert (
+        json.loads(bundle.manifest_path.read_text())["job_id"]
+        == "/benjaminfeuer/glm52-r10"
+    )
     assert load_bundle_manifest(bundle)["progress"] == {"completed": 4}
 
 
-@pytest.mark.parametrize("job_id", ["glm52-r10", "/benjaminfeuer", "/benjaminfeuer/../bad"])
+@pytest.mark.parametrize(
+    "job_id", ["glm52-r10", "/benjaminfeuer", "/benjaminfeuer/../bad"]
+)
 def test_job_id_parts_rejects_noncanonical_or_unsafe_ids(job_id):
     with pytest.raises(ValueError):
         job_id_parts(job_id)
@@ -44,7 +57,9 @@ def test_find_pod_uses_untruncated_iris_job_label(monkeypatch):
                     {
                         "metadata": {
                             "name": "iris-benjaminfeuer-grug-agentic-eval-v2-65k-harbor39-c309bb6c-0",
-                            "labels": {"iris.job_id": "benjaminfeuer.grug-agentic-eval-v2-65k-harbor394c-r3"},
+                            "labels": {
+                                "iris.job_id": "benjaminfeuer.grug-agentic-eval-v2-65k-harbor394c-r3"
+                            },
                         },
                         "status": {"phase": "Running"},
                     }
@@ -53,9 +68,9 @@ def test_find_pod_uses_untruncated_iris_job_label(monkeypatch):
         ),
     )
 
-    assert coreweave_ops.find_pod(["kubectl"], SimpleNamespace(job=job_id, pod=None)) == (
-        "iris-benjaminfeuer-grug-agentic-eval-v2-65k-harbor39-c309bb6c-0"
-    )
+    assert coreweave_ops.find_pod(
+        ["kubectl"], SimpleNamespace(job=job_id, pod=None)
+    ) == ("iris-benjaminfeuer-grug-agentic-eval-v2-65k-harbor39-c309bb6c-0")
 
 
 def test_save_ray_logs_reports_empty_tar_stream_as_sync_error(monkeypatch, tmp_path):
@@ -66,7 +81,9 @@ def test_save_ray_logs_reports_empty_tar_stream_as_sync_error(monkeypatch, tmp_p
         def wait(self) -> int:
             return 1
 
-    monkeypatch.setattr(coreweave_ops.subprocess, "Popen", lambda *_args, **_kwargs: EmptyTarProcess())
+    monkeypatch.setattr(
+        coreweave_ops.subprocess, "Popen", lambda *_args, **_kwargs: EmptyTarProcess()
+    )
 
     with pytest.raises(RuntimeError, match="Could not archive Ray/vLLM logs"):
         coreweave_ops.save_ray_logs(
@@ -77,7 +94,9 @@ def test_save_ray_logs_reports_empty_tar_stream_as_sync_error(monkeypatch, tmp_p
             100,
             tmp_path,
         )
-    assert (tmp_path / "ray-vllm-sync-error.txt").read_text() == "tar: session log vanished"
+    assert (
+        tmp_path / "ray-vllm-sync-error.txt"
+    ).read_text() == "tar: session log vanished"
 
 
 def test_save_ray_logs_retries_transient_kubectl_html(monkeypatch, tmp_path):
@@ -104,7 +123,9 @@ def test_save_ray_logs_retries_transient_kubectl_html(monkeypatch, tmp_path):
         ]
     )
     delays: list[int] = []
-    monkeypatch.setattr(coreweave_ops.subprocess, "Popen", lambda *_args, **_kwargs: next(processes))
+    monkeypatch.setattr(
+        coreweave_ops.subprocess, "Popen", lambda *_args, **_kwargs: next(processes)
+    )
     monkeypatch.setattr(coreweave_ops.time, "sleep", delays.append)
 
     saved, skipped = coreweave_ops.save_ray_logs(
@@ -133,7 +154,9 @@ def _ray_delta_archive(entries: list[tuple[str, int, bytes]]) -> bytes:
     return archive_bytes.getvalue()
 
 
-def test_save_ray_logs_incrementally_appends_and_replaces_rotated_logs(monkeypatch, tmp_path):
+def test_save_ray_logs_incrementally_appends_and_replaces_rotated_logs(
+    monkeypatch, tmp_path
+):
     class CapturingInput(BytesIO):
         def close(self) -> None:
             self.closed_by_sync = True
@@ -166,14 +189,28 @@ def test_save_ray_logs_incrementally_appends_and_replaces_rotated_logs(monkeypat
     monkeypatch.setattr(coreweave_ops.subprocess, "Popen", fake_popen)
     initial = [{"path": "worker-1.out", "size": 3, "inode": 41}]
     saved, skipped = coreweave_ops.save_ray_logs(
-        ["kubectl"], "pod", "task", initial, 100, tmp_path, incremental=True, python_executable="python"
+        ["kubectl"],
+        "pod",
+        "task",
+        initial,
+        100,
+        tmp_path,
+        incremental=True,
+        python_executable="python",
     )
     assert (saved, skipped) == (initial, [])
     assert (tmp_path / "worker-1.out").read_bytes() == b"abc"
 
     grown = [{"path": "worker-1.out", "size": 6, "inode": 41}]
     coreweave_ops.save_ray_logs(
-        ["kubectl"], "pod", "task", grown, 100, tmp_path, incremental=True, python_executable="python"
+        ["kubectl"],
+        "pod",
+        "task",
+        grown,
+        100,
+        tmp_path,
+        incremental=True,
+        python_executable="python",
     )
     assert (tmp_path / "worker-1.out").read_bytes() == b"abcdef"
     assert b'"offset": 3' in inputs[1].getvalue()
@@ -182,13 +219,27 @@ def test_save_ray_logs_incrementally_appends_and_replaces_rotated_logs(monkeypat
 
     # An unchanged file does not open another kubectl exec stream.
     coreweave_ops.save_ray_logs(
-        ["kubectl"], "pod", "task", grown, 100, tmp_path, incremental=True, python_executable="python"
+        ["kubectl"],
+        "pod",
+        "task",
+        grown,
+        100,
+        tmp_path,
+        incremental=True,
+        python_executable="python",
     )
     assert len(commands) == 2
 
     rotated = [{"path": "worker-1.out", "size": 2, "inode": 99}]
     coreweave_ops.save_ray_logs(
-        ["kubectl"], "pod", "task", rotated, 100, tmp_path, incremental=True, python_executable="python"
+        ["kubectl"],
+        "pod",
+        "task",
+        rotated,
+        100,
+        tmp_path,
+        incremental=True,
+        python_executable="python",
     )
     assert (tmp_path / "worker-1.out").read_bytes() == b"xy"
     assert b'"offset": 0' in inputs[2].getvalue()
@@ -197,12 +248,16 @@ def test_save_ray_logs_incrementally_appends_and_replaces_rotated_logs(monkeypat
 def test_coreweave_command_retries_transient_kubectl_html(monkeypatch):
     results = iter(
         [
-            subprocess.CompletedProcess([], 1, stderr="<!doctype html><html>temporary proxy error"),
+            subprocess.CompletedProcess(
+                [], 1, stderr="<!doctype html><html>temporary proxy error"
+            ),
             subprocess.CompletedProcess([], 0, stdout="ok\n"),
         ]
     )
     delays: list[int] = []
-    monkeypatch.setattr(coreweave_ops.subprocess, "run", lambda *_args, **_kwargs: next(results))
+    monkeypatch.setattr(
+        coreweave_ops.subprocess, "run", lambda *_args, **_kwargs: next(results)
+    )
     monkeypatch.setattr(coreweave_ops.time, "sleep", delays.append)
 
     assert coreweave_ops.command(["kubectl", "get", "pods"]) == "ok\n"
@@ -212,12 +267,16 @@ def test_coreweave_command_retries_transient_kubectl_html(monkeypatch):
 def test_coreweave_command_retries_generic_kubectl_exec_transport_failure(monkeypatch):
     results = iter(
         [
-            subprocess.CompletedProcess([], 1, stderr="command terminated with exit code 1"),
+            subprocess.CompletedProcess(
+                [], 1, stderr="command terminated with exit code 1"
+            ),
             subprocess.CompletedProcess([], 0, stdout="ok\n"),
         ]
     )
     delays: list[int] = []
-    monkeypatch.setattr(coreweave_ops.subprocess, "run", lambda *_args, **_kwargs: next(results))
+    monkeypatch.setattr(
+        coreweave_ops.subprocess, "run", lambda *_args, **_kwargs: next(results)
+    )
     monkeypatch.setattr(coreweave_ops.time, "sleep", delays.append)
 
     assert coreweave_ops.command(["kubectl", "exec", "pod", "--", "true"]) == "ok\n"
@@ -228,7 +287,9 @@ def test_ray_log_inventory_uses_explicit_python_for_rl_images(monkeypatch):
     monkeypatch.setattr(
         coreweave_ops,
         "resolve_container_python",
-        lambda *_args: (_ for _ in ()).throw(AssertionError("generic discovery should not run")),
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("generic discovery should not run")
+        ),
     )
     commands: list[list[str]] = []
 
@@ -238,9 +299,15 @@ def test_ray_log_inventory_uses_explicit_python_for_rl_images(monkeypatch):
 
     monkeypatch.setattr(coreweave_ops, "command", fake_command)
 
-    assert coreweave_ops.ray_log_inventory(
-        ["kubectl"], "pod", "task", python_executable="/opt/openthoughts/envs/rl/bin/python"
-    ) == []
+    assert (
+        coreweave_ops.ray_log_inventory(
+            ["kubectl"],
+            "pod",
+            "task",
+            python_executable="/opt/openthoughts/envs/rl/bin/python",
+        )
+        == []
+    )
     assert "/opt/openthoughts/envs/rl/bin/python" in commands[0]
     assert "st_ino" in commands[0][-1]
 
@@ -262,7 +329,9 @@ def test_rl_progress_reporter_writes_phase_and_elapsed_time(monkeypatch, capsys)
     assert capsys.readouterr().err == "[rl-watch +01:05] trace inventory 1/2\n"
 
 
-def test_rl_discovery_skips_iris_preamble_and_includes_recent_terminal_jobs(monkeypatch):
+def test_rl_discovery_skips_iris_preamble_and_includes_recent_terminal_jobs(
+    monkeypatch,
+):
     cluster = watch_coreweave_rl.Cluster("cw-rno2a", Path("/tmp/kubeconfig"), None)
     output = """I20260722 controller tunnel ready
 job_id,state,submitted_at_ms,finished_at_ms,entrypoint_json
@@ -294,12 +363,26 @@ def test_recent_trace_jobs_uses_remote_last_modified_and_preserves_remote_counts
     first = datetime(2026, 7, 22, 10, tzinfo=UTC)
     objects = [
         {"Key": f"{root}z-old/result.json", "Size": 1, "LastModified": first},
-        {"Key": f"{root}a-new/agent/trajectory.json", "Size": 1, "LastModified": first + timedelta(hours=3)},
-        {"Key": f"{root}a-new/result.json", "Size": 1, "LastModified": first + timedelta(hours=2)},
-        {"Key": f"{root}m-middle/result.json", "Size": 1, "LastModified": first + timedelta(hours=2)},
+        {
+            "Key": f"{root}a-new/agent/trajectory.json",
+            "Size": 1,
+            "LastModified": first + timedelta(hours=3),
+        },
+        {
+            "Key": f"{root}a-new/result.json",
+            "Size": 1,
+            "LastModified": first + timedelta(hours=2),
+        },
+        {
+            "Key": f"{root}m-middle/result.json",
+            "Size": 1,
+            "LastModified": first + timedelta(hours=2),
+        },
     ]
 
-    selected, available, completed = watch_coreweave_rl.recent_trace_jobs(objects, root, trace_sync_limit=2)
+    selected, available, completed = watch_coreweave_rl.recent_trace_jobs(
+        objects, root, trace_sync_limit=2
+    )
 
     assert [trace.name for trace in selected] == ["a-new", "m-middle"]
     assert available == 3
@@ -310,13 +393,19 @@ def test_recent_trace_jobs_uses_remote_last_modified_and_preserves_remote_counts
     cluster = watch_coreweave_rl.Cluster("cw-rno2a", Path("/tmp/kubeconfig"), None)
     first_job = watch_coreweave_rl.RlJob(cluster, "/user/first", "running", 0, "")
     second_job = watch_coreweave_rl.RlJob(cluster, "/user/second", "running", 0, "")
-    first_inventory = watch_coreweave_rl.TraceInventory(first_job, "bucket", root, object(), tuple(full), 3, 3)
+    first_inventory = watch_coreweave_rl.TraceInventory(
+        first_job, "bucket", root, object(), tuple(full), 3, 3
+    )
     second_inventory = watch_coreweave_rl.TraceInventory(
         second_job,
         "bucket",
         root,
         object(),
-        (watch_coreweave_rl.TraceJobObjects("other", first + timedelta(hours=4), (), True),),
+        (
+            watch_coreweave_rl.TraceJobObjects(
+                "other", first + timedelta(hours=4), (), True
+            ),
+        ),
         1,
         1,
     )
@@ -325,12 +414,23 @@ def test_recent_trace_jobs_uses_remote_last_modified_and_preserves_remote_counts
         [first_inventory, second_inventory], trace_sync_limit=2
     )
 
-    assert [trace.name for trace in fleet_selected[("cw-rno2a", "/user/first")]] == ["a-new"]
-    assert [trace.name for trace in fleet_selected[("cw-rno2a", "/user/second")]] == ["other"]
+    assert [trace.name for trace in fleet_selected[("cw-rno2a", "/user/first")]] == [
+        "a-new"
+    ]
+    assert [trace.name for trace in fleet_selected[("cw-rno2a", "/user/second")]] == [
+        "other"
+    ]
     manifest = watch_coreweave_rl.trace_selection_manifest(
-        fleet_selected[("cw-rno2a", "/user/first")], first_inventory, 2, fleet_available=4, fleet_selected=2
+        fleet_selected[("cw-rno2a", "/user/first")],
+        first_inventory,
+        2,
+        fleet_available=4,
+        fleet_selected=2,
     )
-    assert manifest["selection"] == "latest_object_store_last_modified_across_active_rl_jobs"
+    assert (
+        manifest["selection"]
+        == "latest_object_store_last_modified_across_active_rl_jobs"
+    )
     assert manifest["omitted_traces"] == 2
     assert manifest["fleet_selected_traces"] == 2
 
@@ -352,7 +452,9 @@ def test_recent_trace_jobs_requires_remote_last_modified_metadata():
 def test_trace_sync_skips_object_that_disappears_after_listing(tmp_path):
     class MissingObjectClient:
         def download_file(self, _bucket, _key, _destination):
-            raise ClientError({"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject")
+            raise ClientError(
+                {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject"
+            )
 
     cluster = watch_coreweave_rl.Cluster("cw-rno2a", Path("/tmp/kubeconfig"), None)
     job = watch_coreweave_rl.RlJob(cluster, "/user/rl-job", "running", 0, "")
@@ -385,7 +487,9 @@ def test_trace_sync_skips_object_that_disappears_after_listing(tmp_path):
 
     assert status.endswith("0 copied, 1 skipped")
     assert (available, completed, error) == (1, 1, None)
-    assert json.loads((tmp_path / "trace_jobs" / "skipped_objects.json").read_text()) == [
+    assert json.loads(
+        (tmp_path / "trace_jobs" / "skipped_objects.json").read_text()
+    ) == [
         {
             "key": "trial-1/result.json",
             "reason": "missing_after_listing",

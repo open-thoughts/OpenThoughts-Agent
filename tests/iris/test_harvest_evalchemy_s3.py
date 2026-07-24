@@ -28,7 +28,10 @@ def test_sync_run_mirrors_every_selected_object(monkeypatch, tmp_path):
 
     monkeypatch.setattr(harvester, "download", fake_download)
 
-    keys = ["iris/marinbase-eval/model/run/results_a.json", "iris/marinbase-eval/model/run/samples.jsonl"]
+    keys = [
+        "iris/marinbase-eval/model/run/results_a.json",
+        "iris/marinbase-eval/model/run/samples.jsonl",
+    ]
     assert harvester.sync_run(object(), keys) == {
         key: tmp_path / Path(key).name for key in keys
     }

@@ -24,6 +24,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from hpc import launch_utils  # noqa: E402
 from hpc.launch_utils import generate_served_model_id  # noqa: E402
 from hpc.harbor_utils import default_job_name  # noqa: E402
 
@@ -31,7 +32,7 @@ from hpc.harbor_utils import default_job_name  # noqa: E402
 # --------------------------------------------------------------------------- #
 # served-model-name determinism (given a stable job_name)
 # --------------------------------------------------------------------------- #
-def test_served_model_id_deterministic_for_same_job_name():
+def test_served_model_id_deterministic_for_same_job_name(monkeypatch):
     j = "tracegen-iris-20260704-070416"
     # two "serves" of the same job -> identical synthetic served-model id
     assert generate_served_model_id(job_name=j) == generate_served_model_id(job_name=j)
@@ -40,6 +41,8 @@ def test_served_model_id_deterministic_for_same_job_name():
         job_name=j + "-b"
     )
     # no job_name -> time-based fallback (NOT stable) — the pre-fix worker behavior
+    timestamps = iter((1_700_000_000.0, 1_700_000_001.0))
+    monkeypatch.setattr(launch_utils.time, "time", lambda: next(timestamps))
     assert generate_served_model_id(job_name=None) != generate_served_model_id(
         job_name=None
     )

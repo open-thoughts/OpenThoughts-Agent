@@ -168,7 +168,12 @@ markers = [
 extra-index-url = ["https://download.pytorch.org/whl/cu128"]
 
 [dependency-groups]
-dev = []
+dev = [
+    "boto3",
+    "marin-iris @ git+https://github.com/marin-community/marin.git@33525a77c#subdirectory=lib/iris",
+    "matplotlib",
+    "pytest",
+]
 
 [tool.uv]
 index-strategy = "unsafe-best-match"

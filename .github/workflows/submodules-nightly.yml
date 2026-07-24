@@ -21,4 +21,4 @@ jobs:
 
       - name: Verify LLaMA-Factory present
         run: |
-          test -d dcft/train/llamafactory || (echo "llamafactory submodule missing" && exit 1)
+          test -d sft/llamafactory || (echo "llamafactory submodule missing" && exit 1)

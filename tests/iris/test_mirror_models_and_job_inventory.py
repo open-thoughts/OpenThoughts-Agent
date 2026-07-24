@@ -113,7 +113,12 @@ job_id,state,submitted_at_ms,started_at_ms,finished_at_ms,error,exit_code
         "/benjaminfeuer/rl-run",
         "/benjaminfeuer/eval-b",
     ]
-    assert "datagen" in table and "RL" in table and "eval" in table and "terminated" in table
+    assert (
+        "datagen" in table
+        and "RL" in table
+        and "eval" in table
+        and "terminated" in table
+    )
     assert "Duration" in table and "0m" in table
 
 
@@ -162,12 +167,16 @@ def test_job_inventory_filters_regex_fields():
         },
     )
 
-    filtered = list_iris_jobs.filter_records(rows, filters, list_iris_jobs.job_filter_values)
+    filtered = list_iris_jobs.filter_records(
+        rows, filters, list_iris_jobs.job_filter_values
+    )
 
     assert [row["job_id"] for row in filtered] == ["/benjaminfeuer/glm52-running"]
 
 
-def test_job_inventory_queries_all_default_clusters_and_labels_rows(monkeypatch, capsys):
+def test_job_inventory_queries_all_default_clusters_and_labels_rows(
+    monkeypatch, capsys
+):
     queried_clusters = []
 
     def fake_query_jobs(*, user, hours, cluster):
@@ -230,7 +239,9 @@ def test_job_inventory_hours_zero_queries_all_history(monkeypatch):
         ),
     )
 
-    list_iris_jobs.query_jobs(user="benjaminfeuer", hours=0, cluster="marin", now_ms=86_400_000)
+    list_iris_jobs.query_jobs(
+        user="benjaminfeuer", hours=0, cluster="marin", now_ms=86_400_000
+    )
 
     assert "submitted_at_ms >=" not in commands[0][1]
 

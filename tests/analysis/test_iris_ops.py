@@ -48,7 +48,9 @@ def test_shared_regex_filters_duration_and_table_renderer():
         {"cluster": "marin", "state": "running", "name": "qwen"},
         {"cluster": "cw-rno2a", "state": "failed", "name": "glm52"},
     ]
-    filters = parse_regex_filters(["cluster=^cw-", "name=glm", "state=running"], {"cluster", "name", "state"})
+    filters = parse_regex_filters(
+        ["cluster=^cw-", "name=glm", "state=running"], {"cluster", "name", "state"}
+    )
 
     assert filter_records(records, filters, lambda record: record) == [records[0]]
     assert format_duration(60_000, 7_320_000) == "2h 1m"

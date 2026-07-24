@@ -139,6 +139,19 @@ class HPC(BaseModel):
     # them via the dotenv is a documented follow-up.
     eval_cluster_view: Dict[str, Any] | None = None
 
+    # --- Container runtime (Pyxis/Enroot) ---
+    # When set, universal sbatch templates use `srun --container-image=<path>`
+    # instead of conda activation. All existing clusters leave this unset (None)
+    # so behavior is byte-identical to the conda path (flag-off invariant).
+    container_image: str | None = None
+    container_mount_home: bool = True
+    container_remap_root: bool = False
+    container_extra_args: str = ""
+
+    # SLURM --segment directive for multi-node NVLink placement (EmpireAI B200).
+    # When >0, emits `#SBATCH --segment=N`. Ignored by clusters that leave it 0.
+    slurm_segment: int = 0
+
     def model_post_init(self, __context) -> None:
         # Derive a default CPU-per-GPU ratio when not explicitly provided.
         if not self.cpus_per_gpu:
@@ -239,6 +252,32 @@ class HPC(BaseModel):
             lines.append(f"export {key}={shlex.quote(str(value))}")
         return "\n".join(lines)
 
+    def get_container_srun_flags(self) -> str:
+        """Return srun Pyxis/Enroot container flags, or empty string if no container.
+
+        When ``container_image`` is set, produces e.g.::
+
+            --container-image=/path/to/img.sqsh --container-mount-home
+
+        When unset (all non-container clusters), returns ``""`` so the srun
+        command is unchanged (flag-off byte-identical invariant).
+        """
+        if self.container_image is None:
+            return ""
+        flags = [f"--container-image={self.container_image}"]
+        if self.container_mount_home:
+            flags.append("--container-mount-home")
+        if self.container_remap_root:
+            flags.append("--container-remap-root")
+        if self.container_extra_args:
+            flags.append(self.container_extra_args)
+        return " ".join(flags)
+
+    @property
+    def is_containerized(self) -> bool:
+        """True when this cluster runs jobs inside Pyxis/Enroot containers."""
+        return self.container_image is not None
+
     def get_exclude_directive(self) -> str:
         """Generate SBATCH exclude directive if nodes should be excluded."""
         if not self.node_exclusion_list:
@@ -323,6 +362,9 @@ class HPC(BaseModel):
         # Add any extra cluster-specific directives (e.g., licenses)
         for directive in self.extra_sbatch_directives:
             lines.append(directive)
+        # SLURM --segment for multi-node NVLink placement (EmpireAI B200)
+        if self.slurm_segment > 0:
+            lines.append(f"#SBATCH --segment={self.slurm_segment}")
         return "\n".join(lines)
 
     def get_srun_export_env(self) -> str:
@@ -1465,11 +1507,10 @@ vista = HPC(
 
 # EmpireAI Beta — NY-state consortium GB200 NVL72 SuperPOD (aarch64 Grace + B200/sm_100).
 # Placed by the aarch64/TACC blocks (vista) since it shares that arch class.
-# NOTE: EmpireAI is currently driven by DIRECT enroot/sbatch — Pyxis/Enroot containers
-# (run image `mega_final_dm.sqsh`, the 3-layer SFT/RL/JAX mega-container), NOT yet fully
-# `python -m hpc.launch`-integrated. This block registers the cluster + its per-cluster
-# secrets path per the standard HPC convention (so it's discoverable/resolvable like the
-# others); the containerized run mechanics live in .claude/ops/empireai/ + hpc/empireai/.
+# Containerized via Pyxis/Enroot (mega_final_dm.sqsh). Integrated into hpc.launch —
+# SFT/RL/datagen launch via `python -m hpc.launch --job_type <type>` using the
+# container_image field to inject --container-image into the srun command.
+# The legacy hpc/empireai/*.sbatch templates are retained for reproducibility.
 # All scalar fields below are LIVE-VERIFIED (2026-07-17, sinfo/scontrol over the beta login):
 #   total_partition_nodes=72 (sinfo -p beta %D), cpus_per_node=144 (scontrol CPUTot, 2×72-core
 #   Grace), GPUs ARE a SLURM gres here (--gres=gpu:b200:N), account confirmed by operator.
@@ -1483,20 +1524,47 @@ empireai = HPC(
     partition="beta",  # the only partition on Beta (GPU); no CPU-only path
     gpus_per_node=4,  # 4× NVIDIA B200 (GB200 NVL72) per DGX node
     cpus_per_node=144,  # 2× 72-core aarch64 Grace = 144 cores/node (verified CPUTot)
-    internet_node=True,  # compute nodes have egress
+    internet_node=True,  # compute nodes have full outbound egress (Daytona, HF, pinggy)
     gpus_type="B200",  # Blackwell sm_100, ~189GB HBM (GB200 NVL72 rack)
     total_partition_nodes=72,  # 72 DGX nodes = 288 B200 total (verified sinfo)
-    # GPUs are a real SLURM gres on Beta (unlike TACC/vista) → request them explicitly.
     gpu_directive_format="--gres=gpu:b200:{n}",
-    # Eval-listener / secrets cluster view (per-cluster secrets path lives here, as on
-    # vista/leonardo). Unlike the other clusters the Beta eval path is CONTAINERIZED:
-    # eval/empireai/eval_harbor.sbatch srun-launches the `mega_v2_rl.sqsh` Pyxis/Enroot
-    # container and runs the whole harbor+vLLM+pinggy+upload body inside it on the RL
-    # venv (/opt/envs/rl) — so there is no serve-side conda env here (harbor_src /
-    # conda_envs are intentionally omitted; the sbatch ignores OTAGENT_DIR/EVAL_CONDA_ENV).
-    # project_root points at the login-node checkout the listener submits from.
-    # gpu_gres:True — Beta gres-tracks GPUs; the listener's untyped `--gres gpu:N` is
-    # accepted (verified). All scalar fields LIVE-VERIFIED (2026-07-18).
+    # --- Container runtime (Pyxis/Enroot) ---
+    # The mega-image carries 3 layered venvs: SFT (system python, axolotl),
+    # RL (/opt/envs/rl, skyrl+vLLM), JAX (/opt/envs/jax, levanter).
+    container_image="/mnt/home/bf996/images/mega_final_dm.sqsh",
+    container_mount_home=True,
+    # --- NCCL/networking (bond0 validated job 31604) ---
+    # bond0 is the routable inter-node iface; the 100.126.x IPoIB net is an
+    # unroutable-bootstrap trap. IB/MNNVL carry data.
+    nccl_settings={
+        "NCCL_SOCKET_IFNAME": "bond0",
+        "GLOO_SOCKET_IFNAME": "bond0",
+        "NCCL_SOCKET_FAMILY": "AF_INET",
+    },
+    # --- Container-internal env (scrub host pyenv, node-local caches) ---
+    # --container-mount-home leaks host ~/.pyenv onto PATH → sanitize so
+    # /usr/bin/python (container system python) wins. Node-local caches avoid
+    # NFS ESTALE races on shared ~/.triton.
+    env_vars={
+        "PATH": "/usr/local/bin:/usr/local/cuda/bin:/usr/bin:/bin",
+        "TRITON_CACHE_DIR": "/tmp/triton_cache",
+        "TORCHINDUCTOR_CACHE_DIR": "/tmp/inductor_cache",
+        "OMP_NUM_THREADS": "1",
+    },
+    env_unsets=["PYENV_ROOT", "PYENV_VERSION", "PYENV_SHELL", "PIP_CONSTRAINT"],
+    # --- Scheduling ---
+    qos="standard",  # ≤36 GPU/48h production default
+    default_time_limit="23:59:00",
+    max_time_limit="48:00:00",
+    num_nodes_default=2,
+    num_nodes_slow=1,
+    num_nodes_fast=4,
+    # --- Multi-node NVLink placement ---
+    slurm_segment=2,  # --segment=2 validated for 2-node jobs
+    # --- Training ---
+    training_launcher="torchrun",
+    ray_tmpdir_base="/tmp/ray",
+    # --- Eval-listener cluster view ---
     eval_cluster_view={
         "cluster_name": "empireai",
         "use_model_registry": True,

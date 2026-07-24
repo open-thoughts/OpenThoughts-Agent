@@ -1241,7 +1241,15 @@ fi"""
     skyrl_command = build_skyrl_command_string(job_config)
 
     # Generate RL environment activation code (conda or venv)
-    rl_env_activation = get_rl_env_activation(exp_args)
+    # Containerized clusters (EmpireAI/Pyxis): skip host activation — env is in the .sqsh.
+    if hpc.is_containerized:
+        rl_env_activation = (
+            '# RL Pyxis/Enroot container mode (hpc.container_image set):\n'
+            '# Host venv/conda activation SKIPPED. Python is inside the container.\n'
+            'echo "RL runtime: Pyxis container (host venv/conda activation skipped)"'
+        )
+    else:
+        rl_env_activation = get_rl_env_activation(exp_args)
 
     substitutions = {
         "time_limit": exp_args.get("time_limit") or "24:00:00",

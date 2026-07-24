@@ -52,7 +52,10 @@ def resolve_conda_activate(hpc, exp_args: dict) -> str:
 
     Returns:
         Shell command string for conda activation, or a comment if none configured.
+        Returns empty string for containerized clusters (env is in the .sqsh).
     """
+    if hpc.is_containerized:
+        return ""
     conda_env_override = exp_args.get("conda_env")
     if conda_env_override:
         # Extract conda.sh path from the HPC config's existing activate command

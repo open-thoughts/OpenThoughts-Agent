@@ -43,8 +43,9 @@ Please review this checklist before you try to launch a job with HPC launch.
 | nyugreene | A100/H100 80 GB | ✅ | train, datagen |
 | nyutorch | H200 141 GB | ✅ | train, datagen |
 | oumi | H100 80 GB | ✅ | train, datagen |
-| perlmutter | A100 80 GB | ✅ | train, datagen |
-| vista | GH200 96 GB | ✅ | train, datagen, consolidate |
+| perlmutter | A100 80 GB | ✅ | train, datagen |
+| empireai | B200 189 GB | ✅ | train, eval (containerized via Pyxis/Enroot) |
+| vista | GH200 96 GB | ✅ | train, datagen, consolidate |
 
 Clusters without outbound internet access (`❌`) are typically restricted to training or offline datagen runs where datasets are pre-synced and uploads are disabled.
 

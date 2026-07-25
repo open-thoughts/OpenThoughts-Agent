@@ -13,6 +13,8 @@ from botocore.exceptions import ClientError
 
 from scripts.iris import coreweave_ops
 from scripts.iris.iris_ops import (
+    MonitorError,
+    StyledCell,
     box_table,
     filter_records,
     format_duration,
@@ -20,6 +22,9 @@ from scripts.iris.iris_ops import (
     job_id_parts,
     load_bundle_manifest,
     parse_regex_filters,
+    render_error_report,
+    strip_ansi,
+    write_error_report,
     write_bundle_manifest,
 )
 from scripts.iris import watch_coreweave_rl
@@ -55,6 +60,55 @@ def test_shared_regex_filters_duration_and_table_renderer():
     assert filter_records(records, filters, lambda record: record) == [records[0]]
     assert format_duration(60_000, 7_320_000) == "2h 1m"
     assert "│ one │ two │" in box_table(["A", "B"], [["one", "two"]])
+
+
+def test_box_table_wraps_to_width_and_sanitizes_multiline_cells():
+    table = box_table(
+        ["Job", "Status"],
+        [["a-very-long-job-name-that-must-wrap", "line one\nline two"]],
+        max_width=32,
+    )
+
+    assert max(len(line) for line in table.splitlines()) <= 32
+    assert "line one line" in table
+    assert "two" in table
+
+
+def test_box_table_color_preserves_plain_layout_and_can_be_stripped():
+    rows = [[StyledCell("running", "success"), StyledCell("warning", "warning")]]
+
+    plain = box_table(["State", "Health"], rows, max_width=40)
+    colored = box_table(["State", "Health"], rows, max_width=40, color=True)
+
+    assert "\x1b[" not in plain
+    assert "\x1b[" in colored
+    assert strip_ansi(colored) == plain
+
+
+def test_monitor_error_report_is_separate_stable_and_single_line(tmp_path):
+    errors = [
+        MonitorError("cw-rno2a/job-a", "Finelog sync", "proxy failed\nTraceback: details"),
+        MonitorError("marin", "discovery", "controller unavailable"),
+    ]
+
+    report = render_error_report(
+        "Iris Harbor monitor errors",
+        datetime(2026, 7, 25, 12, tzinfo=UTC),
+        errors,
+    )
+    path = write_error_report(
+        tmp_path,
+        "20260725T120000Z",
+        "Iris Harbor monitor errors",
+        datetime(2026, 7, 25, 12, tzinfo=UTC),
+        errors,
+    )
+
+    assert "## cw-rno2a/job-a" in report
+    assert "- **Finelog sync:** proxy failed Traceback: details" in report
+    assert path == tmp_path / "20260725T120000Z.errors.md"
+    assert path.read_text() == report
+    assert (tmp_path / "latest-errors.md").read_text() == report
 
 
 def test_shared_regex_filter_rejects_unknown_fields_and_invalid_regexes():

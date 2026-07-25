@@ -44,12 +44,15 @@ from scripts.iris.coreweave_ops import (  # noqa: E402
 )
 from scripts.iris.iris_ops import (  # noqa: E402
     DEFAULT_BUNDLE_ROOT,
+    MonitorError,
+    StyledCell,
     box_table,
     filter_records,
     format_duration,
     job_bundle,
     parse_regex_filters,
     run_iris_command,
+    write_error_report,
     write_bundle_manifest,
 )
 
@@ -536,9 +539,10 @@ def load_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text())
-    except json.JSONDecodeError:
+        value = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
         return {}
+    return value if isinstance(value, dict) else {}
 
 
 def health_label(
@@ -587,6 +591,60 @@ def notify(message: str) -> None:
     )
 
 
+def _monitor_error(scope: str, operation: str, error: object) -> MonitorError:
+    message = str(error).strip() or type(error).__name__
+    return MonitorError(scope, operation, message)
+
+
+def _state_cell(state: str) -> StyledCell:
+    if state in {"running", "succeeded"}:
+        tone = "success"
+    elif state in {"pending", "building", "unspecified"}:
+        tone = "warning"
+    else:
+        tone = "error"
+    return StyledCell(state, tone)
+
+
+def _health_cell(health: str) -> StyledCell:
+    if health in {"advancing", "baseline"}:
+        tone = "success"
+    elif health.startswith(("stalled", "output-unavailable", "terminal (failed", "terminal (worker_failed")):
+        tone = "error"
+    else:
+        tone = "warning"
+    return StyledCell(health, tone)
+
+
+def report_row(
+    job: HarborJob,
+    progress: Progress,
+    health: str,
+    local_log: Path | None,
+    ray_vllm_status: str,
+) -> list[object]:
+    """Build one bounded status row without embedding monitor exception text."""
+    completed = "?" if progress.completed is None else f"{progress.completed:,}"
+    total = "?" if progress.total is None else f"{progress.total:,}"
+    try:
+        mean = f"{progress.mean_reward:.3f}" if progress.mean_reward is not None else mean_reward(local_log)
+    except OSError:
+        mean = "—"
+    trial_errors = format_error_counts(progress)
+    evidence = f"Finelog {'synced' if local_log is not None else 'unavailable'}; Ray/vLLM {ray_vllm_status}"
+    return [
+        f"{job.cluster.name}/{job.kind}",
+        job.job_id.rsplit("/", 1)[-1],
+        job.dataset,
+        _state_cell(job.state),
+        f"{completed}/{total}",
+        mean,
+        StyledCell(trial_errors, "warning" if trial_errors != "—" else "muted"),
+        StyledCell(evidence, "warning" if "unavailable" in evidence else "muted"),
+        _health_cell(health),
+    ]
+
+
 def main() -> int:
     args = parse_args()
     if args.stalled_after_minutes <= 0:
@@ -607,41 +665,70 @@ def main() -> int:
     submitted_since_ms = None if args.hours == 0 else now_ms - int(args.hours * 3_600_000)
 
     jobs: list[HarborJob] = []
-    errors: list[str] = []
+    errors: list[MonitorError] = []
     for cluster in CLUSTERS:
-        found, cluster_errors = discover_harbor_jobs(cluster, submitted_since_ms=submitted_since_ms)
+        try:
+            found, cluster_errors = discover_harbor_jobs(
+                cluster, submitted_since_ms=submitted_since_ms
+            )
+        except Exception as error:
+            found, cluster_errors = [], [str(error)]
         jobs.extend(found)
-        errors.extend(cluster_errors)
+        errors.extend(
+            _monitor_error(cluster.name, "job discovery", error)
+            for error in cluster_errors
+        )
     if args.job:
         jobs = [job for job in jobs if job.job_id == args.job]
         if not jobs:
-            errors.append(f"No active Harbor job with id {args.job!r} was discovered.")
+            errors.append(
+                _monitor_error(args.job, "job selection", "No matching active Harbor job was discovered.")
+            )
     jobs = filter_records(jobs, filters, lambda job: job_filter_values(job, now_ms=now_ms))
 
     s3_clients: dict[str, Any] = {}
-    local_logs: dict[str, tuple[Path | None, str | None, int | None]] = {}
+    local_logs: dict[tuple[str, str], tuple[Path | None, str | None, int | None]] = {}
     for job in jobs:
-        prior = previous.get("jobs", {}).get(job.job_id, {})
-        prior_sync = prior.get("finelog_synced_at_ms")
-        destination = finelog_path(job, args.bundle_root)
-        if prior_sync is None and destination.exists() and previous.get("checked_at"):
-            prior_sync = int(datetime.fromisoformat(previous["checked_at"]).timestamp() * 1000)
-        local_logs[job.job_id] = fetch_finelog(
-            job,
-            args.bundle_root,
-            int(prior_sync) if prior_sync is not None else job.submitted_at_ms,
-        )
-    ray_vllm_logs = {job.job_id: fetch_ray_vllm_logs(job, args.bundle_root) for job in jobs}
-    rows: list[list[str]] = []
+        key = (job.cluster.name, job.job_id)
+        try:
+            prior = previous.get("jobs", {}).get(job.job_id, {})
+            prior_sync = prior.get("finelog_synced_at_ms")
+            destination = finelog_path(job, args.bundle_root)
+            if prior_sync is None and destination.exists() and previous.get("checked_at"):
+                prior_sync = int(
+                    datetime.fromisoformat(previous["checked_at"]).timestamp() * 1000
+                )
+            result = fetch_finelog(
+                job,
+                args.bundle_root,
+                int(prior_sync) if prior_sync is not None else job.submitted_at_ms,
+            )
+        except Exception as error:
+            result = (None, str(error), None)
+        local_logs[key] = result
+        if result[1]:
+            errors.append(_monitor_error(f"{job.cluster.name}/{job.job_id}", "Finelog sync", result[1]))
+    ray_vllm_logs: dict[tuple[str, str], tuple[str, str | None]] = {}
+    for job in jobs:
+        key = (job.cluster.name, job.job_id)
+        try:
+            result = fetch_ray_vllm_logs(job, args.bundle_root)
+        except Exception as error:
+            result = ("unavailable", str(error))
+        ray_vllm_logs[key] = result
+        if result[1]:
+            errors.append(_monitor_error(f"{job.cluster.name}/{job.job_id}", "Ray/vLLM sync", result[1]))
+    rows: list[list[object]] = []
     current_jobs: dict[str, Any] = {}
     for job in sorted(jobs, key=lambda item: (item.cluster.name, item.job_id)):
+        key = (job.cluster.name, job.job_id)
         try:
             artifact_dir = job_bundle(args.bundle_root, job.cluster.name, job.job_id).directory / "harbor"
             if job.jobs_dir is None or job.harbor_job_name is None:
                 if job.kind == "eval":
                     progress = read_pod_local_eval_progress(job, args.bundle_root)
                 else:
-                    local_log, _log_error, _synced_at = local_logs[job.job_id]
+                    local_log, _log_error, _synced_at = local_logs[key]
                     progress = Progress(None, None, finelog_activity(local_log))
             elif job.jobs_dir.startswith("s3://"):
                 client = s3_clients.setdefault(job.cluster.name, coreweave_client(job.cluster))
@@ -650,20 +737,42 @@ def main() -> int:
                 progress = read_gcs_progress(job, artifact_dir)
         except Exception as error:
             progress = Progress(None, None, "unavailable", f"progress read failed: {error}")
-        health, last_advanced_at = health_label(
-            job, progress, previous, checked_at, args.stalled_after_minutes
-        )
-        completed = "?" if progress.completed is None else f"{progress.completed:,}"
-        total = "?" if progress.total is None else f"{progress.total:,}"
-        remaining = "?" if progress.completed is None or progress.total is None else f"{max(0, progress.total - progress.completed):,}"
-        local_log, log_error, finelog_synced_at_ms = local_logs[job.job_id]
-        ray_vllm_status, ray_vllm_error = ray_vllm_logs[job.job_id]
-        mean = f"{progress.mean_reward:.3f}" if progress.mean_reward is not None else mean_reward(local_log)
-        error_counts = format_error_counts(progress)
-        trend = health if progress.error is None else f"{health}: {progress.error[-100:]}"
-        log_status = "synced" if local_log is not None else f"error: {log_error[-70:] if log_error else 'unknown'}"
-        ray_vllm_status = ray_vllm_status if ray_vllm_error is None else f"error: {ray_vllm_error[-70:]}"
-        rows.append([job.cluster.name, job.kind, job.job_id.rsplit("/", 1)[-1], job.dataset, job.state, f"{completed}/{total}", remaining, progress.completion_source, mean, error_counts, log_status, ray_vllm_status, trend])
+        if progress.error:
+            errors.append(
+                _monitor_error(f"{job.cluster.name}/{job.job_id}", "progress read", progress.error)
+            )
+        try:
+            health, last_advanced_at = health_label(
+                job, progress, previous, checked_at, args.stalled_after_minutes
+            )
+        except Exception as error:
+            health, last_advanced_at = "output-unavailable", checked_at.isoformat()
+            errors.append(
+                _monitor_error(f"{job.cluster.name}/{job.job_id}", "health calculation", error)
+            )
+        local_log, _log_error, finelog_synced_at_ms = local_logs[key]
+        ray_vllm_status, ray_vllm_error = ray_vllm_logs[key]
+        if ray_vllm_error:
+            ray_vllm_status = "unavailable"
+        try:
+            rows.append(report_row(job, progress, health, local_log, ray_vllm_status))
+        except Exception as error:
+            errors.append(
+                _monitor_error(f"{job.cluster.name}/{job.job_id}", "row rendering", error)
+            )
+            rows.append(
+                [
+                    f"{job.cluster.name}/{job.kind}",
+                    job.job_id.rsplit("/", 1)[-1],
+                    job.dataset,
+                    _state_cell(job.state),
+                    "?/?",
+                    "—",
+                    StyledCell("—", "muted"),
+                    StyledCell("unavailable", "error"),
+                    StyledCell("status unavailable; see error report", "error"),
+                ]
+            )
         current_jobs[job.job_id] = {
             "cluster": job.cluster.name,
             "job_kind": job.kind,
@@ -681,48 +790,69 @@ def main() -> int:
             "ray_vllm_status": ray_vllm_status,
             "bundle_directory": str(job_bundle(args.bundle_root, job.cluster.name, job.job_id).directory),
         }
-        write_bundle_manifest(
-            job_bundle(args.bundle_root, job.cluster.name, job.job_id),
-            {
-                "kind": "harbor",
-                "job_kind": job.kind,
-                "dataset": job.dataset,
-                "harbor_job_name": job.harbor_job_name,
-                "jobs_dir": job.jobs_dir,
-                "state": job.state,
-                "submitted_at_ms": job.submitted_at_ms,
-                "last_synced_at": checked_at.isoformat(),
-                "progress": {
-                    "completed": progress.completed,
-                    "total": progress.total,
-                    "mean_reward": progress.mean_reward,
-                    "error_counts": progress.error_counts,
-                    "exception_file_count": progress.exception_file_count,
+        try:
+            write_bundle_manifest(
+                job_bundle(args.bundle_root, job.cluster.name, job.job_id),
+                {
+                    "kind": "harbor",
+                    "job_kind": job.kind,
+                    "dataset": job.dataset,
+                    "harbor_job_name": job.harbor_job_name,
+                    "jobs_dir": job.jobs_dir,
+                    "state": job.state,
+                    "submitted_at_ms": job.submitted_at_ms,
+                    "last_synced_at": checked_at.isoformat(),
+                    "progress": {
+                        "completed": progress.completed,
+                        "total": progress.total,
+                        "mean_reward": progress.mean_reward,
+                        "error_counts": progress.error_counts,
+                        "exception_file_count": progress.exception_file_count,
+                    },
                 },
-            },
-        )
+            )
+        except Exception as error:
+            errors.append(
+                _monitor_error(f"{job.cluster.name}/{job.job_id}", "manifest write", error)
+            )
 
+    headers = ["Target", "Harbor run", "Dataset", "State", "Trials", "Mean", "Trial errors", "Evidence", "Health"]
     if rows:
-        table = box_table(["Cluster", "Kind", "Harbor run", "Dataset", "State", "Trials", "Remaining", "Count source", "Mean", "Errors", "Finelog", "Ray/vLLM", "Trend"], rows)
+        table = box_table(headers, rows)
+        terminal_table = box_table(headers, rows, color=sys.stdout.isatty())
     else:
         table = "No active Iris Harbor datagen or eval jobs discovered."
+        terminal_table = table
     filter_suffix = f"; filters={','.join(args.filter)}" if args.filter else ""
     window = "all" if args.hours == 0 else f"{args.hours:g}h"
-    report = f"# Iris Harbor datagen / eval status — {checked_at.isoformat()}; submitted={window}{filter_suffix}\n\n{table}\n"
-    if errors:
-        report += "\n## Monitor errors\n\n" + "\n".join(f"- {error}" for error in errors) + "\n"
     timestamp = checked_at.strftime("%Y%m%dT%H%M%SZ")
+    error_report_path = write_error_report(
+        report_directory,
+        timestamp,
+        "Iris Harbor monitor errors",
+        checked_at,
+        errors,
+    )
+    error_summary = f"Monitor errors: {len(errors)}; details: {error_report_path}"
+    heading = f"# Iris Harbor datagen / eval status — {checked_at.isoformat()}; submitted={window}{filter_suffix}"
+    report = f"{heading}\n\n{table}\n\n{error_summary}\n"
     report_path = report_directory / f"{timestamp}.md"
     report_path.write_text(report)
     (report_directory / "latest.md").write_text(report)
-    current = {"checked_at": checked_at.isoformat(), "jobs": current_jobs, "report": str(report_path)}
+    current = {
+        "checked_at": checked_at.isoformat(),
+        "jobs": current_jobs,
+        "report": str(report_path),
+        "error_count": len(errors),
+        "error_report": str(error_report_path),
+    }
     latest_path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
 
     if args.notify:
         changed = [job_id for job_id, data in current_jobs.items() if previous.get("jobs", {}).get(job_id, {}).get("health") != data["health"]]
         if changed:
             notify(f"{len(changed)} Harbor health change(s); report saved to {report_directory / 'latest.md'}")
-    print(report, end="")
+    print(f"{heading}\n\n{terminal_table}\n\n{error_summary}")
     return 0
 
 

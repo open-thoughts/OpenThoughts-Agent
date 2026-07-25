@@ -400,6 +400,97 @@ def test_rl_sync_warning_never_renders_proxy_html():
     assert warning == "Ray/vLLM log sync unavailable; local diagnostic saved"
 
 
+def test_rl_report_row_keeps_artifact_exceptions_out_of_trend(tmp_path):
+    cluster = watch_coreweave_rl.Cluster("cw-rno2a", Path("/tmp/kubeconfig"), None)
+    job = watch_coreweave_rl.RlJob(
+        cluster,
+        "/user/rl-job",
+        "running",
+        0,
+        "",
+        dataset="DCAgent/tasks",
+    )
+    artifacts = watch_coreweave_rl.ArtifactResult(
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        "unavailable",
+        None,
+        None,
+        ("Ray/vLLM: raw proxy exception body",),
+    )
+
+    row = watch_coreweave_rl.report_row(job, artifacts, tmp_path)
+
+    assert "raw proxy exception body" not in repr(row)
+    assert len(row) == 9
+    assert row[2].value == "running"
+
+
+def test_rl_report_row_replaces_traceback_signal_with_error_report_pointer(tmp_path):
+    (tmp_path / "finelog.log").write_text("Traceback (most recent call last)\nraw details\n")
+    cluster = watch_coreweave_rl.Cluster("cw-rno2a", Path("/tmp/kubeconfig"), None)
+    job = watch_coreweave_rl.RlJob(cluster, "/user/rl-job", "failed", 0, "")
+    artifacts = watch_coreweave_rl.ArtifactResult(
+        "synced", "synced", "synced", "synced", None, None, ()
+    )
+
+    row = watch_coreweave_rl.report_row(job, artifacts, tmp_path)
+
+    assert "Traceback" not in repr(row)
+    assert row[-1].value == "workload error detected; see error report"
+
+
+def test_rl_main_degrades_unexpected_job_sync_failure_into_error_report(
+    monkeypatch, tmp_path, capsys
+):
+    cluster = watch_coreweave_rl.Cluster("cw-rno2a", Path("/tmp/kubeconfig"), None)
+    job = watch_coreweave_rl.RlJob(
+        cluster,
+        "/user/rl-job",
+        "running",
+        1,
+        "",
+        dataset="DCAgent/tasks",
+    )
+    monkeypatch.setattr(
+        watch_coreweave_rl,
+        "parse_args",
+        lambda: SimpleNamespace(
+            max_non_log_bytes=0,
+            trace_sync_limit=0,
+            hours=24.0,
+            all_users=False,
+            user="user",
+            filter=[],
+            bundle_root=tmp_path,
+            quiet_progress=True,
+            no_sync=True,
+        ),
+    )
+    monkeypatch.setattr(watch_coreweave_rl, "CLUSTERS", (cluster,))
+    monkeypatch.setattr(
+        watch_coreweave_rl,
+        "discover_rl_jobs",
+        lambda *_args, **_kwargs: ([job], []),
+    )
+    monkeypatch.setattr(
+        watch_coreweave_rl,
+        "sync_job",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            LookupError("unexpected raw sync exception")
+        ),
+    )
+    monkeypatch.setattr(watch_coreweave_rl, "write_job_manifest", lambda *_args, **_kwargs: None)
+
+    assert watch_coreweave_rl.main() == 0
+
+    stdout = capsys.readouterr().out
+    assert "unexpected raw sync exception" not in stdout
+    errors = (tmp_path / "reports/rl/latest-errors.md").read_text()
+    assert "unexpected raw sync exception" in errors
+
+
 def test_rl_progress_reporter_writes_phase_and_elapsed_time(monkeypatch, capsys):
     monkeypatch.setattr(watch_coreweave_rl.time, "monotonic", lambda: 165.0)
 

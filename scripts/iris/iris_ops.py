@@ -248,7 +248,7 @@ def _column_widths(headers: Sequence[str], rows: Sequence[Sequence[StyledCell]],
     # plus the closing separator. Always retain at least one content character.
     available = max(len(headers), max_width - (3 * len(headers) + 1))
     minimums = [
-        min(natural_width, max(8, min(_display_width(header), 12)))
+        min(natural_width, max(10, min(_display_width(header), 12)))
         for header, natural_width in zip(headers, natural)
     ]
     widths = minimums if sum(minimums) <= available else [1] * len(headers)

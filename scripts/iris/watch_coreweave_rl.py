@@ -54,6 +54,8 @@ from scripts.iris.coreweave_ops import (  # noqa: E402
 )
 from scripts.iris.iris_ops import (  # noqa: E402
     DEFAULT_BUNDLE_ROOT,
+    MonitorError,
+    StyledCell,
     box_table,
     filter_records,
     format_duration,
@@ -61,6 +63,7 @@ from scripts.iris.iris_ops import (  # noqa: E402
     parse_regex_filters,
     run_iris_command,
     write_bundle_manifest,
+    write_error_report,
 )
 
 
@@ -761,6 +764,21 @@ def sync_warning(errors: tuple[str, ...]) -> str | None:
     return first_error[-90:]
 
 
+def _monitor_error(scope: str, operation: str, error: object) -> MonitorError:
+    message = str(error).strip() or type(error).__name__
+    return MonitorError(scope, operation, message)
+
+
+def _state_cell(state: str) -> StyledCell:
+    if state in {"running", "succeeded"}:
+        tone = "success"
+    elif state in {"pending", "building"}:
+        tone = "warning"
+    else:
+        tone = "error"
+    return StyledCell(state, tone)
+
+
 def job_filter_values(job: RlJob, *, now_ms: int) -> dict[str, str]:
     """Return the pre-sync RL job fields available to ``--filter``."""
     return {
@@ -775,8 +793,9 @@ def job_filter_values(job: RlJob, *, now_ms: int) -> dict[str, str]:
     }
 
 
-def report_row(job: RlJob, artifacts: ArtifactResult, directory: Path) -> list[str]:
-    step, total, metrics, parse_error = parse_metrics(directory / "finelog.log")
+def report_row(job: RlJob, artifacts: ArtifactResult, directory: Path) -> list[object]:
+    """Build one status row; monitor failures belong in the separate error report."""
+    step, total, metrics, _parse_error = parse_metrics(directory / "finelog.log")
     step_display = "—" if step is None else f"{step}/{total if total is not None else '—'}"
     reward = metric(metrics, "reward/avg_raw_reward", "loss/avg_final_rewards")
     policy_loss = metric(metrics, "policy/policy_loss", "policy_loss")
@@ -784,25 +803,21 @@ def report_row(job: RlJob, artifacts: ArtifactResult, directory: Path) -> list[s
     entropy = metric(metrics, "policy/policy_entropy", "policy_entropy")
     log_ratio = metric(metrics, "tis/log_ratio_abs_mean", "log_ratio_abs_mean")
     signal = terminal_signal(directory / "finelog.log")
-    trend = f"{job.state.upper()}; entropy={display_metric(entropy)}; TIS log-ratio={display_metric(log_ratio)}"
+    trend = f"entropy={display_metric(entropy)}; TIS log-ratio={display_metric(log_ratio)}"
     if signal:
-        trend = f"{job.state.upper()} signal: {signal}; entropy={display_metric(entropy)}; TIS log-ratio={display_metric(log_ratio)}"
+        trend = "workload error detected; see error report"
     elif step is None:
         trend += "; bring-up/buffer (metrics not emitted)"
-    warning = sync_warning(artifacts.errors)
-    if warning:
-        trend += f"; sync warning: {warning}"
-    if parse_error:
-        trend += f"; parse warning: {parse_error}"
     return [
         f"{job.cluster.name}/{job.short_name}",
         job.dataset,
+        _state_cell(job.state),
         step_display,
         display_metric(reward),
         display_metric(policy_loss),
         display_metric(grad_norm),
         artifacts.traces,
-        trend,
+        StyledCell(trend, "error" if signal else "muted"),
     ]
 
 
@@ -935,16 +950,19 @@ def main() -> int:
     now_ms = int(checked_at.timestamp() * 1000)
 
     jobs: list[RlJob] = []
-    errors: list[str] = []
+    errors: list[MonitorError] = []
     scope_user = None if args.all_users else args.user
     submitted_since_ms = None if args.hours == 0 else now_ms - int(args.hours * 3_600_000)
     for cluster in CLUSTERS:
         progress.phase(f"discovering RL jobs on {cluster.name}")
-        found, discovery_errors = discover_rl_jobs(
-            cluster,
-            scope_user,
-            submitted_since_ms=submitted_since_ms,
-        )
+        try:
+            found, discovery_errors = discover_rl_jobs(
+                cluster,
+                scope_user,
+                submitted_since_ms=submitted_since_ms,
+            )
+        except Exception as error:
+            found, discovery_errors = [], [str(error)]
         active_count = sum(not job.is_terminal for job in found)
         terminal_count = len(found) - active_count
         window_label = "all history" if args.hours == 0 else f"submitted in last {args.hours:g}h"
@@ -953,7 +971,10 @@ def main() -> int:
             f"succeeded/failed; {window_label}"
         )
         jobs.extend(found)
-        errors.extend(discovery_errors)
+        errors.extend(
+            _monitor_error(cluster.name, "job discovery", error)
+            for error in discovery_errors
+        )
 
     jobs = filter_records(jobs, filters, lambda job: job_filter_values(job, now_ms=now_ms))
 
@@ -969,9 +990,17 @@ def main() -> int:
                 terminal_only=job.is_terminal,
                 progress=progress,
             )
-        except (OSError, RuntimeError, ValueError, json.JSONDecodeError, subprocess.SubprocessError) as error:
+        except Exception as error:
             directory = job_directory(args.bundle_root, job)
-            artifacts = ArtifactResult("unavailable", "unavailable", "unavailable", "unavailable", None, None, (str(error),))
+            artifacts = ArtifactResult(
+                "unavailable",
+                "unavailable",
+                "unavailable",
+                "unavailable",
+                None,
+                None,
+                (f"{type(error).__name__}: {error}",),
+            )
         synced_jobs.append((job, artifacts, directory))
 
     active_job_directories = [
@@ -979,18 +1008,32 @@ def main() -> int:
     ]
     if not args.no_sync and active_job_directories:
         progress.phase("starting fleet-wide trace inventory and transfer")
-        trace_statuses = sync_fleet_trace_jobs(
-            active_job_directories,
-            args.max_non_log_bytes,
-            args.trace_sync_limit,
-            progress,
-        )
+        try:
+            trace_statuses = sync_fleet_trace_jobs(
+                active_job_directories,
+                args.max_non_log_bytes,
+                args.trace_sync_limit,
+                progress,
+            )
+        except Exception as error:
+            trace_statuses = {
+                (job.cluster.name, job.job_id): (
+                    "unavailable",
+                    None,
+                    None,
+                    f"{type(error).__name__}: {error}",
+                )
+                for job, _directory in active_job_directories
+            }
         synchronized: list[tuple[RlJob, ArtifactResult, Path]] = []
         for job, artifacts, directory in synced_jobs:
             if job.is_terminal:
                 synchronized.append((job, artifacts, directory))
                 continue
-            traces, started, completed, trace_error = trace_statuses[(job.cluster.name, job.job_id)]
+            traces, started, completed, trace_error = trace_statuses.get(
+                (job.cluster.name, job.job_id),
+                ("unavailable", None, None, "fleet trace sync returned no status"),
+            )
             errors_for_job = artifacts.errors + ((f"trace sync: {trace_error}",) if trace_error else ())
             synchronized.append(
                 (
@@ -1009,32 +1052,85 @@ def main() -> int:
     elif not args.no_sync:
         progress.phase("no active RL jobs; trace inventory and transfer skipped")
 
-    rows: list[list[str]] = []
+    rows: list[list[object]] = []
     job_report: dict[str, Any] = {}
     for job, artifacts, directory in synced_jobs:
-        write_job_manifest(
-            job, args.bundle_root, directory, artifacts, args.max_non_log_bytes, args.trace_sync_limit
+        scope = f"{job.cluster.name}/{job.job_id}"
+        errors.extend(
+            _monitor_error(scope, "artifact sync", error)
+            for error in artifacts.errors
         )
-        rows.append(report_row(job, artifacts, directory))
+        _step, _total, _metrics, parse_error = parse_metrics(directory / "finelog.log")
+        if parse_error:
+            errors.append(_monitor_error(scope, "Finelog parse", parse_error))
+        signal = terminal_signal(directory / "finelog.log")
+        if signal:
+            errors.append(_monitor_error(scope, "workload signal", signal))
+        try:
+            write_job_manifest(
+                job,
+                args.bundle_root,
+                directory,
+                artifacts,
+                args.max_non_log_bytes,
+                args.trace_sync_limit,
+            )
+        except Exception as error:
+            errors.append(_monitor_error(scope, "manifest write", error))
+        try:
+            rows.append(report_row(job, artifacts, directory))
+        except Exception as error:
+            errors.append(_monitor_error(scope, "row rendering", error))
+            rows.append(
+                [
+                    f"{job.cluster.name}/{job.short_name}",
+                    job.dataset,
+                    _state_cell(job.state),
+                    "—",
+                    "—",
+                    "—",
+                    "—",
+                    "unavailable",
+                    StyledCell("status unavailable; see error report", "error"),
+                ]
+            )
         job_report[job.job_id] = {"cluster": job.cluster.name, "directory": str(directory), "artifacts": asdict(artifacts)}
 
+    headers = ["Job", "Dataset", "State", "Step", "Reward", "Policy Loss", "Grad Norm", "Traces", "Trend"]
     table = (
-        box_table(["Job", "Dataset", "Step", "Reward", "Policy Loss", "Grad Norm", "Traces", "Trend"], rows)
+        box_table(headers, rows)
         if rows
         else "No active or succeeded/failed CoreWeave Iris RL jobs in the selected window."
     )
+    terminal_table = box_table(headers, rows, color=sys.stdout.isatty()) if rows else table
     filter_suffix = f"; filters={','.join(args.filter)}" if args.filter else ""
     window = "all" if args.hours == 0 else f"{args.hours:g}h"
-    report = f"# Iris CoreWeave RL status — {checked_at.isoformat()}; submitted={window}{filter_suffix}\n\n{table}\n"
-    if errors:
-        report += "\n## Monitor errors\n\n" + "\n".join(f"- {error}" for error in errors) + "\n"
     timestamp = checked_at.strftime("%Y%m%dT%H%M%SZ")
+    error_report_path = write_error_report(
+        report_directory,
+        timestamp,
+        "Iris CoreWeave RL monitor errors",
+        checked_at,
+        errors,
+    )
+    error_summary = f"Monitor errors: {len(errors)}; details: {error_report_path}"
+    heading = f"# Iris CoreWeave RL status — {checked_at.isoformat()}; submitted={window}{filter_suffix}"
+    report = f"{heading}\n\n{table}\n\n{error_summary}\n"
     report_path = report_directory / f"{timestamp}.md"
     report_path.write_text(report)
     (report_directory / "latest.md").write_text(report)
-    write_json(report_directory / "latest.json", {"checked_at": checked_at.isoformat(), "jobs": job_report, "report": str(report_path)})
+    write_json(
+        report_directory / "latest.json",
+        {
+            "checked_at": checked_at.isoformat(),
+            "jobs": job_report,
+            "report": str(report_path),
+            "error_count": len(errors),
+            "error_report": str(error_report_path),
+        },
+    )
     progress.phase("report written; printing status table")
-    print(report, end="")
+    print(f"{heading}\n\n{terminal_table}\n\n{error_summary}")
     return 0
 
 

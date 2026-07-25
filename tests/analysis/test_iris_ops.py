@@ -70,8 +70,8 @@ def test_box_table_wraps_to_width_and_sanitizes_multiline_cells():
     )
 
     assert max(len(line) for line in table.splitlines()) <= 32
-    assert "line one line" in table
-    assert "two" in table
+    assert "line one" in table
+    assert "line two" in table
 
 
 def test_box_table_color_preserves_plain_layout_and_can_be_stripped():

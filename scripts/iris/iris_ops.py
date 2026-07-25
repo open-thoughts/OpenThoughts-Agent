@@ -47,9 +47,12 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import textwrap
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -117,6 +120,16 @@ TRANSIENT_FINELOG_MARKERS = (
     "finelog.errors.statserror",
     "raise _translate_connect_error(exc)",
 )
+ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+ANSI_STYLES = {
+    "header": "\x1b[1;36m",
+    "info": "\x1b[36m",
+    "success": "\x1b[32m",
+    "warning": "\x1b[33m",
+    "error": "\x1b[31m",
+    "muted": "\x1b[2m",
+}
+ANSI_RESET = "\x1b[0m"
 
 
 @dataclass(frozen=True)
@@ -186,25 +199,166 @@ def format_duration(
     return " ".join(parts)
 
 
-def box_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
-    """Render a consistently styled Unicode table for Iris command-line reports."""
-    rendered_rows = [[str(value) for value in row] for row in rows]
+@dataclass(frozen=True)
+class StyledCell:
+    """A table value with an optional semantic ANSI tone."""
+
+    value: object
+    tone: str = ""
+
+
+@dataclass(frozen=True)
+class MonitorError:
+    """One contextualized error collected without aborting a fleet sweep."""
+
+    scope: str
+    operation: str
+    message: str
+
+
+def strip_ansi(value: str) -> str:
+    """Remove terminal control sequences from text before persistence or measurement."""
+    return ANSI_ESCAPE_PATTERN.sub("", value)
+
+
+def _single_line(value: object) -> str:
+    return " ".join(strip_ansi(str(value)).split()) or "—"
+
+
+def _display_width(value: str) -> int:
+    width = 0
+    for character in strip_ansi(value):
+        if unicodedata.combining(character):
+            continue
+        width += 2 if unicodedata.east_asian_width(character) in {"F", "W"} else 1
+    return width
+
+
+def _pad(value: str, width: int) -> str:
+    return value + " " * max(0, width - _display_width(value))
+
+
+def _column_widths(headers: Sequence[str], rows: Sequence[Sequence[StyledCell]], max_width: int) -> list[int]:
+    natural = [_display_width(header) for header in headers]
+    for row in rows:
+        for index, cell in enumerate(row):
+            natural[index] = max(natural[index], _display_width(_single_line(cell.value)))
+
+    # A box consumes three characters per column (two spaces and one separator)
+    # plus the closing separator. Always retain at least one content character.
+    available = max(len(headers), max_width - (3 * len(headers) + 1))
+    minimums = [
+        min(natural_width, max(8, min(_display_width(header), 12)))
+        for header, natural_width in zip(headers, natural)
+    ]
+    widths = minimums if sum(minimums) <= available else [1] * len(headers)
+    while sum(widths) < available:
+        candidates = [index for index, width in enumerate(widths) if width < natural[index]]
+        if not candidates:
+            break
+        index = max(candidates, key=lambda item: (natural[item] - widths[item]) / natural[item])
+        widths[index] += 1
+    return widths
+
+
+def _wrapped_lines(value: object, width: int) -> list[str]:
+    text = _single_line(value)
+    return textwrap.wrap(
+        text,
+        width=max(1, width),
+        break_long_words=True,
+        break_on_hyphens=False,
+        replace_whitespace=True,
+        drop_whitespace=True,
+    ) or ["—"]
+
+
+def _styled(value: str, tone: str, color: bool) -> str:
+    code = ANSI_STYLES.get(tone)
+    return f"{code}{value}{ANSI_RESET}" if color and code else value
+
+
+def box_table(
+    headers: Sequence[str],
+    rows: Sequence[Sequence[object]],
+    *,
+    max_width: int | None = None,
+    color: bool = False,
+) -> str:
+    """Render a bounded, multiline Unicode table with optional semantic ANSI color."""
+    if not headers:
+        raise ValueError("A table must have at least one header.")
+    rendered_rows = [
+        [value if isinstance(value, StyledCell) else StyledCell(value) for value in row]
+        for row in rows
+    ]
     if any(len(row) != len(headers) for row in rendered_rows):
         raise ValueError("Every table row must have one value per header.")
-    widths = [len(header) for header in headers]
-    for row in rendered_rows:
-        for index, value in enumerate(row):
-            widths[index] = max(widths[index], len(value))
+    terminal_width = shutil.get_terminal_size((160, 24)).columns
+    width_budget = max_width if max_width is not None else terminal_width
+    width_budget = max(width_budget, 4 * len(headers) + 1)
+    clean_headers = [_single_line(header) for header in headers]
+    widths = _column_widths(clean_headers, rendered_rows, width_budget)
 
     def border(left: str, middle: str, right: str) -> str:
-        return left + middle.join("─" * (width + 2) for width in widths) + right
+        value = left + middle.join("─" * (width + 2) for width in widths) + right
+        return _styled(value, "info", color)
 
-    def line(values: Sequence[str]) -> str:
-        return "│" + "│".join(f" {value.ljust(width)} " for value, width in zip(values, widths)) + "│"
+    def logical_row(values: Sequence[StyledCell]) -> list[str]:
+        columns = [_wrapped_lines(cell.value, width) for cell, width in zip(values, widths)]
+        height = max(len(column) for column in columns)
+        lines: list[str] = []
+        for line_index in range(height):
+            cells = []
+            for cell, column, width in zip(values, columns, widths):
+                value = column[line_index] if line_index < len(column) else ""
+                cells.append(f" {_styled(_pad(value, width), cell.tone, color)} ")
+            separator = _styled("│", "info", color)
+            lines.append(separator + separator.join(cells) + separator)
+        return lines
 
-    return "\n".join(
-        [border("┌", "┬", "┐"), line(headers), border("├", "┼", "┤"), *(line(row) for row in rendered_rows), border("└", "┴", "┘")]
-    )
+    header_cells = [StyledCell(header, "header") for header in clean_headers]
+    lines = [border("┌", "┬", "┐"), *logical_row(header_cells), border("├", "┼", "┤")]
+    for index, row in enumerate(rendered_rows):
+        lines.extend(logical_row(row))
+        if index < len(rendered_rows) - 1:
+            lines.append(border("├", "┼", "┤"))
+    lines.append(border("└", "┴", "┘"))
+    return "\n".join(lines)
+
+
+def render_error_report(title: str, checked_at: datetime, errors: Sequence[MonitorError]) -> str:
+    """Render normalized monitor failures separately from the fleet status table."""
+    lines = [f"# {title}", "", f"Checked at: {checked_at.isoformat()}", ""]
+    if not errors:
+        return "\n".join([*lines, "No monitor errors.", ""])
+    grouped: dict[str, list[MonitorError]] = {}
+    for error in errors:
+        grouped.setdefault(_single_line(error.scope), []).append(error)
+    for scope in sorted(grouped):
+        lines.extend([f"## {scope}", ""])
+        for error in sorted(grouped[scope], key=lambda item: (item.operation, item.message)):
+            lines.append(
+                f"- **{_single_line(error.operation)}:** {_single_line(error.message)}"
+            )
+        lines.append("")
+    return "\n".join(lines)
+
+
+def write_error_report(
+    report_directory: Path,
+    timestamp: str,
+    title: str,
+    checked_at: datetime,
+    errors: Sequence[MonitorError],
+) -> Path:
+    """Write one timestamped error report and refresh its stable latest alias."""
+    report_directory.mkdir(parents=True, exist_ok=True)
+    report = render_error_report(title, checked_at, errors)
+    report_path = report_directory / f"{timestamp}.errors.md"
+    report_path.write_text(report)
+    (report_directory / "latest-errors.md").write_text(report)
+    return report_path
 
 
 @dataclass(frozen=True)

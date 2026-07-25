@@ -258,4 +258,4 @@ def test_main_submits_federated_serve_then_parent_minted_durable_eval(
     assert (
         "--jobs-dir=s3://marin-us-east-02a/iris/grug-r7/trace_jobs" in eval_command[-1]
     )
-    assert eval_command[eval_command.index("--timeout") + 1] == "86400"
+    assert eval_command[eval_command.index("--timeout") + 1] == "604800"

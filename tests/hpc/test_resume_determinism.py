@@ -45,6 +45,18 @@ def test_served_model_id_deterministic_for_same_job_name():
     )
 
 
+def test_served_model_id_without_job_name_uses_nanosecond_precision(monkeypatch):
+    timestamps = iter([1_234_567_890_123_456_789, 1_234_567_890_123_456_790])
+    monkeypatch.setattr("hpc.launch_utils.time.time_ns", lambda: next(timestamps))
+
+    first = generate_served_model_id(job_name=None)
+    second = generate_served_model_id(job_name=None)
+
+    assert first == "4567890123456789"
+    assert second == "4567890123456790"
+    assert len(first) == len(second) == 16
+
+
 def test_harbor_run_dir_name_stable_when_job_name_set():
     # local_runner_utils computes: job_name = args.job_name or default_job_name(...).
     # With a stable args.job_name the run dir is that name (deterministic); without

@@ -209,7 +209,8 @@ def test_harbor_report_row_keeps_monitor_exception_text_out_of_table():
     row = monitor.report_row(job, progress, "output-unavailable", None, "unavailable")
 
     assert "raw proxy exception body" not in repr(row)
-    assert len(row) == 9
+    assert len(row) == 10
+    assert row[7] == iris_ops.StyledCell("unavailable", "muted")
     assert row[-1].value == "output-unavailable"
 
 

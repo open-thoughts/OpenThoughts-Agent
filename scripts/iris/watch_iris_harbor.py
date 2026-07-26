@@ -20,10 +20,12 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+
+from google.cloud import storage as gcs_storage
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -59,6 +61,7 @@ from scripts.iris.iris_ops import (  # noqa: E402
 
 USER = "benjaminfeuer"
 DEFAULT_STALL_MINUTES = 120
+TRACE_TREND_HOURS = 2
 MEAN_PARSE_TAIL_BYTES = 8 * 1024 * 1024
 STATE_NAMES = {
     1: "pending",
@@ -113,6 +116,17 @@ class Progress:
     mean_reward: float | None = None
     error_counts: dict[str, int] = field(default_factory=dict)
     exception_file_count: int | None = None
+    recent_completed: int | None = None
+    recent_errored: int | None = None
+    recent_window_error: str | None = None
+
+
+@dataclass(frozen=True)
+class TrialArtifacts:
+    completed_names: list[str]
+    exception_file_count: int
+    recent_completed: int
+    recent_errored: int
 
 
 CLUSTERS = (
@@ -336,7 +350,70 @@ def fetch_ray_vllm_logs(job: HarborJob, bundle_root: Path) -> tuple[str, str | N
     return f"{len(saved)} saved, {len(skipped)} skipped", None
 
 
-def read_gcs_progress(job: HarborJob, artifact_dir: Path) -> Progress:
+def _object_time(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        timestamp = value
+    elif isinstance(value, str):
+        try:
+            timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    return timestamp.astimezone(UTC)
+
+
+def _trial_artifacts(
+    objects: list[tuple[str, datetime | None]], root: str, cutoff: datetime
+) -> TrialArtifacts:
+    prefix = f"{root.rstrip('/')}/"
+    completed: set[str] = set()
+    recent_completed: set[str] = set()
+    errored: set[str] = set()
+    exception_file_count = 0
+    for key, modified_at in objects:
+        relative = key.removeprefix(prefix)
+        if relative == key or relative.count("/") != 1:
+            continue
+        trial_name, filename = relative.split("/", 1)
+        if filename == "result.json":
+            completed.add(trial_name)
+            if modified_at is not None and modified_at >= cutoff:
+                recent_completed.add(trial_name)
+        elif filename == "exception.txt":
+            errored.add(trial_name)
+            exception_file_count += 1
+    return TrialArtifacts(
+        sorted(completed),
+        exception_file_count,
+        len(recent_completed),
+        len(recent_completed & errored),
+    )
+
+
+def gcs_trial_artifacts(
+    client: Any, root: str, cutoff: datetime
+) -> TrialArtifacts:
+    location = root.removeprefix("gs://")
+    bucket, object_prefix = location.split("/", 1)
+    object_prefix = object_prefix.rstrip("/")
+    objects: list[tuple[str, datetime | None]] = []
+    for filename in ("result.json", "exception.txt"):
+        blobs = client.list_blobs(
+            bucket,
+            prefix=f"{object_prefix}/",
+            match_glob=f"{object_prefix}/*/{filename}",
+            fields="items(name,timeCreated),nextPageToken",
+        )
+        objects.extend((blob.name, _object_time(blob.time_created)) for blob in blobs)
+    return _trial_artifacts(objects, object_prefix, cutoff)
+
+
+def read_gcs_progress(
+    job: HarborJob, client: Any, artifact_dir: Path, cutoff: datetime
+) -> Progress:
     assert job.jobs_dir is not None and job.harbor_job_name is not None
     root = f"{job.jobs_dir}/{job.harbor_job_name}"
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -360,6 +437,12 @@ def read_gcs_progress(job: HarborJob, artifact_dir: Path) -> Progress:
         return Progress(None, total, "Harbor aggregate", f"GCS aggregate fetch failed: {message[-180:]}")
     aggregate_data = json.loads((artifact_dir / "result.json").read_text())
     progress = progress_from_harbor_aggregate(aggregate_data, "Harbor aggregate")
+    artifacts: TrialArtifacts | None = None
+    window_error: str | None = None
+    try:
+        artifacts = gcs_trial_artifacts(client, root, cutoff)
+    except Exception as error:
+        window_error = str(error)
     (artifact_dir / "completion-source.txt").write_text(
         "completed comes from Harbor stats.n_completed_trials in the local aggregate result.json\n"
     )
@@ -369,6 +452,10 @@ def read_gcs_progress(job: HarborJob, artifact_dir: Path) -> Progress:
         progress.completion_source,
         mean_reward=progress.mean_reward,
         error_counts=progress.error_counts,
+        exception_file_count=artifacts.exception_file_count if artifacts else None,
+        recent_completed=artifacts.recent_completed if artifacts else None,
+        recent_errored=artifacts.recent_errored if artifacts else None,
+        recent_window_error=window_error,
     )
 
 
@@ -378,20 +465,15 @@ def coreweave_client(cluster: Cluster) -> Any:
     return object_store_client(base, config)
 
 
-def s3_trial_artifacts(client: Any, bucket: str, prefix: str) -> tuple[list[str], int]:
-    """Return direct completed-trial names and standalone exception-file count."""
+def s3_trial_artifacts(
+    client: Any, bucket: str, prefix: str, cutoff: datetime
+) -> TrialArtifacts:
+    """Return direct trial artifacts, including the exact recent error intersection."""
     root = f"{prefix.rstrip('/')}/"
-    completed: set[str] = set()
-    exception_files = 0
+    objects: list[tuple[str, datetime | None]] = []
     for item in iter_objects(client, bucket, root):
-        relative = item["Key"].removeprefix(root)
-        if relative.count("/") != 1:
-            continue
-        if relative.endswith("/result.json"):
-            completed.add(relative.split("/", 1)[0])
-        elif relative.endswith("/exception.txt"):
-            exception_files += 1
-    return sorted(completed), exception_files
+        objects.append((item["Key"], _object_time(item.get("LastModified"))))
+    return _trial_artifacts(objects, prefix.rstrip("/"), cutoff)
 
 
 def progress_from_harbor_aggregate(aggregate: dict[str, Any], source: str) -> Progress:
@@ -424,11 +506,15 @@ def progress_from_harbor_aggregate(aggregate: dict[str, Any], source: str) -> Pr
     )
 
 
-def read_s3_progress(job: HarborJob, client: Any, artifact_dir: Path) -> Progress:
+def read_s3_progress(
+    job: HarborJob, client: Any, artifact_dir: Path, cutoff: datetime
+) -> Progress:
     assert job.jobs_dir is not None and job.harbor_job_name is not None
     bucket, prefix = split_s3_uri(f"{job.jobs_dir}/{job.harbor_job_name}")
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    completed_trial_names, exception_file_count = s3_trial_artifacts(client, bucket, prefix)
+    artifacts = s3_trial_artifacts(client, bucket, prefix, cutoff)
+    completed_trial_names = artifacts.completed_names
+    exception_file_count = artifacts.exception_file_count
     (artifact_dir / "trial-result-keys.txt").write_text("\n".join(completed_trial_names) + "\n")
     completed = len(completed_trial_names)
     try:
@@ -444,6 +530,8 @@ def read_s3_progress(job: HarborJob, client: Any, artifact_dir: Path) -> Progres
             f"S3 aggregate result unreadable: {error}",
             error_counts={"exception.txt": exception_file_count} if exception_file_count else {},
             exception_file_count=exception_file_count,
+            recent_completed=artifacts.recent_completed,
+            recent_errored=artifacts.recent_errored,
         )
     aggregate_progress = progress_from_harbor_aggregate(aggregate, "direct result.json")
     error_counts = aggregate_progress.error_counts
@@ -456,6 +544,8 @@ def read_s3_progress(job: HarborJob, client: Any, artifact_dir: Path) -> Progres
         mean_reward=aggregate_progress.mean_reward,
         error_counts=error_counts,
         exception_file_count=exception_file_count,
+        recent_completed=artifacts.recent_completed,
+        recent_errored=artifacts.recent_errored,
     )
 
 
@@ -559,6 +649,24 @@ def health_label(
         return f"terminal ({job.state})", prior.get("last_advanced_at", checked_at.isoformat())
     if progress.completed is None:
         return "awaiting output", prior.get("last_advanced_at", checked_at.isoformat())
+    if progress.recent_completed is not None and progress.recent_errored is not None:
+        recent_completed = progress.recent_completed
+        recent_errored = progress.recent_errored
+        if recent_completed:
+            detail = f"+{recent_completed}/2h; {recent_errored} errors"
+            if recent_errored == 0:
+                return f"advancing ({detail})", checked_at.isoformat()
+            if recent_errored >= recent_completed:
+                return f"failing ({detail})", checked_at.isoformat()
+            return f"degraded ({detail})", checked_at.isoformat()
+        job_age = checked_at - datetime.fromtimestamp(job.submitted_at_ms / 1000, UTC)
+        if job.state == "running" and job_age >= timedelta(hours=TRACE_TREND_HOURS):
+            return "stalled (+0 traces/2h)", prior.get(
+                "last_advanced_at", checked_at.isoformat()
+            )
+        return "warming up (+0 traces/2h)", prior.get(
+            "last_advanced_at", checked_at.isoformat()
+        )
     if prior.get("completed") is None or progress.completed > prior["completed"]:
         return ("advancing" if prior else "baseline"), checked_at.isoformat()
     last_advanced_at = prior.get("last_advanced_at", checked_at.isoformat())
@@ -607,13 +715,33 @@ def _state_cell(state: str) -> StyledCell:
 
 
 def _health_cell(health: str) -> StyledCell:
-    if health in {"advancing", "baseline"}:
+    if health in {"advancing", "baseline"} or health.startswith("advancing ("):
         tone = "success"
-    elif health.startswith(("stalled", "output-unavailable", "terminal (failed", "terminal (worker_failed")):
+    elif health.startswith(
+        ("stalled", "failing", "output-unavailable", "terminal (failed", "terminal (worker_failed")
+    ):
         tone = "error"
     else:
         tone = "warning"
     return StyledCell(health, tone)
+
+
+def recent_trend_cell(progress: Progress) -> StyledCell:
+    if progress.recent_completed is None or progress.recent_errored is None:
+        return StyledCell("unavailable", "muted")
+    completed = progress.recent_completed
+    errored = progress.recent_errored
+    if completed == 0:
+        return StyledCell("+0 traces; 0 errors", "warning")
+    rate = errored / completed
+    text = f"+{completed:,} traces; {errored:,} errors ({rate:.0%})"
+    if errored == 0:
+        tone = "success"
+    elif errored >= completed:
+        tone = "error"
+    else:
+        tone = "warning"
+    return StyledCell(text, tone)
 
 
 def report_row(
@@ -640,6 +768,7 @@ def report_row(
         f"{completed}/{total}",
         mean,
         StyledCell(trial_errors, "warning" if trial_errors != "—" else "muted"),
+        recent_trend_cell(progress),
         StyledCell(evidence, "warning" if "unavailable" in evidence else "muted"),
         _health_cell(health),
     ]
@@ -661,6 +790,7 @@ def main() -> int:
     latest_path = report_directory / "latest.json"
     previous = load_json(latest_path)
     checked_at = datetime.now(UTC)
+    trace_cutoff = checked_at - timedelta(hours=TRACE_TREND_HOURS)
     now_ms = int(checked_at.timestamp() * 1000)
     submitted_since_ms = None if args.hours == 0 else now_ms - int(args.hours * 3_600_000)
 
@@ -687,6 +817,7 @@ def main() -> int:
     jobs = filter_records(jobs, filters, lambda job: job_filter_values(job, now_ms=now_ms))
 
     s3_clients: dict[str, Any] = {}
+    gcs_client: Any | None = None
     local_logs: dict[tuple[str, str], tuple[Path | None, str | None, int | None]] = {}
     for job in jobs:
         key = (job.cluster.name, job.job_id)
@@ -732,14 +863,24 @@ def main() -> int:
                     progress = Progress(None, None, finelog_activity(local_log))
             elif job.jobs_dir.startswith("s3://"):
                 client = s3_clients.setdefault(job.cluster.name, coreweave_client(job.cluster))
-                progress = read_s3_progress(job, client, artifact_dir)
+                progress = read_s3_progress(job, client, artifact_dir, trace_cutoff)
             else:
-                progress = read_gcs_progress(job, artifact_dir)
+                if gcs_client is None:
+                    gcs_client = gcs_storage.Client()
+                progress = read_gcs_progress(job, gcs_client, artifact_dir, trace_cutoff)
         except Exception as error:
             progress = Progress(None, None, "unavailable", f"progress read failed: {error}")
         if progress.error:
             errors.append(
                 _monitor_error(f"{job.cluster.name}/{job.job_id}", "progress read", progress.error)
+            )
+        if progress.recent_window_error:
+            errors.append(
+                _monitor_error(
+                    f"{job.cluster.name}/{job.job_id}",
+                    "two-hour trace trend",
+                    progress.recent_window_error,
+                )
             )
         try:
             health, last_advanced_at = health_label(
@@ -769,6 +910,7 @@ def main() -> int:
                     "?/?",
                     "—",
                     StyledCell("—", "muted"),
+                    StyledCell("unavailable", "muted"),
                     StyledCell("unavailable", "error"),
                     StyledCell("status unavailable; see error report", "error"),
                 ]
@@ -781,6 +923,8 @@ def main() -> int:
             "mean_reward": progress.mean_reward,
             "error_counts": progress.error_counts,
             "exception_file_count": progress.exception_file_count,
+            "recent_completed_2h": progress.recent_completed,
+            "recent_errored_2h": progress.recent_errored,
             "last_advanced_at": last_advanced_at,
             "health": health,
             "jobs_dir": job.jobs_dir,
@@ -808,6 +952,8 @@ def main() -> int:
                         "mean_reward": progress.mean_reward,
                         "error_counts": progress.error_counts,
                         "exception_file_count": progress.exception_file_count,
+                        "recent_completed_2h": progress.recent_completed,
+                        "recent_errored_2h": progress.recent_errored,
                     },
                 },
             )
@@ -816,7 +962,18 @@ def main() -> int:
                 _monitor_error(f"{job.cluster.name}/{job.job_id}", "manifest write", error)
             )
 
-    headers = ["Target", "Harbor run", "Dataset", "State", "Trials", "Mean", "Trial errors", "Evidence", "Health"]
+    headers = [
+        "Target",
+        "Harbor run",
+        "Dataset",
+        "State",
+        "Trials",
+        "Mean",
+        "Trial errors",
+        "Last 2h",
+        "Evidence",
+        "Health",
+    ]
     if rows:
         table = box_table(headers, rows)
         terminal_table = box_table(headers, rows, color=sys.stdout.isatty())

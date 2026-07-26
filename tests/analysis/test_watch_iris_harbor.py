@@ -125,7 +125,9 @@ def test_glm52_capacity_floor_keeps_normal_single_node_progress_healthy():
         n_concurrent=4,
         gpu_count=8,
     )
-    progress = watcher.Progress(100, 200, "test", recent_completed=55, recent_errored=10)
+    progress = watcher.Progress(
+        100, 200, "test", recent_completed=55, recent_errored=10
+    )
 
     assert watcher.capacity_floor_2h(job) == 41
     assert watcher.health_label(job, progress, {}, NOW, 120)[0] == (

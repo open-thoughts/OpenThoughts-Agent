@@ -163,14 +163,18 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_BUNDLE_ROOT,
         help="Root for canonical local Iris evidence bundles and Harbor reports.",
     )
-    parser.add_argument("--stalled-after-minutes", type=int, default=DEFAULT_STALL_MINUTES)
+    parser.add_argument(
+        "--stalled-after-minutes", type=int, default=DEFAULT_STALL_MINUTES
+    )
     parser.add_argument(
         "--hours",
         type=float,
         default=24.0,
         help="Only include jobs submitted within this many hours; 0 means all history (default: 24).",
     )
-    parser.add_argument("--job", help="Restrict the live report to one exact Iris job id.")
+    parser.add_argument(
+        "--job", help="Restrict the live report to one exact Iris job id."
+    )
     parser.add_argument(
         "--filter",
         action="append",
@@ -181,7 +185,11 @@ def parse_args() -> argparse.Namespace:
             "cluster, job, name, dataset, kind, state, submitted, duration."
         ),
     )
-    parser.add_argument("--notify", action="store_true", help="Send a macOS notification on health changes.")
+    parser.add_argument(
+        "--notify",
+        action="store_true",
+        help="Send a macOS notification on health changes.",
+    )
     return parser.parse_args()
 
 
@@ -195,7 +203,9 @@ def command_environment(cluster: Cluster) -> dict[str, str]:
     return environment
 
 
-def run_iris(cluster: Cluster, arguments: list[str], *, timeout: int = 180) -> subprocess.CompletedProcess[str]:
+def run_iris(
+    cluster: Cluster, arguments: list[str], *, timeout: int = 180
+) -> subprocess.CompletedProcess[str]:
     return run_iris_command(
         arguments,
         cluster=cluster.name,
@@ -262,8 +272,14 @@ def harbor_job_from_row(cluster: Cluster, row: dict[str, str]) -> HarborJob | No
     )
 
 
-def discover_harbor_jobs(cluster: Cluster, *, submitted_since_ms: int | None = None) -> tuple[list[HarborJob], list[str]]:
-    submitted_clause = "" if submitted_since_ms is None else f" AND j.submitted_at_ms >= {submitted_since_ms}"
+def discover_harbor_jobs(
+    cluster: Cluster, *, submitted_since_ms: int | None = None
+) -> tuple[list[HarborJob], list[str]]:
+    submitted_clause = (
+        ""
+        if submitted_since_ms is None
+        else f" AND j.submitted_at_ms >= {submitted_since_ms}"
+    )
     sql = (
         "SELECT j.job_id, j.state, j.submitted_at_ms, jc.entrypoint_json "
         "FROM jobs j JOIN job_config jc ON j.job_id=jc.job_id "
@@ -285,7 +301,9 @@ def discover_harbor_jobs(cluster: Cluster, *, submitted_since_ms: int | None = N
 
 
 def finelog_path(job: HarborJob, bundle_root: Path) -> Path:
-    return job_bundle(bundle_root, job.cluster.name, job.job_id).directory / "finelog.log"
+    return (
+        job_bundle(bundle_root, job.cluster.name, job.job_id).directory / "finelog.log"
+    )
 
 
 def fetch_finelog(
@@ -329,8 +347,12 @@ def fetch_ray_vllm_logs(job: HarborJob, bundle_root: Path) -> tuple[str, str | N
     if job.cluster.name not in COREWEAVE_CLUSTERS:
         return "not applicable", None
     cluster_config = COREWEAVE_CLUSTERS[job.cluster.name]
-    base = kubectl_base(cluster_config, SimpleNamespace(kubeconfig=None, kube_context=None))
-    destination = job_bundle(bundle_root, job.cluster.name, job.job_id).directory / "ray-vllm"
+    base = kubectl_base(
+        cluster_config, SimpleNamespace(kubeconfig=None, kube_context=None)
+    )
+    destination = (
+        job_bundle(bundle_root, job.cluster.name, job.job_id).directory / "ray-vllm"
+    )
     destination.mkdir(parents=True, exist_ok=True)
     (destination / "logs").mkdir(exist_ok=True)
     try:
@@ -359,7 +381,9 @@ def fetch_ray_vllm_logs(job: HarborJob, bundle_root: Path) -> tuple[str, str | N
         "saved": saved,
         "skipped": skipped,
     }
-    (destination / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    (destination / "manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    )
     return f"{len(saved)} saved, {len(skipped)} skipped", None
 
 
@@ -406,9 +430,7 @@ def _trial_artifacts(
     )
 
 
-def gcs_trial_artifacts(
-    client: Any, root: str, cutoff: datetime
-) -> TrialArtifacts:
+def gcs_trial_artifacts(client: Any, root: str, cutoff: datetime) -> TrialArtifacts:
     location = root.removeprefix("gs://")
     bucket, object_prefix = location.split("/", 1)
     object_prefix = object_prefix.rstrip("/")
@@ -441,13 +463,21 @@ def read_gcs_progress(
         try:
             aggregate_path = artifact_dir / "result.json"
             aggregate_path.write_text(aggregate.stdout)
-            total = int(json.loads(aggregate_path.read_text()).get("n_total_trials") or 0) or None
+            total = (
+                int(json.loads(aggregate_path.read_text()).get("n_total_trials") or 0)
+                or None
+            )
         except json.JSONDecodeError:
             pass
 
     if aggregate.returncode:
         message = (aggregate.stderr or aggregate.stdout).strip().replace("\n", " ")
-        return Progress(None, total, "Harbor aggregate", f"GCS aggregate fetch failed: {message[-180:]}")
+        return Progress(
+            None,
+            total,
+            "Harbor aggregate",
+            f"GCS aggregate fetch failed: {message[-180:]}",
+        )
     aggregate_data = json.loads((artifact_dir / "result.json").read_text())
     progress = progress_from_harbor_aggregate(aggregate_data, "Harbor aggregate")
     artifacts: TrialArtifacts | None = None
@@ -528,7 +558,9 @@ def read_s3_progress(
     artifacts = s3_trial_artifacts(client, bucket, prefix, cutoff)
     completed_trial_names = artifacts.completed_names
     exception_file_count = artifacts.exception_file_count
-    (artifact_dir / "trial-result-keys.txt").write_text("\n".join(completed_trial_names) + "\n")
+    (artifact_dir / "trial-result-keys.txt").write_text(
+        "\n".join(completed_trial_names) + "\n"
+    )
     completed = len(completed_trial_names)
     try:
         response = client.get_object(Bucket=bucket, Key=f"{prefix}/result.json")
@@ -541,7 +573,9 @@ def read_s3_progress(
             None,
             "direct result.json",
             f"S3 aggregate result unreadable: {error}",
-            error_counts={"exception.txt": exception_file_count} if exception_file_count else {},
+            error_counts={"exception.txt": exception_file_count}
+            if exception_file_count
+            else {},
             exception_file_count=exception_file_count,
             recent_completed=artifacts.recent_completed,
             recent_errored=artifacts.recent_errored,
@@ -572,9 +606,13 @@ def read_pod_local_eval_progress(job: HarborJob, bundle_root: Path) -> Progress:
     datagen must have a durable output identity.
     """
     if job.kind != "eval" or job.cluster.name not in COREWEAVE_CLUSTERS:
-        raise LookupError("pod-local Harbor aggregates are only available for CoreWeave evals")
+        raise LookupError(
+            "pod-local Harbor aggregates are only available for CoreWeave evals"
+        )
     cluster_config = COREWEAVE_CLUSTERS[job.cluster.name]
-    base = kubectl_base(cluster_config, SimpleNamespace(kubeconfig=None, kube_context=None))
+    base = kubectl_base(
+        cluster_config, SimpleNamespace(kubeconfig=None, kube_context=None)
+    )
     pod = find_pod(base, SimpleNamespace(job=job.job_id, pod=None))
     result_text = run_kubectl_command(
         [
@@ -589,12 +627,14 @@ def read_pod_local_eval_progress(job: HarborJob, bundle_root: Path) -> Progress:
             "sh",
             "-lc",
             "latest=$(ls -dt /app/trace_jobs/*/ 2>/dev/null | head -n 1); "
-            "test -n \"$latest\"; cat \"${latest}result.json\"",
+            'test -n "$latest"; cat "${latest}result.json"',
         ],
         timeout=120,
     )
     aggregate = json.loads(result_text)
-    artifact_dir = job_bundle(bundle_root, job.cluster.name, job.job_id).directory / "harbor"
+    artifact_dir = (
+        job_bundle(bundle_root, job.cluster.name, job.job_id).directory / "harbor"
+    )
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / "result.json").write_text(json.dumps(aggregate, indent=2) + "\n")
     (artifact_dir / "completion-source.txt").write_text(
@@ -620,7 +660,9 @@ def finelog_activity(local_log: Path | None) -> str:
     with local_log.open("rb") as log_file:
         log_file.seek(max(0, local_log.stat().st_size - MEAN_PARSE_TAIL_BYTES))
         recent_log = log_file.read().decode(errors="replace")
-    active_trials = {match.group("trial") for match in EVAL_LIVE_TRIAL_PATTERN.finditer(recent_log)}
+    active_trials = {
+        match.group("trial") for match in EVAL_LIVE_TRIAL_PATTERN.finditer(recent_log)
+    }
     if active_trials:
         return f"finelog ({len(active_trials)} recent trial ID{'s' if len(active_trials) != 1 else ''})"
     return "finelog (no current trial line)"
@@ -662,7 +704,12 @@ def capacity_floor_2h(job: HarborJob) -> int | None:
     ).lower()
     if "glm52" not in identity and "glm-5.2" not in identity:
         return None
-    concurrency = job.n_concurrent or GLM52_REFERENCE_CONCURRENCY
+    # The 355B MoE saturates one H100x8 node at roughly four agent slots.
+    # Higher configured Harbor concurrency adds queued work, not usable model
+    # FLOPS, so it must not inflate the health floor.
+    concurrency = min(
+        job.n_concurrent or GLM52_REFERENCE_CONCURRENCY, GLM52_REFERENCE_CONCURRENCY
+    )
     h100s = job.gpu_count or GLM52_REFERENCE_H100S
     reference = GLM52_REFERENCE_TRACES_2H * concurrency / GLM52_REFERENCE_CONCURRENCY
     expected = reference * h100s / GLM52_REFERENCE_H100S
@@ -704,7 +751,9 @@ def health_label(
     if progress.error:
         return "output-unavailable", checked_at.isoformat()
     if job.state in TERMINAL_STATES:
-        return f"terminal ({job.state})", prior.get("last_advanced_at", checked_at.isoformat())
+        return f"terminal ({job.state})", prior.get(
+            "last_advanced_at", checked_at.isoformat()
+        )
     if progress.completed is None:
         return "awaiting output", prior.get("last_advanced_at", checked_at.isoformat())
     if progress.recent_completed is not None and progress.recent_errored is not None:
@@ -733,7 +782,9 @@ def health_label(
     if prior.get("completed") is None or progress.completed > prior["completed"]:
         return ("advancing" if prior else "baseline"), checked_at.isoformat()
     last_advanced_at = prior.get("last_advanced_at", checked_at.isoformat())
-    idle_minutes = (checked_at - datetime.fromisoformat(last_advanced_at)).total_seconds() / 60
+    idle_minutes = (
+        checked_at - datetime.fromisoformat(last_advanced_at)
+    ).total_seconds() / 60
     if job.state == "running" and idle_minutes >= stalled_after_minutes:
         return f"stalled ({idle_minutes:.0f}m)", last_advanced_at
     return f"no new result ({idle_minutes:.0f}m)", last_advanced_at
@@ -748,14 +799,20 @@ def job_filter_values(job: HarborJob, *, now_ms: int) -> dict[str, str]:
         "dataset": job.dataset,
         "kind": job.kind,
         "state": job.state,
-        "submitted": datetime.fromtimestamp(job.submitted_at_ms / 1000, UTC).strftime("%m-%d %H:%M"),
+        "submitted": datetime.fromtimestamp(job.submitted_at_ms / 1000, UTC).strftime(
+            "%m-%d %H:%M"
+        ),
         "duration": format_duration(job.submitted_at_ms, now_ms=now_ms),
     }
 
 
 def notify(message: str) -> None:
     subprocess.run(
-        ["osascript", "-e", f'display notification "{message.replace(chr(34), chr(92) + chr(34))}" with title "Iris Harbor monitor"'],
+        [
+            "osascript",
+            "-e",
+            f'display notification "{message.replace(chr(34), chr(92) + chr(34))}" with title "Iris Harbor monitor"',
+        ],
         check=False,
         capture_output=True,
         text=True,
@@ -783,7 +840,13 @@ def _health_cell(health: str) -> StyledCell:
     ):
         tone = "success"
     elif health.startswith(
-        ("stalled", "failing", "output-unavailable", "terminal (failed", "terminal (worker_failed")
+        (
+            "stalled",
+            "failing",
+            "output-unavailable",
+            "terminal (failed",
+            "terminal (worker_failed",
+        )
     ):
         tone = "error"
     else:
@@ -820,7 +883,11 @@ def report_row(
     completed = "?" if progress.completed is None else f"{progress.completed:,}"
     total = "?" if progress.total is None else f"{progress.total:,}"
     try:
-        mean = f"{progress.mean_reward:.3f}" if progress.mean_reward is not None else mean_reward(local_log)
+        mean = (
+            f"{progress.mean_reward:.3f}"
+            if progress.mean_reward is not None
+            else mean_reward(local_log)
+        )
     except OSError:
         mean = "—"
     trial_errors = format_error_counts(progress)
@@ -857,7 +924,9 @@ def main() -> int:
     checked_at = datetime.now(UTC)
     trace_cutoff = checked_at - timedelta(hours=TRACE_TREND_HOURS)
     now_ms = int(checked_at.timestamp() * 1000)
-    submitted_since_ms = None if args.hours == 0 else now_ms - int(args.hours * 3_600_000)
+    submitted_since_ms = (
+        None if args.hours == 0 else now_ms - int(args.hours * 3_600_000)
+    )
 
     jobs: list[HarborJob] = []
     errors: list[MonitorError] = []
@@ -877,9 +946,15 @@ def main() -> int:
         jobs = [job for job in jobs if job.job_id == args.job]
         if not jobs:
             errors.append(
-                _monitor_error(args.job, "job selection", "No matching active Harbor job was discovered.")
+                _monitor_error(
+                    args.job,
+                    "job selection",
+                    "No matching active Harbor job was discovered.",
+                )
             )
-    jobs = filter_records(jobs, filters, lambda job: job_filter_values(job, now_ms=now_ms))
+    jobs = filter_records(
+        jobs, filters, lambda job: job_filter_values(job, now_ms=now_ms)
+    )
 
     s3_clients: dict[str, Any] = {}
     gcs_client: Any | None = None
@@ -890,7 +965,11 @@ def main() -> int:
             prior = previous.get("jobs", {}).get(job.job_id, {})
             prior_sync = prior.get("finelog_synced_at_ms")
             destination = finelog_path(job, args.bundle_root)
-            if prior_sync is None and destination.exists() and previous.get("checked_at"):
+            if (
+                prior_sync is None
+                and destination.exists()
+                and previous.get("checked_at")
+            ):
                 prior_sync = int(
                     datetime.fromisoformat(previous["checked_at"]).timestamp() * 1000
                 )
@@ -903,7 +982,11 @@ def main() -> int:
             result = (None, str(error), None)
         local_logs[key] = result
         if result[1]:
-            errors.append(_monitor_error(f"{job.cluster.name}/{job.job_id}", "Finelog sync", result[1]))
+            errors.append(
+                _monitor_error(
+                    f"{job.cluster.name}/{job.job_id}", "Finelog sync", result[1]
+                )
+            )
     ray_vllm_logs: dict[tuple[str, str], tuple[str, str | None]] = {}
     for job in jobs:
         key = (job.cluster.name, job.job_id)
@@ -913,13 +996,20 @@ def main() -> int:
             result = ("unavailable", str(error))
         ray_vllm_logs[key] = result
         if result[1]:
-            errors.append(_monitor_error(f"{job.cluster.name}/{job.job_id}", "Ray/vLLM sync", result[1]))
+            errors.append(
+                _monitor_error(
+                    f"{job.cluster.name}/{job.job_id}", "Ray/vLLM sync", result[1]
+                )
+            )
     rows: list[list[object]] = []
     current_jobs: dict[str, Any] = {}
     for job in sorted(jobs, key=lambda item: (item.cluster.name, item.job_id)):
         key = (job.cluster.name, job.job_id)
         try:
-            artifact_dir = job_bundle(args.bundle_root, job.cluster.name, job.job_id).directory / "harbor"
+            artifact_dir = (
+                job_bundle(args.bundle_root, job.cluster.name, job.job_id).directory
+                / "harbor"
+            )
             if job.jobs_dir is None or job.harbor_job_name is None:
                 if job.kind == "eval":
                     progress = read_pod_local_eval_progress(job, args.bundle_root)
@@ -927,17 +1017,25 @@ def main() -> int:
                     local_log, _log_error, _synced_at = local_logs[key]
                     progress = Progress(None, None, finelog_activity(local_log))
             elif job.jobs_dir.startswith("s3://"):
-                client = s3_clients.setdefault(job.cluster.name, coreweave_client(job.cluster))
+                client = s3_clients.setdefault(
+                    job.cluster.name, coreweave_client(job.cluster)
+                )
                 progress = read_s3_progress(job, client, artifact_dir, trace_cutoff)
             else:
                 if gcs_client is None:
                     gcs_client = gcs_storage.Client()
-                progress = read_gcs_progress(job, gcs_client, artifact_dir, trace_cutoff)
+                progress = read_gcs_progress(
+                    job, gcs_client, artifact_dir, trace_cutoff
+                )
         except Exception as error:
-            progress = Progress(None, None, "unavailable", f"progress read failed: {error}")
+            progress = Progress(
+                None, None, "unavailable", f"progress read failed: {error}"
+            )
         if progress.error:
             errors.append(
-                _monitor_error(f"{job.cluster.name}/{job.job_id}", "progress read", progress.error)
+                _monitor_error(
+                    f"{job.cluster.name}/{job.job_id}", "progress read", progress.error
+                )
             )
         if progress.recent_window_error:
             errors.append(
@@ -954,7 +1052,9 @@ def main() -> int:
         except Exception as error:
             health, last_advanced_at = "output-unavailable", checked_at.isoformat()
             errors.append(
-                _monitor_error(f"{job.cluster.name}/{job.job_id}", "health calculation", error)
+                _monitor_error(
+                    f"{job.cluster.name}/{job.job_id}", "health calculation", error
+                )
             )
         local_log, _log_error, finelog_synced_at_ms = local_logs[key]
         ray_vllm_status, ray_vllm_error = ray_vllm_logs[key]
@@ -964,7 +1064,9 @@ def main() -> int:
             rows.append(report_row(job, progress, health, local_log, ray_vllm_status))
         except Exception as error:
             errors.append(
-                _monitor_error(f"{job.cluster.name}/{job.job_id}", "row rendering", error)
+                _monitor_error(
+                    f"{job.cluster.name}/{job.job_id}", "row rendering", error
+                )
             )
             rows.append(
                 [
@@ -997,7 +1099,9 @@ def main() -> int:
             "dataset": job.dataset,
             "finelog_synced_at_ms": finelog_synced_at_ms,
             "ray_vllm_status": ray_vllm_status,
-            "bundle_directory": str(job_bundle(args.bundle_root, job.cluster.name, job.job_id).directory),
+            "bundle_directory": str(
+                job_bundle(args.bundle_root, job.cluster.name, job.job_id).directory
+            ),
         }
         try:
             write_bundle_manifest(
@@ -1024,7 +1128,9 @@ def main() -> int:
             )
         except Exception as error:
             errors.append(
-                _monitor_error(f"{job.cluster.name}/{job.job_id}", "manifest write", error)
+                _monitor_error(
+                    f"{job.cluster.name}/{job.job_id}", "manifest write", error
+                )
             )
 
     headers = [
@@ -1071,9 +1177,15 @@ def main() -> int:
     latest_path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
 
     if args.notify:
-        changed = [job_id for job_id, data in current_jobs.items() if previous.get("jobs", {}).get(job_id, {}).get("health") != data["health"]]
+        changed = [
+            job_id
+            for job_id, data in current_jobs.items()
+            if previous.get("jobs", {}).get(job_id, {}).get("health") != data["health"]
+        ]
         if changed:
-            notify(f"{len(changed)} Harbor health change(s); report saved to {report_directory / 'latest.md'}")
+            notify(
+                f"{len(changed)} Harbor health change(s); report saved to {report_directory / 'latest.md'}"
+            )
     print(f"{heading}\n\n{terminal_table}\n\n{error_summary}")
     return 0
 

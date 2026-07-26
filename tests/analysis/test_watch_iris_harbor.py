@@ -122,7 +122,7 @@ def test_report_row_exposes_two_hour_trace_delta_and_error_rate():
 def test_glm52_capacity_floor_keeps_normal_single_node_progress_healthy():
     job = _job(
         job_id="/owner/glm52-datagen-r11-14-unitsyn-large",
-        n_concurrent=4,
+        n_concurrent=8,
         gpu_count=8,
     )
     progress = watcher.Progress(

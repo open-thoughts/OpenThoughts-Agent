@@ -503,6 +503,15 @@ wheels = [
 ]
 
 [[package]]
+name = "braceexpand"
+version = "0.1.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/54/93/badd4f5ccf25209f3fef2573073da9fe4a45a3da99fca2f800f942130c0f/braceexpand-0.1.7.tar.gz", hash = "sha256:e6e539bd20eaea53547472ff94f4fb5c3d3bf9d0a89388c4b56663aba765f705", size = 7777, upload-time = "2021-05-07T13:49:07.323Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/93/e8c04e80e82391a6e51f218ca49720f64236bc824e92152a2633b74cf7ab/braceexpand-0.1.7-py2.py3-none-any.whl", hash = "sha256:91332d53de7828103dcae5773fb43bc34950b0c8160e35e0f44c4427a3b85014", size = 5923, upload-time = "2021-05-07T13:49:05.146Z" },
+]
+
+[[package]]
 name = "bs4"
 version = "0.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3481,7 +3490,7 @@ wheels = [
 [[package]]
 name = "marin-finelog"
 version = "0.2.11"
-source = { git = "https://github.com/marin-community/marin.git?subdirectory=lib%2Ffinelog&rev=33525a77c#33525a77c777d4baab7049d565b013eccd3be58f" }
+source = { git = "https://github.com/marin-community/marin.git?subdirectory=lib%2Ffinelog&rev=59f64fcd7e#59f64fcd7e49f0ba2e2beb6a1b315046e348bcf1" }
 dependencies = [
     { name = "click" },
     { name = "connect-python" },
@@ -3512,7 +3521,7 @@ wheels = [
 [[package]]
 name = "marin-iris"
 version = "0.2.0"
-source = { git = "https://github.com/marin-community/marin.git?subdirectory=lib%2Firis&rev=33525a77c#33525a77c777d4baab7049d565b013eccd3be58f" }
+source = { git = "https://github.com/marin-community/marin.git?subdirectory=lib%2Firis&rev=59f64fcd7e#59f64fcd7e49f0ba2e2beb6a1b315046e348bcf1" }
 dependencies = [
     { name = "click" },
     { name = "cloudpickle" },
@@ -3545,8 +3554,9 @@ dependencies = [
 [[package]]
 name = "marin-rigging"
 version = "0.2.0"
-source = { git = "https://github.com/marin-community/marin.git?subdirectory=lib%2Frigging&rev=33525a77c#33525a77c777d4baab7049d565b013eccd3be58f" }
+source = { git = "https://github.com/marin-community/marin.git?subdirectory=lib%2Frigging&rev=59f64fcd7e#59f64fcd7e49f0ba2e2beb6a1b315046e348bcf1" }
 dependencies = [
+    { name = "braceexpand" },
     { name = "click" },
     { name = "connect-python" },
     { name = "fsspec", version = "2026.1.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-18-openthoughts-agent-datagen-tpu' or (extra == 'extra-18-openthoughts-agent-datagen' and extra == 'extra-18-openthoughts-agent-rl') or (extra == 'extra-18-openthoughts-agent-datagen' and extra == 'extra-18-openthoughts-agent-sft-qwen35') or (extra == 'extra-18-openthoughts-agent-rl' and extra == 'extra-18-openthoughts-agent-sft-qwen35')" },
@@ -3554,6 +3564,7 @@ dependencies = [
     { name = "gcsfs", version = "2026.1.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-18-openthoughts-agent-datagen-tpu' or (extra == 'extra-18-openthoughts-agent-datagen' and extra == 'extra-18-openthoughts-agent-rl') or (extra == 'extra-18-openthoughts-agent-datagen' and extra == 'extra-18-openthoughts-agent-sft-qwen35') or (extra == 'extra-18-openthoughts-agent-rl' and extra == 'extra-18-openthoughts-agent-sft-qwen35')" },
     { name = "gcsfs", version = "2026.2.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-18-openthoughts-agent-datagen' or extra != 'extra-18-openthoughts-agent-datagen-tpu' or (extra == 'extra-18-openthoughts-agent-datagen-tpu' and extra == 'extra-18-openthoughts-agent-rl') or (extra == 'extra-18-openthoughts-agent-datagen-tpu' and extra == 'extra-18-openthoughts-agent-sft-qwen35')" },
     { name = "google-auth" },
+    { name = "prometheus-client" },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "pyyaml" },
     { name = "requests" },
@@ -5416,8 +5427,8 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.20.0,<2.0.0" },
     { name = "jinja2", marker = "extra == 'rl'" },
     { name = "liger-kernel", marker = "extra == 'sft-qwen35'", specifier = ">=0.5.0" },
-    { name = "marin-iris", marker = "extra == 'datagen-tpu'", git = "https://github.com/marin-community/marin.git?subdirectory=lib%2Firis&rev=33525a77c" },
-    { name = "marin-rigging", marker = "extra == 'datagen-tpu'", git = "https://github.com/marin-community/marin.git?subdirectory=lib%2Frigging&rev=33525a77c" },
+    { name = "marin-iris", marker = "extra == 'datagen-tpu'", git = "https://github.com/marin-community/marin.git?subdirectory=lib%2Firis&rev=59f64fcd7e" },
+    { name = "marin-rigging", marker = "extra == 'datagen-tpu'", git = "https://github.com/marin-community/marin.git?subdirectory=lib%2Frigging&rev=59f64fcd7e" },
     { name = "modal", marker = "extra == 'harbor-all'", specifier = ">=0.60.0" },
     { name = "modal", marker = "extra == 'harbor-modal'", specifier = ">=0.60.0" },
     { name = "numpy", specifier = "<=2.26.0" },
@@ -5471,7 +5482,7 @@ provides-extras = ["datagen-cpu", "datagen", "datagen-swesmith", "datagen-tpu", 
 [package.metadata.requires-dev]
 dev = [
     { name = "boto3" },
-    { name = "marin-iris", git = "https://github.com/marin-community/marin.git?subdirectory=lib%2Firis&rev=33525a77c" },
+    { name = "marin-iris", git = "https://github.com/marin-community/marin.git?subdirectory=lib%2Firis&rev=59f64fcd7e" },
     { name = "matplotlib" },
     { name = "pytest" },
 ]

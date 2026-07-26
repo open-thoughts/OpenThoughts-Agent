@@ -87,7 +87,9 @@ def test_box_table_color_preserves_plain_layout_and_can_be_stripped():
 
 def test_monitor_error_report_is_separate_stable_and_single_line(tmp_path):
     errors = [
-        MonitorError("cw-rno2a/job-a", "Finelog sync", "proxy failed\nTraceback: details"),
+        MonitorError(
+            "cw-rno2a/job-a", "Finelog sync", "proxy failed\nTraceback: details"
+        ),
         MonitorError("marin", "discovery", "controller unavailable"),
     ]
 
@@ -453,7 +455,9 @@ def test_tis_ratio_summary_uses_distinct_legacy_importance_ratio_label():
 
 
 def test_rl_report_row_replaces_traceback_signal_with_error_report_pointer(tmp_path):
-    (tmp_path / "finelog.log").write_text("Traceback (most recent call last)\nraw details\n")
+    (tmp_path / "finelog.log").write_text(
+        "Traceback (most recent call last)\nraw details\n"
+    )
     cluster = watch_coreweave_rl.Cluster("cw-rno2a", Path("/tmp/kubeconfig"), None)
     job = watch_coreweave_rl.RlJob(cluster, "/user/rl-job", "failed", 0, "")
     artifacts = watch_coreweave_rl.ArtifactResult(
@@ -506,7 +510,9 @@ def test_rl_main_degrades_unexpected_job_sync_failure_into_error_report(
             LookupError("unexpected raw sync exception")
         ),
     )
-    monkeypatch.setattr(watch_coreweave_rl, "write_job_manifest", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        watch_coreweave_rl, "write_job_manifest", lambda *_args, **_kwargs: None
+    )
 
     assert watch_coreweave_rl.main() == 0
 

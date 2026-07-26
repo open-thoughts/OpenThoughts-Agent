@@ -64,8 +64,8 @@ datagen-tpu = [
     "torchvision==0.25.0; (sys_platform == 'linux' and platform_machine == 'aarch64') or (sys_platform == 'darwin' and platform_machine == 'arm64')",
     "ray[default]>=2.50.0",
     "transformers>=5.3.0",
-    "marin-iris @ git+https://github.com/marin-community/marin.git@33525a77c#subdirectory=lib/iris",
-    "marin-rigging @ git+https://github.com/marin-community/marin.git@33525a77c#subdirectory=lib/rigging",
+    "marin-iris @ git+https://github.com/marin-community/marin.git@59f64fcd7e#subdirectory=lib/iris",
+    "marin-rigging @ git+https://github.com/marin-community/marin.git@59f64fcd7e#subdirectory=lib/rigging",
 ]
 cloud = [
     "skypilot>=0.6.1",
@@ -171,7 +171,7 @@ extra-index-url = ["https://download.pytorch.org/whl/cu128"]
 dev = [
     "boto3",
     "matplotlib",
-    "marin-iris @ git+https://github.com/marin-community/marin.git@33525a77c#subdirectory=lib/iris",
+    "marin-iris @ git+https://github.com/marin-community/marin.git@59f64fcd7e#subdirectory=lib/iris",
     "pytest",
 ]
 

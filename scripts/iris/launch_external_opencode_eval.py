@@ -53,7 +53,7 @@ DEFAULT_TASK_IMAGE = (
 DEFAULT_SERVE_READY_TIMEOUT_SECONDS = 1800.0
 # The serve watches only model-inference requests (not readiness/health probes)
 # and frees the H100x8 slice after this idle interval.  The Marin-side flag is
-# intentionally distinct from the 24-hour capability-token and wall-clock TTLs.
+# intentionally distinct from the seven-day capability-token and wall-clock TTLs.
 DEFAULT_SERVE_IDLE_TIMEOUT_HOURS = 1.0
 # OpenAI-compatible installed agents require a non-empty value, but the scoped
 # capability URL is the credential. Do not use a sidecar bearer here.

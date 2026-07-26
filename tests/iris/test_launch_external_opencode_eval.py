@@ -29,7 +29,7 @@ def test_mint_requires_one_capability_url(monkeypatch):
             parent_cluster="marin",
             parent_ingress_host="https://iris.oa.dev",
             endpoint_name="/serve/example",
-            ttl_hours=24,
+            ttl_hours=168,
         )
         == "https://iris.oa.dev/proxy/t/token/serve.example/v1"
     )
@@ -48,7 +48,7 @@ def test_mint_rejects_missing_or_ambiguous_urls(monkeypatch):
             parent_cluster="marin",
             parent_ingress_host="https://iris.oa.dev",
             endpoint_name="/serve/example",
-            ttl_hours=24,
+            ttl_hours=168,
         )
 
 
@@ -61,7 +61,7 @@ def test_submit_uses_env_for_url_and_fails_fast_when_missing():
         memory="128GB",
         disk="128GB",
         priority="batch",
-        timeout=86400,
+        timeout=604800,
         capability_token_duration_policy_json='{"token_required": true}',
         job_name="eval-v2",
         harbor_config="config.yaml",
@@ -90,7 +90,7 @@ def test_submit_uses_env_for_url_and_fails_fast_when_missing():
     assert "--n_concurrent 256" in shell
     assert "--job_name eval-v2" in shell
     assert "--experiments_dir /tmp/ot-agent-runs/eval-v2" in shell
-    assert command[command.index("--timeout") + 1] == "86400"
+    assert command[command.index("--timeout") + 1] == "604800"
     assert (
         "--harbor_extra_arg=--jobs-dir=s3://marin-us-east-02a/iris/eval-v2/trace_jobs"
         in shell
@@ -161,7 +161,7 @@ def test_mint_rejects_a_peer_ingress_url(monkeypatch):
             parent_cluster="marin",
             parent_ingress_host="https://iris.oa.dev",
             endpoint_name="/serve/example",
-            ttl_hours=24,
+            ttl_hours=168,
         )
 
 

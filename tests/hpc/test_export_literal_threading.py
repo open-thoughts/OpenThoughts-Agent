@@ -72,11 +72,14 @@ def test_inline_merger_accepts_current_harbor_extractor_keywords(tmp_path):
     trajectory.write_text('{"steps": []}')
     try:
         mkupload._install_inline_subagent_merger()
-        assert traces_utils.extract_conversations_from_trajectory(
-            trajectory,
-            {"agent_name": "terminus-2", "model_name": "m", "start_time": "now"},
-            sft_format=False,
-        ) == []
+        assert (
+            traces_utils.extract_conversations_from_trajectory(
+                trajectory,
+                {"agent_name": "terminus-2", "model_name": "m", "start_time": "now"},
+                sft_format=False,
+            )
+            == []
+        )
     finally:
         traces_utils.extract_conversations_from_trajectory = original
 

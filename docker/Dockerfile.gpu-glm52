@@ -47,6 +47,15 @@ ENV UV_HTTP_TIMEOUT=300
 ENV UV_RETRIES=5
 RUN . /opt/openthoughts/.venv/bin/activate && uv pip install -e ".[datagen,cloud,harbor-all]"
 
+# GLM jobs use --baked-venv, so pin Harbor from source here as well as in the
+# TPU runtime lock. Changing this value intentionally invalidates Kaniko's
+# cached Harbor layer for every relaunch image.
+ENV HARBOR_COMMIT=772e20f7a76bec749e634a054ff4546a3468f5cb
+RUN . /opt/openthoughts/.venv/bin/activate && \
+    uv pip install --force-reinstall --no-deps \
+      "harbor[daytona] @ git+https://github.com/marin-community/harbor.git@${HARBOR_COMMIT}" && \
+    python -c "import harbor; print('harbor', harbor.__version__, harbor.__file__)"
+
 # --- GLM-5.2: swap the pinned pypi vLLM for the marin-community fork (main). No nvcc on this
 #     runtime base, so use VLLM_USE_PRECOMPILED: setup.py fetches precompiled kernels from the
 #     pinned fork<->upstream merge-base commit (cu129 abi3 wheel; runs on the 12.8 cudnn base)

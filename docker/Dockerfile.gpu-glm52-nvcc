@@ -69,12 +69,10 @@ print('vllm', vllm.__version__); \
 assert 'GlmMoeDsaForCausalLM' in R.get_supported_archs(), 'GlmMoeDsaForCausalLM MISSING from vllm registry'; \
 print('GlmMoeDsaForCausalLM OK')"
 
-# Pin + force-reinstall harbor at the commit carrying the s3 endpoint_url->client_kwargs fix
-# (marin-community/harbor #20). harbor is a fast-moving git dep installed via the harbor-all extra
-# above; the HARBOR_COMMIT env-line busts the kaniko layer cache so the rebuild picks up the fix
-# instead of a stale cached harbor@main. --no-deps: the fix is version-robust, so we only swap
-# harbor's own code, not its (already-installed) deps.
-ENV HARBOR_COMMIT=c1ee1aad289a5455a9a373ef34115b0fb70ac402
+# GLM jobs use --baked-venv, so pin Harbor from source here as well as in the
+# TPU runtime lock. Changing this value intentionally invalidates Kaniko's
+# cached Harbor layer for every relaunch image.
+ENV HARBOR_COMMIT=772e20f7a76bec749e634a054ff4546a3468f5cb
 RUN . /opt/openthoughts/.venv/bin/activate && \
     uv pip install --force-reinstall --no-deps \
       "harbor[daytona] @ git+https://github.com/marin-community/harbor.git@${HARBOR_COMMIT}" && \

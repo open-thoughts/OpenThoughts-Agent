@@ -27,8 +27,9 @@ SINGLE_SNAPSHOT="${SINGLE_SNAPSHOT:-0}"
 if [ "$SINGLE_SNAPSHOT" = "1" ]; then SNAPSHOT_FLAG="--single-snapshot"; else SNAPSHOT_FLAG=""; fi
 
 DOCKERFILE="${DOCKERFILE:-docker/Dockerfile.gpu-glm52}"
+IMAGE_TAG_PREFIX="${IMAGE_TAG_PREFIX:-gpu-glm52}"
 CACHE_REPO=ghcr.io/open-thoughts/openthoughts-agent/cache-glm52
-DEST_PINNED=ghcr.io/open-thoughts/openthoughts-agent:gpu-glm52-${GITSHA}
+DEST_PINNED="ghcr.io/open-thoughts/openthoughts-agent:${IMAGE_TAG_PREFIX}-${GITSHA}"
 
 # --- 1. fetch crane (static binary) ---
 apt-get update -y && apt-get install -y --no-install-recommends ca-certificates curl tar

@@ -84,10 +84,9 @@ RUN . /opt/openthoughts/.venv/bin/activate && \
 # --force-reinstall makes uv rebuild harbor from the exact pinned commit
 # regardless of any cached wheel. This is why datagen resume/export-push fixes
 # reach the worker deterministically. Bump HARBOR_COMMIT for every harbor change
-# that must ship in the image. 22d75039 = harbor main HEAD (2026-07-15) — PR #6
-# squash-merged the consolidated penfever/working state into main (was 2dde0bbf on
-# the retiring penfever/working branch); harbor now lands via fresh-branch->main.
-ENV HARBOR_COMMIT=22d75039694db5c223797d5eec75b5c1ae975ac6
+# that must ship in the image. Keep this aligned with the Harbor pin in uv.lock;
+# the worker's frozen sync is the runtime authority.
+ENV HARBOR_COMMIT=772e20f7a76bec749e634a054ff4546a3468f5cb
 RUN . /opt/openthoughts/.venv/bin/activate && \
     uv pip install --no-deps --force-reinstall \
         "harbor[daytona] @ git+https://github.com/marin-community/harbor.git@${HARBOR_COMMIT}" && \

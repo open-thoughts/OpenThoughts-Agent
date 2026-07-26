@@ -241,7 +241,9 @@ def test_harbor_main_degrades_job_failures_and_writes_separate_error_report(
         ),
     )
     monkeypatch.setattr(monitor, "CLUSTERS", (cluster,))
-    monkeypatch.setattr(monitor, "discover_harbor_jobs", lambda *_args, **_kwargs: ([job], []))
+    monkeypatch.setattr(
+        monitor, "discover_harbor_jobs", lambda *_args, **_kwargs: ([job], [])
+    )
     monkeypatch.setattr(
         monitor,
         "fetch_finelog",
@@ -260,7 +262,9 @@ def test_harbor_main_degrades_job_failures_and_writes_separate_error_report(
             None, None, "unavailable", "progress raw exception"
         ),
     )
-    monkeypatch.setattr(monitor, "write_bundle_manifest", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        monitor, "write_bundle_manifest", lambda *_args, **_kwargs: None
+    )
 
     assert monitor.main() == 0
 

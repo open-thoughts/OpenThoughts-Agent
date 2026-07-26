@@ -32,11 +32,12 @@ vllm_server:
   data_parallel_size: 1
   time_limit: '11:59:00'
   max_model_len: 32768
-  # Canonical 32k operating point: keep 0.90 KV-cache utilization, but bound
-  # the decode batch at four sequences. The prior 8-sequence setting OOMed
-  # FlashMLA sparse-decode workspace after the KV cache had filled.
+  # Reserve FlashMLA sparse-decode workspace outside vLLM's KV-cache pool.
+  # At 0.90 utilization, four-sequence decoding OOMed trying to allocate up
+  # to 4.00 GiB with only 0.95--2.33 GiB free on each H100. 0.84 leaves
+  # enough non-KV headroom while retaining the four-sequence operating point.
   max_num_seqs: 4
-  gpu_memory_utilization: 0.90
+  gpu_memory_utilization: 0.84
   enable_expert_parallel: true
   enable_auto_tool_choice: true
   tool_call_parser: glm47

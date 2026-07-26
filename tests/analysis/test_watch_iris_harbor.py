@@ -70,7 +70,9 @@ def test_gcs_trial_artifacts_uses_server_filtered_blob_listings():
         def list_blobs(self, _bucket, *, match_glob, **_kwargs):
             return blobs[match_glob.rsplit("/", 1)[-1]]
 
-    artifacts = watcher.gcs_trial_artifacts(FakeClient(), "gs://bucket/jobs/run", CUTOFF)
+    artifacts = watcher.gcs_trial_artifacts(
+        FakeClient(), "gs://bucket/jobs/run", CUTOFF
+    )
 
     assert artifacts.recent_completed == 2
     assert artifacts.recent_errored == 1

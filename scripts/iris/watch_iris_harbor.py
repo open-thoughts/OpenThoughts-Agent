@@ -81,6 +81,10 @@ JOB_NAME_PATTERN = re.compile(r"--job_name(?:=|\s+)([A-Za-z0-9._-]+)")
 TASKS_INPUT_PATTERN = re.compile(r"--tasks_input_path(?:=|\s+)([^\s'\"\\]+)")
 DATASET_PATH_PATTERN = re.compile(r"--dataset_path(?:=|\s+)([^\s'\"\\]+)")
 DATASET_PATTERN = re.compile(r"--dataset(?:=|\s+)([^\s'\"\\]+)")
+MODEL_PATTERN = re.compile(r"--model(?:=|\s+)([^\s'\"\\]+)")
+CONCURRENCY_PATTERN = re.compile(r"--n_concurrent(?:=|\s+)(\d+)")
+GPU_COUNT_PATTERN = re.compile(r"--gpus(?:=|\s+)(\d+)")
+GPU_SHAPE_PATTERN = re.compile(r"--gpu(?:=|\s+)H100x(\d+)", re.IGNORECASE)
 MEAN_PATTERN = re.compile(r"\d+/\d+ Mean: ([-0-9.]+)")
 EVAL_LIVE_TRIAL_PATTERN = re.compile(
     r"\b(?P<trial>[A-Za-z0-9][A-Za-z0-9._-]*__[A-Za-z0-9]+): "
@@ -105,6 +109,9 @@ class HarborJob:
     jobs_dir: str | None
     harbor_job_name: str | None
     dataset: str
+    model: str | None = None
+    n_concurrent: int | None = None
+    gpu_count: int | None = None
 
 
 @dataclass(frozen=True)
@@ -237,6 +244,9 @@ def harbor_job_from_row(cluster: Cluster, row: dict[str, str]) -> HarborJob | No
         return None
     jobs_dir_match = JOBS_DIR_PATTERN.search(command)
     job_name_matches = JOB_NAME_PATTERN.findall(command)
+    model_match = MODEL_PATTERN.search(command)
+    concurrency_match = CONCURRENCY_PATTERN.search(command)
+    gpu_match = GPU_COUNT_PATTERN.search(command) or GPU_SHAPE_PATTERN.search(command)
     return HarborJob(
         cluster=cluster,
         job_id=row["job_id"],
@@ -246,6 +256,9 @@ def harbor_job_from_row(cluster: Cluster, row: dict[str, str]) -> HarborJob | No
         jobs_dir=jobs_dir_match.group(1).rstrip("/") if jobs_dir_match else None,
         harbor_job_name=job_name_matches[-1] if job_name_matches else None,
         dataset=dataset_from_command(command),
+        model=model_match.group(1) if model_match else None,
+        n_concurrent=int(concurrency_match.group(1)) if concurrency_match else None,
+        gpu_count=int(gpu_match.group(1)) if gpu_match else None,
     )
 
 
@@ -625,6 +638,51 @@ def format_error_counts(progress: Progress) -> str:
     return f"{sum(progress.error_counts.values())}: {detail}"
 
 
+# A single H100x8 node sustains about 55 completed GLM-5.2 Terminus traces in
+# two hours at concurrency four.  This is deliberately a capacity reference,
+# not a generic per-dataset speed limit: long-horizon tasks and smaller models
+# need their own measured profiles before the watcher applies a floor to them.
+GLM52_REFERENCE_TRACES_2H = 55
+GLM52_REFERENCE_CONCURRENCY = 4
+GLM52_REFERENCE_H100S = 8
+TOLERABLE_ERROR_RATE = 0.25
+FAILING_ERROR_RATE = 0.75
+
+
+def capacity_floor_2h(job: HarborJob) -> int | None:
+    """Return a conservative measured throughput floor for a known model/node shape.
+
+    The floor scales the GLM-5.2 single-H100x8 reference by the requested
+    Harbor concurrency and available H100 FLOPS.  Returning ``None`` keeps
+    unfamiliar models on the existing error-only classification rather than
+    inventing a misleading universal throughput target.
+    """
+    identity = " ".join(
+        value for value in (job.job_id, job.harbor_job_name, job.model) if value
+    ).lower()
+    if "glm52" not in identity and "glm-5.2" not in identity:
+        return None
+    concurrency = job.n_concurrent or GLM52_REFERENCE_CONCURRENCY
+    h100s = job.gpu_count or GLM52_REFERENCE_H100S
+    reference = GLM52_REFERENCE_TRACES_2H * concurrency / GLM52_REFERENCE_CONCURRENCY
+    expected = reference * h100s / GLM52_REFERENCE_H100S
+    # Use 75% of observed steady-state capacity: it catches a real slowdown
+    # without incorrectly flagging normal task-length variance as degraded.
+    return max(1, round(expected * 0.75))
+
+
+def recent_window_is_healthy(job: HarborJob, progress: Progress) -> bool:
+    if progress.recent_completed is None or progress.recent_errored is None:
+        return False
+    if progress.recent_completed == 0:
+        return False
+    floor = capacity_floor_2h(job)
+    if floor is None:
+        return False
+    error_rate = progress.recent_errored / progress.recent_completed
+    return error_rate <= TOLERABLE_ERROR_RATE and progress.recent_completed >= floor
+
+
 def load_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -654,10 +712,15 @@ def health_label(
         recent_errored = progress.recent_errored
         if recent_completed:
             detail = f"+{recent_completed}/2h; {recent_errored} errors"
+            floor = capacity_floor_2h(job)
+            error_rate = recent_errored / recent_completed
+            if error_rate >= FAILING_ERROR_RATE:
+                return f"failing ({detail})", checked_at.isoformat()
             if recent_errored == 0:
                 return f"advancing ({detail})", checked_at.isoformat()
-            if recent_errored >= recent_completed:
-                return f"failing ({detail})", checked_at.isoformat()
+            if recent_window_is_healthy(job, progress):
+                floor_detail = f"; FLOPS floor {floor}/2h" if floor is not None else ""
+                return f"healthy ({detail}{floor_detail})", checked_at.isoformat()
             return f"degraded ({detail})", checked_at.isoformat()
         job_age = checked_at - datetime.fromtimestamp(job.submitted_at_ms / 1000, UTC)
         if job.state == "running" and job_age >= timedelta(hours=TRACE_TREND_HOURS):
@@ -715,7 +778,9 @@ def _state_cell(state: str) -> StyledCell:
 
 
 def _health_cell(health: str) -> StyledCell:
-    if health in {"advancing", "baseline"} or health.startswith("advancing ("):
+    if health in {"advancing", "baseline", "healthy"} or health.startswith(
+        ("advancing (", "healthy (")
+    ):
         tone = "success"
     elif health.startswith(
         ("stalled", "failing", "output-unavailable", "terminal (failed", "terminal (worker_failed")
@@ -726,7 +791,7 @@ def _health_cell(health: str) -> StyledCell:
     return StyledCell(health, tone)
 
 
-def recent_trend_cell(progress: Progress) -> StyledCell:
+def recent_trend_cell(job: HarborJob, progress: Progress) -> StyledCell:
     if progress.recent_completed is None or progress.recent_errored is None:
         return StyledCell("unavailable", "muted")
     completed = progress.recent_completed
@@ -735,9 +800,9 @@ def recent_trend_cell(progress: Progress) -> StyledCell:
         return StyledCell("+0 traces; 0 errors", "warning")
     rate = errored / completed
     text = f"+{completed:,} traces; {errored:,} errors ({rate:.0%})"
-    if errored == 0:
+    if errored == 0 or recent_window_is_healthy(job, progress):
         tone = "success"
-    elif errored >= completed:
+    elif errored / completed >= FAILING_ERROR_RATE:
         tone = "error"
     else:
         tone = "warning"
@@ -768,7 +833,7 @@ def report_row(
         f"{completed}/{total}",
         mean,
         StyledCell(trial_errors, "warning" if trial_errors != "—" else "muted"),
-        recent_trend_cell(progress),
+        recent_trend_cell(job, progress),
         StyledCell(evidence, "warning" if "unavailable" in evidence else "muted"),
         _health_cell(health),
     ]

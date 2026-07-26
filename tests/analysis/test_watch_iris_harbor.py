@@ -11,16 +11,25 @@ NOW = datetime(2026, 7, 26, 16, tzinfo=UTC)
 CUTOFF = NOW - timedelta(hours=watcher.TRACE_TREND_HOURS)
 
 
-def _job(*, state: str = "running", age_hours: int = 4) -> watcher.HarborJob:
+def _job(
+    *,
+    state: str = "running",
+    age_hours: int = 4,
+    job_id: str = "/owner/job",
+    n_concurrent: int | None = None,
+    gpu_count: int | None = None,
+) -> watcher.HarborJob:
     return watcher.HarborJob(
         cluster=watcher.Cluster("test", Path("/tmp/iris"), {}),
-        job_id="/owner/job",
+        job_id=job_id,
         state=state,
         submitted_at_ms=int((NOW - timedelta(hours=age_hours)).timestamp() * 1000),
         kind="datagen",
         jobs_dir="s3://bucket/jobs",
         harbor_job_name="run",
         dataset="dataset",
+        n_concurrent=n_concurrent,
+        gpu_count=gpu_count,
     )
 
 
@@ -108,3 +117,18 @@ def test_report_row_exposes_two_hour_trace_delta_and_error_rate():
 
     assert len(row) == 10
     assert row[7].value == "+4 traces; 1 errors (25%)"
+
+
+def test_glm52_capacity_floor_keeps_normal_single_node_progress_healthy():
+    job = _job(
+        job_id="/owner/glm52-datagen-r11-14-unitsyn-large",
+        n_concurrent=4,
+        gpu_count=8,
+    )
+    progress = watcher.Progress(100, 200, "test", recent_completed=55, recent_errored=10)
+
+    assert watcher.capacity_floor_2h(job) == 41
+    assert watcher.health_label(job, progress, {}, NOW, 120)[0] == (
+        "healthy (+55/2h; 10 errors; FLOPS floor 41/2h)"
+    )
+    assert watcher.recent_trend_cell(job, progress).tone == "success"

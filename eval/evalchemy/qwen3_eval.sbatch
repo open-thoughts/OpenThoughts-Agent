@@ -5,7 +5,7 @@
 #SBATCH --gres=gpu:4
 #SBATCH --time=23:59:00
 #SBATCH --job-name=qwen3-baseline
-#SBATCH --output=/leonardo_work/AIFAC_5C0_290/bfeuer00/experiments/delphi-eval/qwen3-baseline/%x-%j.log
+#SBATCH --output=/leonardo_work/AIFAC_5C0_290/%u/experiments/delphi-eval/qwen3-baseline/%x-%j.log
 #
 # Qwen3 dense POST-TRAINED baseline — ONE downstream-eval job (MATH500 + gsm8k + AIME24).
 # SAME fixed protocol as delphi_eval.sbatch (EVAL_CONVENTION.md §2.2-§2.5, §3.3), with the Qwen3
@@ -33,22 +33,32 @@
 
 set -euo pipefail
 
+# ----- $USER-scoped paths (multi-operator) -----------------------------------------------------
+# Resolves to the original bfeuer00 strings byte-identically when USER=bfeuer00. Read-only shared
+# runtime (conda, evalchemy-marin clone) falls back to the bfeuer00 copy; WRITE paths are per-user
+# (bfeuer00's dirs are mode 755, so a second operator cannot write them).
+_OTA_WORK="/leonardo_work/AIFAC_5C0_290/${USER:-$(id -un)}"
+_OTA_SHARED="/leonardo_work/AIFAC_5C0_290/bfeuer00"
+_pick() { [ -e "$1" ] && echo "$1" || echo "$2"; }
+_OTA_CONDA_ROOT="${OTAGENT_CONDA_ROOT:-$(_pick "${_OTA_WORK}/miniforge3" "${_OTA_SHARED}/miniforge3")}"
+
+
 # ----- env: conda env `evalchemy-marin` (lm-eval v0.4.12 standard; cutover 2026-06-15 from
 #        `evalchemy`=0.4.9.1 after MATH500 validation 9.6% vs 10.2%, grader byte-identical) -----
-source /leonardo_work/AIFAC_5C0_290/bfeuer00/miniforge3/etc/profile.d/conda.sh
+source "${_OTA_CONDA_ROOT}/etc/profile.d/conda.sh"
 conda activate evalchemy-marin
-cd /leonardo_work/AIFAC_5C0_290/bfeuer00/code/evalchemy-marin
+cd "${EVALCHEMY_DIR:-$(_pick "${_OTA_WORK}/code/evalchemy-marin" "${_OTA_SHARED}/code/evalchemy-marin")}"
 
 source ~/secrets.env                                            # HF_TOKEN etc. (BEFORE HOME override)
-export HF_HOME=/leonardo_work/AIFAC_5C0_290/bfeuer00/data/hub
-export HF_HUB_CACHE=/leonardo_work/AIFAC_5C0_290/bfeuer00/data/hub
+export HF_HOME="${HF_HOME:-${_OTA_WORK}/data/hub}"
+export HF_HUB_CACHE="${HF_HUB_CACHE:-${_OTA_WORK}/data/hub}"
 export HF_HUB_OFFLINE=1            # repos pre-cached on login node; no compute-node internet
 export HF_ALLOW_CODE_EVAL=1       # required for gsm8k execution grading (evals.py:64)
 export TOKENIZERS_PARALLELISM=false
 export HF_HUB_ENABLE_HF_TRANSFER=1  # only matters for any pre-download; harmless here
 
 # ----- writable caches (Leonardo: $HOME is READ-ONLY from compute AND login nodes) (§3.0 amendment) -----
-CACHE_ROOT=/leonardo_work/AIFAC_5C0_290/bfeuer00/experiments/delphi-eval/.cache
+CACHE_ROOT="${CACHE_ROOT:-${_OTA_WORK}/experiments/delphi-eval/.cache}"
 mkdir -p "$CACHE_ROOT"/{flashinfer,triton,inductor,vllm,xdg,hf_local}
 export HOME="$CACHE_ROOT/hf_local"            # flashinfer derives FLASHINFER_WORKSPACE_DIR from $HOME/.cache
 export XDG_CACHE_HOME="$CACHE_ROOT/xdg"
@@ -66,7 +76,7 @@ TP_SIZE="${3:-4}"
 # max_model_len=32768 OOMs warming up 256 dummy sampler requests (job 46868341) — pass a smaller
 # value (e.g. 32) for big models. 4th positional arg keeps the default for the small cells unchanged.
 MAX_NUM_SEQS="${4:-256}"
-OUT="/leonardo_work/AIFAC_5C0_290/bfeuer00/experiments/delphi-eval/qwen3-baseline/${RUN_NAME}"
+OUT="${OUT_ROOT:-${_OTA_WORK}/experiments/delphi-eval/qwen3-baseline}/${RUN_NAME}"
 
 # ----- model-specific naming + jobid->model map -----
 mkdir -p "${OUT}"

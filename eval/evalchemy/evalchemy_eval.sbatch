@@ -5,7 +5,7 @@
 #SBATCH --gres=gpu:4
 #SBATCH --time=08:00:00
 #SBATCH --job-name=evalchemy-eval
-#SBATCH --output=/leonardo_work/AIFAC_5C0_290/bfeuer00/experiments/delphi-eval/%x-%j.log
+#SBATCH --output=/leonardo_work/AIFAC_5C0_290/%u/experiments/delphi-eval/%x-%j.log
 #
 # ==============================================================================
 # evalchemy_eval.sbatch — GENERIC evalchemy downstream-eval runner (MATH500 + gsm8k + AIME24)
@@ -42,19 +42,32 @@
 
 set -euo pipefail
 
+# ----- $USER-scoped paths (multi-operator) -----------------------------------------------------
+# Every path below resolves to the ORIGINAL bfeuer00 string byte-identically when USER=bfeuer00,
+# so this is a no-op for the original operator. Read-only shared runtime (conda env, the canonical
+# evalchemy-marin clone, nltk data) falls back to the bfeuer00 copy when the submitter has none —
+# a second operator does NOT need to duplicate a 20 GB env to run an eval. WRITE paths
+# (OUT_ROOT, CACHE_ROOT, HF_HOME) are always per-user: bfeuer00's dirs are mode 755.
+_OTA_WORK="/leonardo_work/AIFAC_5C0_290/${USER:-$(id -un)}"
+_OTA_SHARED="/leonardo_work/AIFAC_5C0_290/bfeuer00"
+_pick() { [ -e "$1" ] && echo "$1" || echo "$2"; }   # own copy if present, else shared
+
 # ----- env: conda env `evalchemy-marin` (lm-eval; the env every recent SCORES.md row used) -----
-source /leonardo_work/AIFAC_5C0_290/bfeuer00/miniforge3/etc/profile.d/conda.sh
+_OTA_CONDA_ROOT="${OTAGENT_CONDA_ROOT:-$(_pick "${_OTA_WORK}/miniforge3" "${_OTA_SHARED}/miniforge3")}"
+source "${_OTA_CONDA_ROOT}/etc/profile.d/conda.sh"
 conda activate evalchemy-marin
 # Must cd into the evalchemy-MARIN clone (matches the env's editable install). evalchemy-marin's
 # eval/eval.py imports parse_eval_args/setup_parser from its eval/lm_eval_compat.py shim — unlike
 # the now-removed `code/evalchemy` clone, whose eval/eval.py did `from lm_eval.__main__ import
 # parse_eval_args, setup_parser` (both dropped in lm-eval 0.4.12 -> ImportError at startup).
 # (`code/evalchemy` + its `evalchemy-resume-test` worktree were deleted 2026-06-18; this is the sole clone.)
-cd /leonardo_work/AIFAC_5C0_290/bfeuer00/code/evalchemy-marin
+cd "${EVALCHEMY_DIR:-$(_pick "${_OTA_WORK}/code/evalchemy-marin" "${_OTA_SHARED}/code/evalchemy-marin")}"
 
 source ~/secrets.env                                            # HF_TOKEN etc. (BEFORE HOME override)
-export HF_HOME=/leonardo_work/AIFAC_5C0_290/bfeuer00/data/hub
-export HF_HUB_CACHE=/leonardo_work/AIFAC_5C0_290/bfeuer00/data/hub
+# HF cache is per-user and WRITABLE (model weights may be symlinked in from another operator's cache;
+# HF's python resolver follows symlinks — datasets must be real-copied, see ops/leonardo).
+export HF_HOME="${HF_HOME:-${_OTA_WORK}/data/hub}"
+export HF_HUB_CACHE="${HF_HUB_CACHE:-${_OTA_WORK}/data/hub}"
 export HF_HUB_OFFLINE=1            # repos pre-cached on login node; no compute-node internet
 export HF_ALLOW_CODE_EVAL=1       # required for gsm8k execution grading
 export TOKENIZERS_PARALLELISM=false
@@ -64,12 +77,12 @@ export HF_HUB_ENABLE_HF_TRANSFER=1  # only matters for any pre-download; harmles
 # point NLTK_DATA at the pre-downloaded copy under $WORK (populated once on a login node:
 #   python -c 'import nltk; d="$WORK/data/nltk_data"; nltk.download("punkt_tab",download_dir=d); nltk.download("punkt",download_dir=d)'
 # ). Harmless for the math tasks (they don't import nltk).
-export NLTK_DATA="${NLTK_DATA:-/leonardo_work/AIFAC_5C0_290/bfeuer00/data/nltk_data}"
+export NLTK_DATA="${NLTK_DATA:-$(_pick "${_OTA_WORK}/data/nltk_data" "${_OTA_SHARED}/data/nltk_data")}"
 
 # ----- writable caches (Leonardo: $HOME is READ-ONLY from compute AND login nodes) -----
 # vLLM's flashinfer/triton/inductor JIT caches default under $HOME/.cache and hard-crash every worker
 # on a read-only HOME. Redirect HOME + every cache to the writable work filesystem.
-CACHE_ROOT=/leonardo_work/AIFAC_5C0_290/bfeuer00/experiments/delphi-eval/.cache
+CACHE_ROOT="${CACHE_ROOT:-${_OTA_WORK}/experiments/delphi-eval/.cache}"   # must be WRITABLE
 mkdir -p "$CACHE_ROOT"/{flashinfer,triton,inductor,vllm,xdg,hf_local}
 export HOME="$CACHE_ROOT/hf_local"            # flashinfer derives FLASHINFER_WORKSPACE_DIR from $HOME/.cache
 export XDG_CACHE_HOME="$CACHE_ROOT/xdg"
@@ -83,7 +96,7 @@ mkdir -p "$HOME/.cache/flashinfer"
 MODEL_REPO="${1:?usage: sbatch --job-name=<PREFIX>-<RUN_NAME> evalchemy_eval.sbatch <MODEL_REPO> <RUN_NAME> [STAGE]}"
 RUN_NAME="${2:?usage: sbatch --job-name=<PREFIX>-<RUN_NAME> evalchemy_eval.sbatch <MODEL_REPO> <RUN_NAME> [STAGE]}"
 STAGE="${3:-sft}"
-OUT_ROOT="${OUT_ROOT:-/leonardo_work/AIFAC_5C0_290/bfeuer00/experiments/delphi-eval}"
+OUT_ROOT="${OUT_ROOT:-${_OTA_WORK}/experiments/delphi-eval}"
 JOB_PREFIX="${JOB_PREFIX:-evalchemy-eval}"
 MAX_GEN_TOKS="${MAX_GEN_TOKS:-30720}"
 GPUS_PER_NODE="${GPUS_PER_NODE:-4}"

@@ -5,7 +5,7 @@
 #SBATCH --gres=gpu:4
 #SBATCH --time=08:00:00
 #SBATCH --job-name=delphi-eval
-#SBATCH --output=/leonardo_work/AIFAC_5C0_290/bfeuer00/experiments/delphi-eval/%x-%j.log
+#SBATCH --output=/leonardo_work/AIFAC_5C0_290/%u/experiments/delphi-eval/%x-%j.log
 #
 # ==============================================================================
 # delphi_eval.sbatch — THIN delphi wrapper around evalchemy_eval.sbatch (#6279).
@@ -33,7 +33,11 @@ set -euo pipefail
 # so BASH_SOURCE[0]/dirname resolves to the spool dir (where evalchemy_eval.sbatch does NOT exist) —
 # that produced a 4-sec ExitCode-127 "No such file or directory". Pin to the repo clone instead,
 # falling back to the BASH_SOURCE dir only for interactive/non-SLURM invocation.
-REPO_EVAL_DIR="/leonardo_work/AIFAC_5C0_290/bfeuer00/code/OpenThoughts-Agent/eval/evalchemy"
+# $USER-scoped so a second operator runs THEIR checkout, not another user's. Resolves to the
+# original bfeuer00 paths byte-identically when USER=bfeuer00. Override with OTAGENT_REPO_DIR.
+_OTA_WORK="/leonardo_work/AIFAC_5C0_290/${USER:-$(id -un)}"
+_OTA_REPO="${OTAGENT_REPO_DIR:-${_OTA_WORK}/code/OpenThoughts-Agent}"
+REPO_EVAL_DIR="${_OTA_REPO}/eval/evalchemy"
 if [[ -f "${REPO_EVAL_DIR}/evalchemy_eval.sbatch" ]]; then
   SELF_DIR="${REPO_EVAL_DIR}"
 else
@@ -41,7 +45,7 @@ else
 fi
 
 # Delphi-specific defaults (overridable from the environment).
-export CHAT_TEMPLATE_OVERRIDE="${CHAT_TEMPLATE_OVERRIDE:-/leonardo_work/AIFAC_5C0_290/bfeuer00/code/OpenThoughts-Agent/chat_templates/delphi_v0.jinja2}"
+export CHAT_TEMPLATE_OVERRIDE="${CHAT_TEMPLATE_OVERRIDE:-${_OTA_REPO}/chat_templates/delphi_v0.jinja2}"
 export MAX_MODEL_LEN="${MAX_MODEL_LEN:-4096}"
 export MAX_GEN_TOKS="${MAX_GEN_TOKS:-3584}"
 export JOB_PREFIX="${JOB_PREFIX:-delphi-eval}"

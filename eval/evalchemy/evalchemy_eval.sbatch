@@ -50,10 +50,14 @@ set -euo pipefail
 # (OUT_ROOT, CACHE_ROOT, HF_HOME) are always per-user: bfeuer00's dirs are mode 755.
 _OTA_WORK="/leonardo_work/AIFAC_5C0_290/${USER:-$(id -un)}"
 _OTA_SHARED="/leonardo_work/AIFAC_5C0_290/bfeuer00"
-_pick() { [ -e "$1" ] && echo "$1" || echo "$2"; }   # own copy if present, else shared
+_pick() { [ -e "$1" ] && echo "$1" || echo "$2"; }
+# Conda: pick the root that actually CONTAINS the env. Testing only for a miniforge3 dir is not
+# enough -- an operator can have a partial install (e.g. otagent only) and would then fail with
+# "EnvironmentNameNotFound: evalchemy-marin" instead of falling back to the shared root.
+_pick_conda() { [ -d "${_OTA_WORK}/miniforge3/envs/$1" ] && echo "${_OTA_WORK}/miniforge3" || echo "${_OTA_SHARED}/miniforge3"; }   # own copy if present, else shared
 
 # ----- env: conda env `evalchemy-marin` (lm-eval; the env every recent SCORES.md row used) -----
-_OTA_CONDA_ROOT="${OTAGENT_CONDA_ROOT:-$(_pick "${_OTA_WORK}/miniforge3" "${_OTA_SHARED}/miniforge3")}"
+_OTA_CONDA_ROOT="${OTAGENT_CONDA_ROOT:-$(_pick_conda evalchemy-marin)}"
 source "${_OTA_CONDA_ROOT}/etc/profile.d/conda.sh"
 conda activate evalchemy-marin
 # Must cd into the evalchemy-MARIN clone (matches the env's editable install). evalchemy-marin's

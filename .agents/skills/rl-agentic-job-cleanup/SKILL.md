@@ -90,7 +90,10 @@ trufflehog filesystem $EXPERIMENTS_DIR/<job_name>/<job_name> --no-update        
 # fallback:
 grep -rIE '(sk-[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|hf_[a-zA-Z0-9]{34}|eyJ[a-zA-Z0-9._-]+)' $UPLOAD_DIR
 ```
-Remove/redact anything found before proceeding.
+Redact before proceeding (the wrapper emits a JSON finding record even when clean):
+```bash
+python -m scripts.harbor.secret_redaction "$UPLOAD_DIR"
+```
 
 ## 6. Upload to HuggingFace — `laion/<job_name>-<step>-<size>`
 Include the global step and base-model size suffix (`-20-32B`, `-30-8B`).
@@ -158,6 +161,16 @@ Produces `metrics.csv`, `vllm_metrics.csv`, `trial_stats.csv`, `report.md`, `rew
 **WARNING:** never use `huggingface_hub.upload_folder()` without `delete_patterns=[]` — it deletes files absent
 locally and clobbers the weights. `hf upload` is additive (safe).
 
-## 10. Clean up the experiments dir
+## 10. Verify the published model and write the completion record
+The model is complete only when its remote repo has weights, `README.md` with **Training Traces**, and
+redacted `training_logs/`. Record every artifact as **present**, **absent**, or **not applicable** in the
+cleanup handoff; an absent required artifact is not a completed cleanup.
+```bash
+hf api repo-info laion/<job_name>-<step>-<size> --repo-type model --expand siblings \
+ | python -c 'import json,sys; files=[x["rfilename"] for x in json.load(sys.stdin)["siblings"]]; print({"weights": any(x.endswith(".safetensors") for x in files), "readme": "README.md" in files, "training_logs": any(x.startswith("training_logs/") for x in files)})'
+```
+Fetch `README.md` and verify it contains `## Training Traces` and the exact `penfever/<job_name>` URL.
+
+## 11. Clean up the experiments dir
 After all prior steps succeed, `rm -rf` the local job dir. Detach a large GPFS removal with `nohup` or `tmux`;
 do not `du` or `find` it first.

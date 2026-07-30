@@ -89,10 +89,11 @@ def _install_safe_episode_guard() -> None:
 
 
 def _install_dataset_sanitizer() -> None:
-    """Patch Harbor's rows_to_dataset to sanitize surrogate characters before HF conversion."""
+    """Patch Harbor rows before HF conversion to redact credentials and sanitize surrogates."""
     try:
         from harbor.utils import traces_utils  # type: ignore
         from scripts.harbor.run_and_export_traces import _strip_surrogates  # type: ignore
+        from scripts.harbor.secret_redaction import redact_record
     except Exception:
         return
 
@@ -106,7 +107,10 @@ def _install_dataset_sanitizer() -> None:
         cleaned_rows = []
         for row in rows:
             if isinstance(row, dict):
-                cleaned_rows.append({k: _strip_surrogates(v) for k, v in row.items()})
+                redacted, findings = redact_record(row)
+                if findings:
+                    print(f"[trace-export] Redacted {len(findings)} credential-shaped values.")
+                cleaned_rows.append({k: _strip_surrogates(v) for k, v in redacted.items()})
             else:
                 cleaned_rows.append(row)
         return original_rows_to_dataset(cleaned_rows, *args, **kwargs)

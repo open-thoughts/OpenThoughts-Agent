@@ -90,6 +90,7 @@ class HarborJob:
     cluster: Cluster
     job_id: str
     state: str
+    task_state: str | None
     submitted_at_ms: int
     kind: str
     jobs_dir: str | None
@@ -200,10 +201,16 @@ def harbor_job_from_row(cluster: Cluster, row: dict[str, str]) -> HarborJob | No
         return None
     jobs_dir_match = JOBS_DIR_PATTERN.search(command)
     job_name_matches = JOB_NAME_PATTERN.findall(command)
+    task_state_value = row.get("task_state")
     return HarborJob(
         cluster=cluster,
         job_id=row["job_id"],
         state=STATE_NAMES.get(int(row["state"]), f"state-{row['state']}"),
+        task_state=(
+            STATE_NAMES.get(int(task_state_value), f"state-{task_state_value}")
+            if task_state_value
+            else None
+        ),
         submitted_at_ms=int(row["submitted_at_ms"]),
         kind=kind,
         jobs_dir=jobs_dir_match.group(1).rstrip("/") if jobs_dir_match else None,
@@ -214,7 +221,12 @@ def harbor_job_from_row(cluster: Cluster, row: dict[str, str]) -> HarborJob | No
 
 def discover_harbor_jobs(cluster: Cluster) -> tuple[list[HarborJob], list[str]]:
     sql = (
-        "SELECT j.job_id, j.state, j.submitted_at_ms, jc.entrypoint_json "
+        "SELECT j.job_id, j.state, j.submitted_at_ms, jc.entrypoint_json, "
+        "CASE "
+        "WHEN EXISTS (SELECT 1 FROM tasks t WHERE t.job_id=j.job_id AND t.state=3) THEN 3 "
+        "WHEN EXISTS (SELECT 1 FROM tasks t WHERE t.job_id=j.job_id AND t.state=2) THEN 2 "
+        "WHEN EXISTS (SELECT 1 FROM tasks t WHERE t.job_id=j.job_id AND t.state=1) THEN 1 "
+        "ELSE NULL END AS task_state "
         "FROM jobs j JOIN job_config jc ON j.job_id=jc.job_id "
         f"WHERE j.state IN (1,2,3) AND j.job_id LIKE '/{USER}/%' "
         "ORDER BY j.submitted_at_ms DESC"
@@ -231,6 +243,15 @@ def discover_harbor_jobs(cluster: Cluster) -> tuple[list[HarborJob], list[str]]:
         if job is not None:
             jobs.append(job)
     return jobs, errors
+
+
+def display_state(job: HarborJob) -> str:
+    """Return the worker-visible state instead of only the root job state."""
+    if job.state in {"pending", "building"}:
+        return "awaiting placement"
+    if job.state == "running" and job.task_state in {"pending", "building"}:
+        return "awaiting placement"
+    return job.state
 
 
 def finelog_path(job: HarborJob, bundle_root: Path) -> Path:
@@ -275,6 +296,8 @@ def fetch_ray_vllm_logs(job: HarborJob, bundle_root: Path) -> tuple[str, str | N
     # worker pod as an error signal.
     if job.kind == "eval":
         return "not applicable (eval)", None
+    if display_state(job) == "awaiting placement":
+        return "awaiting placement", None
     if job.cluster.name not in COREWEAVE_CLUSTERS:
         return "not applicable", None
     cluster_config = COREWEAVE_CLUSTERS[job.cluster.name]
@@ -528,6 +551,8 @@ def health_label(
     stalled_after_minutes: int,
 ) -> tuple[str, str]:
     prior = previous.get("jobs", {}).get(job.job_id, {})
+    if display_state(job) == "awaiting placement":
+        return "awaiting placement", prior.get("last_advanced_at", checked_at.isoformat())
     if progress.error:
         return "output-unavailable", checked_at.isoformat()
     if job.state in TERMINAL_STATES:
@@ -614,6 +639,7 @@ def main() -> int:
     rows: list[list[str]] = []
     current_jobs: dict[str, Any] = {}
     for job in sorted(jobs, key=lambda item: (item.cluster.name, item.job_id)):
+        state = display_state(job)
         try:
             artifact_dir = job_bundle(args.bundle_root, job.cluster.name, job.job_id).directory / "harbor"
             if job.jobs_dir is None or job.harbor_job_name is None:
@@ -639,13 +665,16 @@ def main() -> int:
         ray_vllm_status, ray_vllm_error = ray_vllm_logs[job.job_id]
         mean = f"{progress.mean_reward:.3f}" if progress.mean_reward is not None else mean_reward(local_log)
         error_counts = format_error_counts(progress)
-        trend = health if progress.error is None else f"{health}: {progress.error[-100:]}"
+        trend = health if progress.error is None or state == "awaiting placement" else f"{health}: {progress.error[-100:]}"
         log_status = "synced" if local_log is not None else f"error: {log_error[-70:] if log_error else 'unknown'}"
         ray_vllm_status = ray_vllm_status if ray_vllm_error is None else f"error: {ray_vllm_error[-70:]}"
-        rows.append([job.cluster.name, job.kind, job.job_id.rsplit("/", 1)[-1], job.dataset, job.state, f"{completed}/{total}", remaining, progress.completion_source, mean, error_counts, log_status, ray_vllm_status, trend])
+        rows.append([job.cluster.name, job.kind, job.job_id.rsplit("/", 1)[-1], job.dataset, state, f"{completed}/{total}", remaining, progress.completion_source, mean, error_counts, log_status, ray_vllm_status, trend])
         current_jobs[job.job_id] = {
             "cluster": job.cluster.name,
             "job_kind": job.kind,
+            "state": state,
+            "controller_state": job.state,
+            "task_state": job.task_state,
             "completed": progress.completed,
             "total": progress.total,
             "mean_reward": progress.mean_reward,
@@ -668,7 +697,9 @@ def main() -> int:
                 "dataset": job.dataset,
                 "harbor_job_name": job.harbor_job_name,
                 "jobs_dir": job.jobs_dir,
-                "state": job.state,
+                "state": state,
+                "controller_state": job.state,
+                "task_state": job.task_state,
                 "submitted_at_ms": job.submitted_at_ms,
                 "last_synced_at": checked_at.isoformat(),
                 "progress": {

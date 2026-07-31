@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from datetime import UTC, datetime
 
 from scripts.iris import watch_iris_harbor as monitor
 from scripts.iris import iris_ops
@@ -138,6 +139,58 @@ def test_harbor_job_from_row_classifies_eval_without_hiding_legacy_log_only_job(
         None,
         None,
     )
+
+
+def _queued_harbor_job():
+    cluster = monitor.Cluster("cw-rno2a", monitor.Path("/fake/iris"), {})
+    job = monitor.harbor_job_from_row(
+        cluster,
+        {
+            "job_id": "/benjaminfeuer/tracegen-queued",
+            "state": "3",
+            "task_state": "2",
+            "submitted_at_ms": "1",
+            "entrypoint_json": (
+                "python run_tracegen.py --tasks_input_path DCAgent/tasks "
+                "--job_name tracegen-queued"
+            ),
+        },
+    )
+    assert job is not None
+    return job
+
+
+def test_harbor_job_uses_task_state_while_root_job_waits_for_placement():
+    job = _queued_harbor_job()
+
+    assert job.state == "running"
+    assert job.task_state == "building"
+    assert monitor.display_state(job) == "awaiting placement"
+
+
+def test_queued_harbor_job_does_not_require_a_running_worker_pod(monkeypatch, tmp_path):
+    job = _queued_harbor_job()
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("queued jobs must not be probed for running worker logs")
+
+    monkeypatch.setattr(monitor, "find_pod", fail_if_called)
+
+    assert monitor.fetch_ray_vllm_logs(job, tmp_path) == ("awaiting placement", None)
+
+
+def test_queued_harbor_job_health_is_not_an_output_failure():
+    job = _queued_harbor_job()
+
+    health, _ = monitor.health_label(
+        job,
+        monitor.Progress(None, None, "unavailable", error="no output yet"),
+        {},
+        datetime(2026, 7, 31, tzinfo=UTC),
+        120,
+    )
+
+    assert health == "awaiting placement"
 
 
 def test_finelog_activity_reports_visible_eval_trials(tmp_path):

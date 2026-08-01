@@ -6,9 +6,10 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Sequence
+from typing import Mapping, Sequence
 
 
+CHECKPOINTS_SUBDIR = "checkpoints"
 LATEST_CHECKPOINT_FILE = "latest_ckpt_global_step.txt"
 GLOBAL_STEP_PATTERN = re.compile(r"global_step_(\d+)$")
 
@@ -67,7 +68,9 @@ class RLRunPaths:
         )
 
 
-def _override_values(overrides: Sequence[str]) -> dict[str, str]:
+def hydra_override_values(overrides: Sequence[str]) -> dict[str, str]:
+    """Return Hydra override values using its last-value-wins convention."""
+
     values: dict[str, str] = {}
     for override in overrides:
         key, separator, value = override.partition("=")
@@ -78,6 +81,27 @@ def _override_values(overrides: Sequence[str]) -> dict[str, str]:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         values[key] = value
+    return values
+
+
+def _configured_path_values(
+    trainer_config: Mapping[str, object],
+    terminal_bench_config: Mapping[str, object],
+) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for config_key, hydra_key in (
+        ("ckpt_path", "trainer.ckpt_path"),
+        ("export_path", "trainer.export_path"),
+        ("resume_mode", "trainer.resume_mode"),
+        ("resume_path", "trainer.resume_path"),
+    ):
+        value = trainer_config.get(config_key)
+        if value is not None:
+            values[hydra_key] = str(value)
+
+    trials_dir = terminal_bench_config.get("trials_dir")
+    if trials_dir is not None:
+        values["terminal_bench_config.trials_dir"] = str(trials_dir)
     return values
 
 
@@ -96,16 +120,25 @@ class RLPathManager:
     def resolve(
         self,
         *,
+        trainer_config: Mapping[str, object] | None = None,
+        terminal_bench_config: Mapping[str, object] | None = None,
         skyrl_overrides: Sequence[str] = (),
         fresh_start_requested: bool = False,
     ) -> RLRunPaths:
-        overrides = _override_values(skyrl_overrides)
+        cli_values = hydra_override_values(skyrl_overrides)
+        overrides = _configured_path_values(trainer_config or {}, terminal_bench_config or {})
+        overrides.update(cli_values)
         requested_mode = overrides.get("trainer.resume_mode")
         requested_resume_path = overrides.get("trainer.resume_path")
         if requested_mode in {"", "null", "None", "~"}:
             requested_mode = RLResumeMode.NONE.value
         if requested_resume_path in {"", "null", "None", "~"}:
             requested_resume_path = None
+        if requested_mode == RLResumeMode.LATEST.value and "trainer.resume_mode" not in cli_values:
+            # YAML configs commonly use latest as an automatic preference. The
+            # manager still validates and selects the exact newest checkpoint,
+            # but an empty first run remains an explicit NEW decision.
+            requested_mode = None
 
         if fresh_start_requested and requested_mode not in (None, RLResumeMode.NONE.value):
             raise CheckpointLayoutError("A fresh start cannot also request checkpoint resume")
@@ -199,17 +232,17 @@ class RLPathManager:
         configured = overrides.get("trainer.ckpt_path")
         if configured:
             return _absolute_path(configured)
-        return state_root / self.job_name / "checkpoints"
+        return state_root / self.job_name / CHECKPOINTS_SUBDIR
 
     def _state_root_for_checkpoint_dir(self, checkpoint_dir: Path, fallback: Path) -> Path:
-        if checkpoint_dir.name == "checkpoints" and checkpoint_dir.parent.name == self.job_name:
+        if checkpoint_dir.name == CHECKPOINTS_SUBDIR and checkpoint_dir.parent.name == self.job_name:
             return checkpoint_dir.parent.parent
         return fallback
 
     def _checkpoint_candidates(self) -> list[CheckpointCandidate]:
         candidates: list[CheckpointCandidate] = []
         for state_root in self._candidate_state_roots():
-            checkpoint_dir = state_root / self.job_name / "checkpoints"
+            checkpoint_dir = state_root / self.job_name / CHECKPOINTS_SUBDIR
             candidate = self._checkpoint_candidate(state_root, checkpoint_dir, required=False)
             if candidate is not None:
                 candidates.append(candidate)

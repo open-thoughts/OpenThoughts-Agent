@@ -10,7 +10,8 @@ would begin at step zero.
 ## Hypothesis
 
 A single RL path manager can resolve the durable state root before Hydra arguments are built. Resume validation
-and subsequent checkpoint, export, and trial writes can then consume the same resolved object.
+and subsequent checkpoint, export, trial upload, and cleanup paths can then consume the same resolved object.
+YAML path values are inputs to that decision, while explicit Hydra overrides retain final precedence.
 
 ## Test design
 

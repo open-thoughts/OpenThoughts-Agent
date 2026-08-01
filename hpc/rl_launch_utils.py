@@ -27,7 +27,8 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from hpc.hf_utils import is_hf_dataset_path
 from hpc.launch_utils import get_daytona_api_key_override
-from hpc.rl_paths import RLPathManager, RLRunPaths
+from hpc.rl_config_utils import get_skyrl_command_preview
+from hpc.rl_paths import RLPathManager, RLRunPaths, hydra_override_values
 
 
 # Default Apptainer bind mounts for the RL container runtime mode.
@@ -795,6 +796,7 @@ class RLJobConfig:
     # Paths
     checkpoints_dir: Optional[str] = None
     export_path: Optional[str] = None
+    trials_dir: Optional[str] = None
 
     # Cluster-specific flags
     needs_ssh_tunnel: bool = False
@@ -842,7 +844,6 @@ class RLLaunchArtifacts:
     """Resolved launch script and the exact SkyRL command it contains."""
 
     sbatch_path: Path
-    run_paths: RLRunPaths
     skyrl_entrypoint: str
     hydra_args: tuple[str, ...]
 
@@ -1062,8 +1063,7 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
 
     # Resolve launcher artifact paths before the durable RL paths. A collision
     # may rename the artifact directory, while RLPathManager must still inspect
-    # the canonical directory and its numbered siblings. See
-    # ``notes/ot-agent/agent_logs/2026-05-26_launcher_trials_dir_collision_bug.md``.
+    # the canonical directory and its numbered siblings.
     job_setup = resolve_job_and_paths(
         exp_args,
         job_type_label="RL",
@@ -1078,6 +1078,8 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
         exp_paths.canonical_root or exp_paths.root,
         exp_paths.root,
     ).resolve(
+        trainer_config=parsed.trainer,
+        terminal_bench_config=parsed.terminal_bench or {},
         skyrl_overrides=skyrl_overrides,
         fresh_start_requested=bool(exp_args.get("overwrite_output_dir") or exp_args.get("allow_overwrite")),
     )
@@ -1109,8 +1111,8 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
         tensor_parallel_size=parsed.tensor_parallel_size,
         ray_port=int(exp_args.get("ray_port") or 6379),
         master_port=int(exp_args.get("master_port") or 12345),
-        checkpoints_dir=str(run_paths.checkpoint_dir),
         export_path=str(run_paths.export_dir),
+        trials_dir=str(run_paths.trials_dir),
         needs_ssh_tunnel=hpc.needs_ssh_tunnel,
         needs_cuda_detection=getattr(hpc, "needs_cuda_detection", False),
         # Pinggy tunnel settings (for cloud backends with installed agents)
@@ -1216,7 +1218,6 @@ fi"""
 
     return RLLaunchArtifacts(
         sbatch_path=sbatch_output,
-        run_paths=run_paths,
         skyrl_entrypoint=parsed.entrypoint,
         hydra_args=tuple(hydra_args),
     )
@@ -1266,7 +1267,6 @@ def launch_rl_job(exp_args: dict, hpc) -> Optional[str]:
         Job ID if submitted, None if dry_run.
     """
     from hpc.launch_utils import launch_sbatch
-    from hpc.rl_config_utils import get_skyrl_command_preview
 
     # Check for RL environment
     rl_env_path = check_rl_environment()
@@ -1362,19 +1362,7 @@ class RLJobRunner:
         the leading ``+``/``++`` override markers Hydra allows. Returns None if the
         key is absent.
         """
-        found: Optional[str] = None
-        for arg in hydra_args:
-            if "=" not in arg:
-                continue
-            k, v = arg.split("=", 1)
-            if k.lstrip("+").strip() == key:
-                v = v.strip()
-                # Strip a single layer of surrounding quotes that _format_hydra_arg
-                # may add for paths/values containing Hydra special chars.
-                if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
-                    v = v[1:-1]
-                found = v
-        return found
+        return hydra_override_values(hydra_args).get(key)
 
     def _already_complete_on_disk(self) -> bool:
         """True iff the canonical checkpoint already reached max_steps.
@@ -1414,6 +1402,16 @@ class RLJobRunner:
             )
             return True
         return False
+
+    def _trials_dir(self) -> Path:
+        """Return the configured Harbor trials directory.
+
+        The fallback keeps already-serialized job configs launchable after this
+        field was added; new configs always carry the manager-resolved path.
+        """
+        if self.config.trials_dir:
+            return Path(self.config.trials_dir)
+        return Path(self.config.experiments_dir) / self.config.job_name / "trace_jobs"
 
     def run(self) -> int:
         """Execute the RL training job.
@@ -1473,7 +1471,7 @@ class RLJobRunner:
             if upload_exit_code == 0:
                 print(f"[RLJobRunner] Trace upload completed successfully.", flush=True)
                 if self.config.trace_upload_cleanup:
-                    trace_jobs_dir = Path(self.config.experiments_dir) / self.config.job_name / "trace_jobs"
+                    trace_jobs_dir = self._trials_dir()
                     if trace_jobs_dir.exists():
                         import shutil
                         print(f"[RLJobRunner] Cleaning up traces directory: {trace_jobs_dir}", flush=True)
@@ -1557,9 +1555,8 @@ class RLJobRunner:
             print(f"[RLJobRunner] Trace upload disabled, skipping.", flush=True)
             return None
 
-        # The trace jobs directory is where Harbor stores trial artifacts
-        job_dir = Path(self.config.experiments_dir) / self.config.job_name
-        trace_jobs_dir = job_dir / "trace_jobs"
+        # The trials directory is the exact path configured in Harbor.
+        trace_jobs_dir = self._trials_dir()
         if not trace_jobs_dir.exists():
             print(f"[RLJobRunner] No trace_jobs directory found at {trace_jobs_dir}, skipping upload.", flush=True)
             return None
@@ -1573,7 +1570,7 @@ class RLJobRunner:
 
         cmd = [
             sys.executable, "-m", "scripts.harbor.make_and_upload_trace_dataset",
-            "--job_dir", str(job_dir),
+            "--job_dir", str(trace_jobs_dir),
             "--repo_id", repo_id,
             "--episodes", self.config.trace_upload_episodes,
             "--dataset_type", self.config.trace_upload_dataset_type,
@@ -1581,7 +1578,7 @@ class RLJobRunner:
 
         print(f"[RLJobRunner] Launching trace upload (training exit code: {training_exit_code}):", flush=True)
         print(f"  repo_id: {repo_id}", flush=True)
-        print(f"  job_dir: {job_dir}", flush=True)
+        print(f"  trials_dir: {trace_jobs_dir}", flush=True)
         print(f"  episodes: {self.config.trace_upload_episodes}", flush=True)
         print(f"  log: {log_path}", flush=True)
 

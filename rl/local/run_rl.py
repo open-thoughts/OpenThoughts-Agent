@@ -228,6 +228,8 @@ class LocalRLRunner:
         )
         experiments_root = Path(self.config.experiments_dir)
         run_paths = RLPathManager(self.config.job_name, experiments_root, experiments_root).resolve(
+            trainer_config=parsed.trainer,
+            terminal_bench_config=parsed.terminal_bench or {},
             skyrl_overrides=self.config.skyrl_overrides,
         )
         print(run_paths.describe())

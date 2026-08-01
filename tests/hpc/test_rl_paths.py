@@ -9,6 +9,7 @@ from hpc.rl_paths import (
     RLResumeMode,
 )
 from hpc.rl_config_utils import ParsedRLConfig, build_skyrl_hydra_args
+from hpc.rl_launch_utils import RLJobConfig, RLJobRunner
 
 
 JOB_NAME = "tasktrove-arm"
@@ -145,14 +146,22 @@ def test_duplicate_highest_steps_require_explicit_resume_path(tmp_path: Path) ->
 
 def test_hydra_builder_consumes_the_resolved_path_contract(tmp_path: Path) -> None:
     root = tmp_path / JOB_NAME
-    checkpoint_path = _write_checkpoint(root, 7)
-    run_paths = RLPathManager(JOB_NAME, root, root).resolve()
+    configured_root = tmp_path / "configured"
+    checkpoint_path = _write_checkpoint(configured_root, 7)
     parsed = ParsedRLConfig(
         config_path=tmp_path / "config.yaml",
         raw={},
         entrypoint="skyrl_train.entrypoints.main_base",
-        trainer={"resume_mode": "latest", "ckpt_path": "/stale/checkpoints"},
-        terminal_bench={"trials_dir": "/stale/traces"},
+        trainer={
+            "resume_mode": "latest",
+            "ckpt_path": str(checkpoint_path.parent),
+            "export_path": str(configured_root / JOB_NAME / "model_exports"),
+        },
+        terminal_bench={"trials_dir": str(configured_root / JOB_NAME / "trials")},
+    )
+    run_paths = RLPathManager(JOB_NAME, root, root).resolve(
+        trainer_config=parsed.trainer,
+        terminal_bench_config=parsed.terminal_bench,
     )
     hpc = type("HPC", (), {"gpus_per_node": 4})()
 
@@ -167,3 +176,44 @@ def test_hydra_builder_consumes_the_resolved_path_contract(tmp_path: Path) -> No
     assert _hydra_value(arguments, "terminal_bench_config.trials_dir") == str(
         run_paths.trials_dir
     )
+
+
+def test_yaml_latest_without_a_checkpoint_becomes_a_new_run(tmp_path: Path) -> None:
+    root = tmp_path / JOB_NAME
+
+    resolved = RLPathManager(JOB_NAME, root, root).resolve(
+        trainer_config={"resume_mode": "latest"},
+    )
+
+    assert resolved.resume_mode is RLResumeMode.NONE
+    assert resolved.resume_path is None
+
+
+def test_trace_upload_consumes_the_manager_resolved_trials_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    trials_dir = tmp_path / "durable" / "custom-trials"
+    trials_dir.mkdir(parents=True)
+    launch_root = tmp_path / "launch-artifacts"
+    config = RLJobConfig(
+        job_name=JOB_NAME,
+        experiments_dir=str(launch_root),
+        cluster_name="test",
+        skyrl_entrypoint="skyrl_train.entrypoints.main_base",
+        trials_dir=str(trials_dir),
+        trace_upload_enabled=True,
+    )
+    captured: dict[str, list[str]] = {}
+
+    def fake_popen(command: list[str], *, stdout, stderr):
+        captured["command"] = command
+        stdout.close()
+        return object()
+
+    monkeypatch.setattr("hpc.rl_launch_utils.subprocess.Popen", fake_popen)
+
+    process = RLJobRunner(config)._launch_trace_upload(training_exit_code=0)
+
+    assert process is not None
+    command = captured["command"]
+    assert command[command.index("--job_dir") + 1] == str(trials_dir)

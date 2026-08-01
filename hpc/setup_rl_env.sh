@@ -323,6 +323,8 @@ uv pip install packaging "uv_build>=0.8.4,<0.9.0" || true
 # =============================================================================
 # Prebuilt wheels from: https://github.com/mjun0812/flash-attention-prebuild-wheels
 # Available for x86_64 with various torch/CUDA/Python combinations
+FLASH_ATTN_VERSION="2.8.3"
+FLASH_ATTN_WHEEL_RELEASE="v0.7.16"
 FLASH_ATTN_INSTALLED=false
 if [[ "$USE_ROCM" == "true" ]]; then
     echo ""
@@ -346,46 +348,36 @@ parts = v.split('.')
 print(f'{parts[0]}.{parts[1]}')  # Major.minor only
 " 2>/dev/null || echo "2.8")
     echo "Detected PyTorch version: $TORCH_VERSION"
+    if ! CUDA_DETAILS=$(python -c "
+import torch
+parts = torch.version.cuda.split('.')
+print(f'{torch.version.cuda}|{parts[0]}{parts[1]}')
+" 2>&1); then
+        echo "Could not resolve torch.version.cuda; skipping the prebuilt FlashAttention wheel: ${CUDA_DETAILS}"
+        CUDA_DETAILS=""
+    fi
+    CUDA_VERSION="${CUDA_DETAILS%%|*}"
+    CUDA_WHEEL_TAG="${CUDA_DETAILS#*|}"
+    echo "Detected PyTorch CUDA version: ${CUDA_VERSION:-unknown}"
+    PYTHON_TAG=$(python -c "import sys; print(f'cp{sys.version_info.major}{sys.version_info.minor}')")
 
     # Try prebuilt wheels first (from mjun0812's repo)
-    # x86_64: flash_attn-2.6.3+cu{CUDA}torch{VER}-cp312-cp312-linux_x86_64.whl
-    # arm64:  flash_attn-2.8.3+cu{CUDA}torch{VER}-cp312-cp312-manylinux_2_34_aarch64.whl
-    PREBUILT_WHEEL_BASE="https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.7.16"
+    PREBUILT_WHEEL_BASE="https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/${FLASH_ATTN_WHEEL_RELEASE}"
 
-    if [[ "$IS_AARCH64" == "true" ]]; then
-        # ARM64/aarch64 (e.g., GH200 Grace-Hopper on Jupiter)
-        # Available: torch 2.8/2.9/2.10 with cu128/cu130, flash-attn 2.8.3
-        echo "Trying prebuilt wheel for aarch64 (manylinux_2_34)..."
-
-        # Try combinations of CUDA versions and torch versions
-        # Prefer cu130 (matches Jupiter's CUDA 13.0), then cu128
-        for CUDA_VER in "130" "128"; do
-            for FA_TORCH in "$TORCH_VERSION" "2.9" "2.8" "2.10"; do
-                WHEEL_URL="${PREBUILT_WHEEL_BASE}/flash_attn-2.8.3+cu${CUDA_VER}torch${FA_TORCH}-cp312-cp312-manylinux_2_34_aarch64.whl"
-                echo "Trying: cu${CUDA_VER} + torch${FA_TORCH}..."
-                if uv pip install "$WHEEL_URL" 2>/dev/null; then
-                    echo "flash-attn installed from prebuilt aarch64 wheel (cu${CUDA_VER}, torch${FA_TORCH})!"
-                    FLASH_ATTN_INSTALLED=true
-                    break 2
-                fi
-            done
-        done
-    else
-        # x86_64
-        echo "Trying prebuilt wheel for x86_64..."
-
-        # Try combinations of CUDA versions and torch versions
-        for CUDA_VER in "128" "130" "126"; do
-            for FA_TORCH in "$TORCH_VERSION" "2.9" "2.8" "2.10"; do
-                WHEEL_URL="${PREBUILT_WHEEL_BASE}/flash_attn-2.6.3+cu${CUDA_VER}torch${FA_TORCH}-cp312-cp312-linux_x86_64.whl"
-                echo "Trying: cu${CUDA_VER} + torch${FA_TORCH}..."
-                if uv pip install "$WHEEL_URL" 2>/dev/null; then
-                    echo "flash-attn installed from prebuilt x86_64 wheel (cu${CUDA_VER}, torch${FA_TORCH})!"
-                    FLASH_ATTN_INSTALLED=true
-                    break 2
-                fi
-            done
-        done
+    if [[ -n "$CUDA_WHEEL_TAG" ]]; then
+        if [[ "$IS_AARCH64" == "true" ]]; then
+            WHEEL_PLATFORM="manylinux_2_34_aarch64"
+        else
+            WHEEL_PLATFORM="linux_x86_64"
+        fi
+        WHEEL_TAG="cu${CUDA_WHEEL_TAG}torch${TORCH_VERSION}"
+        WHEEL_NAME="flash_attn-${FLASH_ATTN_VERSION}+${WHEEL_TAG}-${PYTHON_TAG}-${PYTHON_TAG}-${WHEEL_PLATFORM}.whl"
+        WHEEL_URL="${PREBUILT_WHEEL_BASE}/${WHEEL_NAME}"
+        echo "Trying flash-attn ${FLASH_ATTN_VERSION} for ${WHEEL_TAG}, ${WHEEL_PLATFORM}..."
+        if uv pip install "$WHEEL_URL"; then
+            echo "flash-attn ${FLASH_ATTN_VERSION} installed from the matching prebuilt wheel!"
+            FLASH_ATTN_INSTALLED=true
+        fi
     fi
 
     # Fall back to building from source if prebuilt wheel not available/compatible
@@ -403,7 +395,7 @@ print(f'{parts[0]}.{parts[1]}')  # Major.minor only
         echo "Set MAX_JOBS=4 to limit build parallelism"
 
         # Try to install flash-attn with --no-build-isolation (uses installed torch)
-        if uv pip install "flash-attn>=2.6.3" --no-build-isolation 2>&1; then
+        if uv pip install "flash-attn==${FLASH_ATTN_VERSION}" --no-build-isolation 2>&1; then
             echo "flash-attn built and installed successfully!"
             FLASH_ATTN_INSTALLED=true
         fi
@@ -421,10 +413,10 @@ print(f'{parts[0]}.{parts[1]}')  # Major.minor only
         echo "  # https://github.com/mjun0812/flash-attention-prebuild-wheels/releases"
         if [[ "$IS_AARCH64" == "true" ]]; then
             echo "  # Example (aarch64, adjust cu/torch versions as needed):"
-            echo "  pip install ${PREBUILT_WHEEL_BASE}/flash_attn-2.8.3+cu130torch2.9-cp312-cp312-manylinux_2_34_aarch64.whl"
+            echo "  pip install ${PREBUILT_WHEEL_BASE}/flash_attn-${FLASH_ATTN_VERSION}+cu130torch2.9-${PYTHON_TAG}-${PYTHON_TAG}-manylinux_2_34_aarch64.whl"
         else
             echo "  # Example (x86_64, adjust cu/torch versions as needed):"
-            echo "  pip install ${PREBUILT_WHEEL_BASE}/flash_attn-2.6.3+cu128torch2.8-cp312-cp312-linux_x86_64.whl"
+            echo "  pip install ${PREBUILT_WHEEL_BASE}/flash_attn-${FLASH_ATTN_VERSION}+cu128torch2.8-${PYTHON_TAG}-${PYTHON_TAG}-linux_x86_64.whl"
         fi
         echo "  # Or build from source:"
         echo "  MAX_JOBS=4 pip install flash-attn --no-build-isolation"

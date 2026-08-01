@@ -10,6 +10,8 @@ from typing import Mapping, Sequence
 
 
 CHECKPOINTS_SUBDIR = "checkpoints"
+EXPORTS_SUBDIR = "exports"
+TRIALS_SUBDIR = "trace_jobs"
 LATEST_CHECKPOINT_FILE = "latest_ckpt_global_step.txt"
 GLOBAL_STEP_PATTERN = re.compile(r"global_step_(\d+)$")
 HYDRA_NULL_VALUES = frozenset({"", "null", "None", "~"})
@@ -39,12 +41,6 @@ class RLLaunchIntent(StrEnum):
     FRESH = "fresh"
 
 
-class RLPathDecision(StrEnum):
-    NEW = "new"
-    RESUME = "resume"
-    EXPLICIT_FRESH = "explicit-fresh"
-
-
 @dataclass(frozen=True)
 class CheckpointCandidate:
     state_root: Path
@@ -63,15 +59,12 @@ class RLRunPaths:
     trials_dir: Path
     resume_mode: RLResumeMode
     resume_path: Path | None
-    decision: RLPathDecision
 
     def describe(self) -> str:
         if self.resume_path is not None:
             action = f"RESUME from {self.resume_path}"
-        elif self.decision is RLPathDecision.EXPLICIT_FRESH:
-            action = "EXPLICIT FRESH START"
         else:
-            action = "NEW RUN (no checkpoint found)"
+            action = "FRESH START (no checkpoint selected)"
         return (
             f"[rl_paths] {action}; resume_mode={self.resume_mode.value}; "
             f"checkpoints={self.checkpoint_dir}; exports={self.export_dir}; trials={self.trials_dir}"
@@ -142,7 +135,7 @@ class RLPathManager:
 
         state_root = self.launch_root if launch_intent is RLLaunchIntent.FRESH else self.canonical_root
         checkpoint_dir = self._configured_checkpoint_dir(overrides, state_root)
-        state_root = self._state_root_for_checkpoint_dir(checkpoint_dir, state_root)
+        state_root = self._state_root_for_checkpoint_dir(checkpoint_dir, state_root, overrides)
 
         explicit = self._resolve_explicit_request(
             requested_mode,
@@ -168,7 +161,6 @@ class RLPathManager:
                 overrides,
                 resume_mode=RLResumeMode.NONE,
                 resume_path=None,
-                decision=RLPathDecision.NEW,
             )
 
         highest_step = max(candidate.step for candidate in candidates)
@@ -187,7 +179,6 @@ class RLPathManager:
             overrides,
             resume_mode=RLResumeMode.FROM_PATH,
             resume_path=selected.checkpoint_path,
-            decision=RLPathDecision.RESUME,
         )
 
     @staticmethod
@@ -218,6 +209,8 @@ class RLPathManager:
         checkpoint_dir: Path,
         overrides: dict[str, str],
     ) -> RLRunPaths | None:
+        """Resolve a user-selected mode, or return None for automatic discovery."""
+
         if launch_intent is RLLaunchIntent.FRESH or requested_mode == RLResumeMode.NONE.value:
             return self._resolved_paths(
                 state_root,
@@ -225,7 +218,6 @@ class RLPathManager:
                 overrides,
                 resume_mode=RLResumeMode.NONE,
                 resume_path=None,
-                decision=RLPathDecision.EXPLICIT_FRESH,
             )
         if requested_mode == RLResumeMode.LATEST.value:
             candidate = self._checkpoint_candidate(state_root, checkpoint_dir, required=True)
@@ -236,7 +228,6 @@ class RLPathManager:
                 overrides,
                 resume_mode=RLResumeMode.LATEST,
                 resume_path=candidate.checkpoint_path,
-                decision=RLPathDecision.RESUME,
             )
         if requested_mode != RLResumeMode.FROM_PATH.value:
             return None
@@ -249,14 +240,13 @@ class RLPathManager:
                 f"trainer.resume_path {resume_path} is not under trainer.ckpt_path {checkpoint_dir}"
             )
         checkpoint_dir = resume_path.parent
-        state_root = self._state_root_for_checkpoint_dir(checkpoint_dir, state_root)
+        state_root = self._state_root_for_checkpoint_dir(checkpoint_dir, state_root, overrides)
         return self._resolved_paths(
             state_root,
             checkpoint_dir,
             overrides,
             resume_mode=RLResumeMode.FROM_PATH,
             resume_path=resume_path,
-            decision=RLPathDecision.RESUME,
         )
 
     def _configured_checkpoint_dir(self, overrides: dict[str, str], state_root: Path) -> Path:
@@ -265,9 +255,17 @@ class RLPathManager:
             return _absolute_path(configured)
         return state_root / self.job_name / CHECKPOINTS_SUBDIR
 
-    def _state_root_for_checkpoint_dir(self, checkpoint_dir: Path, fallback: Path) -> Path:
+    def _state_root_for_checkpoint_dir(
+        self, checkpoint_dir: Path, fallback: Path, overrides: dict[str, str]
+    ) -> Path:
         if checkpoint_dir.name == CHECKPOINTS_SUBDIR and checkpoint_dir.parent.name == self.job_name:
             return checkpoint_dir.parent.parent
+        missing = [key for key in (EXPORT_PATH_KEY, TRIALS_DIR_KEY) if key not in overrides]
+        if missing:
+            raise CheckpointLayoutError(
+                f"Nonstandard checkpoint directory {checkpoint_dir} requires explicit values for "
+                f"{', '.join(missing)}"
+            )
         return fallback
 
     def _checkpoint_candidates(self) -> list[CheckpointCandidate]:
@@ -352,18 +350,17 @@ class RLPathManager:
         *,
         resume_mode: RLResumeMode,
         resume_path: Path | None,
-        decision: RLPathDecision,
     ) -> RLRunPaths:
         trainer_root = state_root / self.job_name
         export_dir = (
             _absolute_path(overrides[EXPORT_PATH_KEY])
             if EXPORT_PATH_KEY in overrides
-            else trainer_root / "exports"
+            else trainer_root / EXPORTS_SUBDIR
         )
         trials_dir = (
             _absolute_path(overrides[TRIALS_DIR_KEY])
             if TRIALS_DIR_KEY in overrides
-            else trainer_root / "trace_jobs"
+            else trainer_root / TRIALS_SUBDIR
         )
         return RLRunPaths(
             job_name=self.job_name,
@@ -372,5 +369,4 @@ class RLPathManager:
             trials_dir=trials_dir,
             resume_mode=resume_mode,
             resume_path=resume_path,
-            decision=decision,
         )

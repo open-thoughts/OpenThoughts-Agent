@@ -8,6 +8,7 @@ from hpc.rl_paths import (
     RLLaunchIntent,
     RLPathManager,
     RLResumeMode,
+    hydra_override_values,
 )
 from hpc.rl_config_utils import ParsedRLConfig, build_skyrl_hydra_args
 from hpc.rl_launch_utils import RLJobConfig, RLJobRunner
@@ -25,12 +26,7 @@ def _write_checkpoint(state_root: Path, step: int) -> Path:
 
 
 def _hydra_value(arguments: list[str], key: str) -> str | None:
-    value = None
-    for argument in arguments:
-        argument_key, separator, argument_value = argument.partition("=")
-        if separator and argument_key.lstrip("+") == key:
-            value = argument_value.strip("'\"")
-    return value
+    return hydra_override_values(arguments).get(key)
 
 
 def test_forked_checkpoint_becomes_the_single_durable_run_root(tmp_path: Path) -> None:
@@ -133,6 +129,17 @@ def test_explicit_resume_path_rejects_a_different_checkpoint_write_directory(
                 "trainer.resume_mode=from_path",
                 f"trainer.resume_path={checkpoint_path}",
             )
+        )
+
+
+def test_nonstandard_checkpoint_path_requires_explicit_sibling_destinations(
+    tmp_path: Path,
+) -> None:
+    checkpoint_dir = tmp_path / "standalone-checkpoints"
+
+    with pytest.raises(CheckpointLayoutError, match="requires explicit values"):
+        RLPathManager(JOB_NAME, tmp_path, tmp_path).resolve(
+            skyrl_overrides=(f"trainer.ckpt_path={checkpoint_dir}",),
         )
 
 

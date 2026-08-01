@@ -1,17 +1,7 @@
-"""Regression tests for ``hpc/launch_utils.py:setup_experiments_dir``.
+"""Regression tests for launcher artifact collision handling.
 
-Specifically covers the collision-rename path. The bug this guards
-against is documented in
-``notes/ot-agent/agent_logs/2026-05-26_launcher_trials_dir_collision_bug.md``:
-when the experiments dir already exists with a different run's
-configs, the launcher appends ``_N`` to land at a fresh dir, but
-prior to this fix the renamed path was NOT propagated back into
-``exp_args["experiments_dir"]``. Downstream consumers
-(``hpc/rl_config_utils.py`` deriving trainer.trials_dir / ckpt_path
-/ export_path; ``hpc/launch.py`` deriving wandb_dir) then used the
-un-suffixed canonical path, causing concurrent renamed chains to
-share the same inner trainer dirs → data corruption / write-race
-hazards.
+Collision-renamed directories own launch artifacts such as configs, logs, and
+sbatch scripts. Durable RL state is resolved separately by ``RLPathManager``.
 
 Run from the OT-Agent repo root with:
     .venv/bin/python -m pytest tests/hpc/test_launch_utils_collision.py -v
@@ -82,37 +72,6 @@ def test_collision_chain_increments_to_3(tmp_path: Path) -> None:
     expected_renamed = tmp_path / "ot-baf" / "myjob_3"
     assert paths.root == expected_renamed
     assert exp_args["experiments_dir"] == str(expected_renamed)
-
-
-def test_renamed_path_feeds_downstream_derivations(tmp_path: Path) -> None:
-    """End-to-end: after a collision rename, the rl_config_utils-style
-    derivation ``f"{experiments_dir}/{job_name}/trace_jobs"`` MUST land
-    inside the renamed dir, not the canonical one.
-
-    This is the exact pattern in
-    ``hpc/rl_config_utils.py:build_skyrl_hydra_args`` for
-    trials_dir / ckpt_path / export_path. The bug report's evidence
-    showed trials_dir pointing at the un-suffixed canonical dir
-    (``<D>/<job_name>/<job_name>/trace_jobs``) while
-    experiments_dir in the same config JSON was the ``_3`` form.
-    """
-    job_name = "myjob"
-    canonical = tmp_path / "ot-baf" / job_name
-    _seed_existing_experiment(canonical)
-
-    exp_args = {"experiments_dir": str(canonical), "job_type": "rl"}
-    setup_experiments_dir(exp_args, job_name=job_name)
-
-    # Replay rl_config_utils.build_skyrl_hydra_args' path derivation.
-    experiments_dir_after = exp_args["experiments_dir"]
-    derived_trials = f"{experiments_dir_after}/{job_name}/trace_jobs"
-    derived_ckpt = f"{experiments_dir_after}/{job_name}/checkpoints"
-    derived_export = f"{experiments_dir_after}/{job_name}/exports"
-
-    renamed_root = str(tmp_path / "ot-baf" / "myjob_2")
-    assert derived_trials.startswith(renamed_root + "/")
-    assert derived_ckpt.startswith(renamed_root + "/")
-    assert derived_export.startswith(renamed_root + "/")
 
 
 def test_disable_dedup_skips_rename_and_still_writes_back(tmp_path: Path) -> None:

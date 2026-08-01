@@ -110,7 +110,7 @@ trainer:
   eval_interval: 999999
   eval_before_train: false
   ckpt_interval: 2
-  resume_mode: latest
+  resume_mode: null
   hf_save_interval: 5
   hf_hub_repo_id: null
   hf_hub_private: false

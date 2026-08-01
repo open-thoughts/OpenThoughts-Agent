@@ -171,22 +171,20 @@ def test_hydra_builder_consumes_the_resolved_path_contract(tmp_path: Path) -> No
 
     assert _hydra_value(arguments, "trainer.ckpt_path") == str(run_paths.checkpoint_dir)
     assert _hydra_value(arguments, "trainer.export_path") == str(run_paths.export_dir)
-    assert _hydra_value(arguments, "trainer.resume_mode") == "from_path"
+    assert _hydra_value(arguments, "trainer.resume_mode") == "latest"
     assert _hydra_value(arguments, "trainer.resume_path") == str(checkpoint_path)
     assert _hydra_value(arguments, "terminal_bench_config.trials_dir") == str(
         run_paths.trials_dir
     )
 
 
-def test_yaml_latest_without_a_checkpoint_becomes_a_new_run(tmp_path: Path) -> None:
+def test_yaml_latest_without_a_checkpoint_is_rejected(tmp_path: Path) -> None:
     root = tmp_path / JOB_NAME
 
-    resolved = RLPathManager(JOB_NAME, root, root).resolve(
-        trainer_config={"resume_mode": "latest"},
-    )
-
-    assert resolved.resume_mode is RLResumeMode.NONE
-    assert resolved.resume_path is None
+    with pytest.raises(CheckpointLayoutError, match="resume_mode=latest"):
+        RLPathManager(JOB_NAME, root, root).resolve(
+            trainer_config={"resume_mode": "latest"},
+        )
 
 
 def test_trace_upload_consumes_the_manager_resolved_trials_directory(

@@ -12,6 +12,12 @@ from typing import Mapping, Sequence
 CHECKPOINTS_SUBDIR = "checkpoints"
 LATEST_CHECKPOINT_FILE = "latest_ckpt_global_step.txt"
 GLOBAL_STEP_PATTERN = re.compile(r"global_step_(\d+)$")
+HYDRA_NULL_VALUES = frozenset({"", "null", "None", "~"})
+CKPT_PATH_KEY = "trainer.ckpt_path"
+EXPORT_PATH_KEY = "trainer.export_path"
+RESUME_MODE_KEY = "trainer.resume_mode"
+RESUME_PATH_KEY = "trainer.resume_path"
+TRIALS_DIR_KEY = "terminal_bench_config.trials_dir"
 
 
 class CheckpointLayoutError(ValueError):
@@ -90,10 +96,10 @@ def _configured_path_values(
 ) -> dict[str, str]:
     values: dict[str, str] = {}
     for config_key, hydra_key in (
-        ("ckpt_path", "trainer.ckpt_path"),
-        ("export_path", "trainer.export_path"),
-        ("resume_mode", "trainer.resume_mode"),
-        ("resume_path", "trainer.resume_path"),
+        ("ckpt_path", CKPT_PATH_KEY),
+        ("export_path", EXPORT_PATH_KEY),
+        ("resume_mode", RESUME_MODE_KEY),
+        ("resume_path", RESUME_PATH_KEY),
     ):
         value = trainer_config.get(config_key)
         if value is not None:
@@ -101,7 +107,7 @@ def _configured_path_values(
 
     trials_dir = terminal_bench_config.get("trials_dir")
     if trials_dir is not None:
-        values["terminal_bench_config.trials_dir"] = str(trials_dir)
+        values[TRIALS_DIR_KEY] = str(trials_dir)
     return values
 
 
@@ -128,72 +134,24 @@ class RLPathManager:
         cli_values = hydra_override_values(skyrl_overrides)
         overrides = _configured_path_values(trainer_config or {}, terminal_bench_config or {})
         overrides.update(cli_values)
-        requested_mode = overrides.get("trainer.resume_mode")
-        requested_resume_path = overrides.get("trainer.resume_path")
-        if requested_mode in {"", "null", "None", "~"}:
-            requested_mode = RLResumeMode.NONE.value
-        if requested_resume_path in {"", "null", "None", "~"}:
-            requested_resume_path = None
-        if requested_mode == RLResumeMode.LATEST.value and "trainer.resume_mode" not in cli_values:
-            # YAML configs commonly use latest as an automatic preference. The
-            # manager still validates and selects the exact newest checkpoint,
-            # but an empty first run remains an explicit NEW decision.
-            requested_mode = None
-
-        if fresh_start_requested and requested_mode not in (None, RLResumeMode.NONE.value):
-            raise CheckpointLayoutError("A fresh start cannot also request checkpoint resume")
-        if requested_resume_path and requested_mode != RLResumeMode.FROM_PATH.value:
-            raise CheckpointLayoutError("trainer.resume_path requires trainer.resume_mode=from_path")
+        requested_mode, requested_resume_path = self._requested_resume(overrides, fresh_start_requested)
 
         state_root = self.launch_root if fresh_start_requested else self.canonical_root
         checkpoint_dir = self._configured_checkpoint_dir(overrides, state_root)
         state_root = self._state_root_for_checkpoint_dir(checkpoint_dir, state_root)
 
-        if fresh_start_requested or requested_mode == RLResumeMode.NONE.value:
-            return self._resolved_paths(
-                state_root,
-                checkpoint_dir,
-                overrides,
-                resume_mode=RLResumeMode.NONE,
-                resume_path=None,
-                decision=RLPathDecision.EXPLICIT_FRESH,
-            )
+        explicit = self._resolve_explicit_request(
+            requested_mode,
+            requested_resume_path,
+            fresh_start_requested,
+            state_root,
+            checkpoint_dir,
+            overrides,
+        )
+        if explicit is not None:
+            return explicit
 
-        if requested_mode == RLResumeMode.LATEST.value:
-            candidate = self._checkpoint_candidate(state_root, checkpoint_dir, required=True)
-            assert candidate is not None
-            return self._resolved_paths(
-                state_root,
-                checkpoint_dir,
-                overrides,
-                resume_mode=RLResumeMode.LATEST,
-                resume_path=candidate.checkpoint_path,
-                decision=RLPathDecision.RESUME,
-            )
-
-        if requested_mode == RLResumeMode.FROM_PATH.value:
-            if not requested_resume_path:
-                raise CheckpointLayoutError("trainer.resume_mode=from_path requires trainer.resume_path")
-            resume_path = self._validate_explicit_resume_path(_absolute_path(requested_resume_path))
-            if "trainer.ckpt_path" in overrides and checkpoint_dir != resume_path.parent:
-                raise CheckpointLayoutError(
-                    f"trainer.resume_path {resume_path} is not under trainer.ckpt_path {checkpoint_dir}"
-                )
-            checkpoint_dir = resume_path.parent
-            state_root = self._state_root_for_checkpoint_dir(checkpoint_dir, state_root)
-            return self._resolved_paths(
-                state_root,
-                checkpoint_dir,
-                overrides,
-                resume_mode=RLResumeMode.FROM_PATH,
-                resume_path=resume_path,
-                decision=RLPathDecision.RESUME,
-            )
-
-        if requested_mode is not None:
-            raise CheckpointLayoutError(f"Unknown trainer.resume_mode: {requested_mode}")
-
-        if "trainer.ckpt_path" in overrides:
+        if CKPT_PATH_KEY in overrides:
             candidate = self._checkpoint_candidate(state_root, checkpoint_dir, required=False)
             candidates = [candidate] if candidate is not None else []
         else:
@@ -228,8 +186,77 @@ class RLPathManager:
             decision=RLPathDecision.RESUME,
         )
 
+    @staticmethod
+    def _requested_resume(
+        overrides: dict[str, str], fresh_start_requested: bool
+    ) -> tuple[str | None, str | None]:
+        requested_mode = overrides.get(RESUME_MODE_KEY)
+        requested_resume_path = overrides.get(RESUME_PATH_KEY)
+        if requested_mode in HYDRA_NULL_VALUES:
+            requested_mode = None
+        if requested_resume_path in HYDRA_NULL_VALUES:
+            requested_resume_path = None
+
+        if fresh_start_requested and requested_mode not in (None, RLResumeMode.NONE.value):
+            raise CheckpointLayoutError("A fresh start cannot also request checkpoint resume")
+        if requested_resume_path and requested_mode != RLResumeMode.FROM_PATH.value:
+            raise CheckpointLayoutError("trainer.resume_path requires trainer.resume_mode=from_path")
+        if requested_mode not in {None, *(mode.value for mode in RLResumeMode)}:
+            raise CheckpointLayoutError(f"Unknown trainer.resume_mode: {requested_mode}")
+        return requested_mode, requested_resume_path
+
+    def _resolve_explicit_request(
+        self,
+        requested_mode: str | None,
+        requested_resume_path: str | None,
+        fresh_start_requested: bool,
+        state_root: Path,
+        checkpoint_dir: Path,
+        overrides: dict[str, str],
+    ) -> RLRunPaths | None:
+        if fresh_start_requested or requested_mode == RLResumeMode.NONE.value:
+            return self._resolved_paths(
+                state_root,
+                checkpoint_dir,
+                overrides,
+                resume_mode=RLResumeMode.NONE,
+                resume_path=None,
+                decision=RLPathDecision.EXPLICIT_FRESH,
+            )
+        if requested_mode == RLResumeMode.LATEST.value:
+            candidate = self._checkpoint_candidate(state_root, checkpoint_dir, required=True)
+            assert candidate is not None
+            return self._resolved_paths(
+                state_root,
+                checkpoint_dir,
+                overrides,
+                resume_mode=RLResumeMode.LATEST,
+                resume_path=candidate.checkpoint_path,
+                decision=RLPathDecision.RESUME,
+            )
+        if requested_mode != RLResumeMode.FROM_PATH.value:
+            return None
+
+        if not requested_resume_path:
+            raise CheckpointLayoutError("trainer.resume_mode=from_path requires trainer.resume_path")
+        resume_path = self._validate_explicit_resume_path(_absolute_path(requested_resume_path))
+        if CKPT_PATH_KEY in overrides and checkpoint_dir != resume_path.parent:
+            raise CheckpointLayoutError(
+                f"trainer.resume_path {resume_path} is not under trainer.ckpt_path {checkpoint_dir}"
+            )
+        checkpoint_dir = resume_path.parent
+        state_root = self._state_root_for_checkpoint_dir(checkpoint_dir, state_root)
+        return self._resolved_paths(
+            state_root,
+            checkpoint_dir,
+            overrides,
+            resume_mode=RLResumeMode.FROM_PATH,
+            resume_path=resume_path,
+            decision=RLPathDecision.RESUME,
+        )
+
     def _configured_checkpoint_dir(self, overrides: dict[str, str], state_root: Path) -> Path:
-        configured = overrides.get("trainer.ckpt_path")
+        configured = overrides.get(CKPT_PATH_KEY)
         if configured:
             return _absolute_path(configured)
         return state_root / self.job_name / CHECKPOINTS_SUBDIR
@@ -325,13 +352,13 @@ class RLPathManager:
     ) -> RLRunPaths:
         trainer_root = state_root / self.job_name
         export_dir = (
-            _absolute_path(overrides["trainer.export_path"])
-            if "trainer.export_path" in overrides
+            _absolute_path(overrides[EXPORT_PATH_KEY])
+            if EXPORT_PATH_KEY in overrides
             else trainer_root / "exports"
         )
         trials_dir = (
-            _absolute_path(overrides["terminal_bench_config.trials_dir"])
-            if "terminal_bench_config.trials_dir" in overrides
+            _absolute_path(overrides[TRIALS_DIR_KEY])
+            if TRIALS_DIR_KEY in overrides
             else trainer_root / "trace_jobs"
         )
         return RLRunPaths(

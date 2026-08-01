@@ -28,7 +28,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 from hpc.hf_utils import is_hf_dataset_path
 from hpc.launch_utils import get_daytona_api_key_override
 from hpc.rl_config_utils import get_skyrl_command_preview
-from hpc.rl_paths import RLPathManager, RLRunPaths, hydra_override_values
+from hpc.rl_paths import LATEST_CHECKPOINT_FILE, RLPathManager, RLRunPaths, hydra_override_values
 
 
 # Default Apptainer bind mounts for the RL container runtime mode.
@@ -776,6 +776,7 @@ class RLJobConfig:
 
     # SkyRL settings
     skyrl_entrypoint: str
+    trials_dir: str
     skyrl_hydra_args: List[str] = field(default_factory=list)
 
     # Model and data
@@ -796,7 +797,6 @@ class RLJobConfig:
     # Paths
     checkpoints_dir: Optional[str] = None
     export_path: Optional[str] = None
-    trials_dir: Optional[str] = None
 
     # Cluster-specific flags
     needs_ssh_tunnel: bool = False
@@ -940,7 +940,7 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
         hpc: HPC cluster configuration.
 
     Returns:
-        Generated sbatch path, durable run paths, and the exact SkyRL command.
+        Generated sbatch path and the exact SkyRL command.
     """
     from hpc.launch_utils import (
         resolve_job_and_paths,
@@ -1356,12 +1356,7 @@ class RLJobRunner:
 
     @staticmethod
     def _hydra_arg_value(hydra_args: Sequence[str], key: str) -> Optional[str]:
-        """Last-wins lookup of a dotted Hydra ``key`` in ``trainer.*=value`` args.
-
-        Hydra is last-wins, so we scan in order and keep the final match. Strips
-        the leading ``+``/``++`` override markers Hydra allows. Returns None if the
-        key is absent.
-        """
+        """Return the effective value for a Hydra key, or None when absent."""
         return hydra_override_values(hydra_args).get(key)
 
     def _already_complete_on_disk(self) -> bool:
@@ -1388,7 +1383,7 @@ class RLJobRunner:
         if max_steps <= 0:
             return False
 
-        marker = Path(ckpt_path) / "latest_ckpt_global_step.txt"
+        marker = Path(ckpt_path) / LATEST_CHECKPOINT_FILE
         try:
             completed = int(marker.read_text().strip())
         except (OSError, ValueError):
@@ -1402,16 +1397,6 @@ class RLJobRunner:
             )
             return True
         return False
-
-    def _trials_dir(self) -> Path:
-        """Return the configured Harbor trials directory.
-
-        The fallback keeps already-serialized job configs launchable after this
-        field was added; new configs always carry the manager-resolved path.
-        """
-        if self.config.trials_dir:
-            return Path(self.config.trials_dir)
-        return Path(self.config.experiments_dir) / self.config.job_name / "trace_jobs"
 
     def run(self) -> int:
         """Execute the RL training job.
@@ -1471,7 +1456,7 @@ class RLJobRunner:
             if upload_exit_code == 0:
                 print(f"[RLJobRunner] Trace upload completed successfully.", flush=True)
                 if self.config.trace_upload_cleanup:
-                    trace_jobs_dir = self._trials_dir()
+                    trace_jobs_dir = Path(self.config.trials_dir)
                     if trace_jobs_dir.exists():
                         import shutil
                         print(f"[RLJobRunner] Cleaning up traces directory: {trace_jobs_dir}", flush=True)
@@ -1555,8 +1540,7 @@ class RLJobRunner:
             print(f"[RLJobRunner] Trace upload disabled, skipping.", flush=True)
             return None
 
-        # The trials directory is the exact path configured in Harbor.
-        trace_jobs_dir = self._trials_dir()
+        trace_jobs_dir = Path(self.config.trials_dir)
         if not trace_jobs_dir.exists():
             print(f"[RLJobRunner] No trace_jobs directory found at {trace_jobs_dir}, skipping upload.", flush=True)
             return None

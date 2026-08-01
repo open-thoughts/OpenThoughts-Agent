@@ -23,7 +23,7 @@ import sys
 import time
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, List, Mapping, Optional
 
 from hpc.hf_utils import is_hf_dataset_path
 from hpc.launch_utils import get_daytona_api_key_override
@@ -1368,11 +1368,6 @@ class RLJobRunner:
                 self._hpc = detect_hpc()
         return self._hpc
 
-    @staticmethod
-    def _hydra_arg_value(hydra_args: Sequence[str], key: str) -> Optional[str]:
-        """Return the effective value for a Hydra key, or None when absent."""
-        return hydra_override_values(hydra_args).get(key)
-
     def _already_complete_on_disk(self) -> bool:
         """True iff the canonical checkpoint already reached max_steps.
 
@@ -1386,8 +1381,9 @@ class RLJobRunner:
         guard keys off, so the two guards agree on what "complete" means.
         """
         hydra_args = list(getattr(self.config, "skyrl_hydra_args", []) or [])
-        max_steps_raw = self._hydra_arg_value(hydra_args, "trainer.max_steps")
-        ckpt_path = self._hydra_arg_value(hydra_args, "trainer.ckpt_path")
+        hydra_values = hydra_override_values(hydra_args)
+        max_steps_raw = hydra_values.get("trainer.max_steps")
+        ckpt_path = hydra_values.get("trainer.ckpt_path")
         if not max_steps_raw or not ckpt_path:
             return False
         try:

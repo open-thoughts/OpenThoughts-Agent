@@ -22,22 +22,21 @@ import types
 
 
 from hpc.rl_launch_utils import RLJobRunner
+from hpc.rl_paths import hydra_override_values
 
 
 # ---------------------------------------------------------------------------
-# _hydra_arg_value: last-wins dotted lookup with +/++ marker + quote handling
+# Hydra override parsing: last-wins dotted lookup with marker and quote handling
 # ---------------------------------------------------------------------------
 
 
 def test_hydra_arg_value_basic():
     args = ["trainer.max_steps=80", "trainer.epochs=2"]
-    assert RLJobRunner._hydra_arg_value(args, "trainer.max_steps") == "80"
+    assert hydra_override_values(args).get("trainer.max_steps") == "80"
 
 
 def test_hydra_arg_value_missing_returns_none():
-    assert (
-        RLJobRunner._hydra_arg_value(["trainer.epochs=2"], "trainer.max_steps") is None
-    )
+    assert hydra_override_values(["trainer.epochs=2"]).get("trainer.max_steps") is None
 
 
 def test_hydra_arg_value_last_wins():
@@ -48,32 +47,31 @@ def test_hydra_arg_value_last_wins():
         "trainer.ckpt_path=/canonical/checkpoints",
     ]
     assert (
-        RLJobRunner._hydra_arg_value(args, "trainer.ckpt_path")
-        == "/canonical/checkpoints"
+        hydra_override_values(args).get("trainer.ckpt_path") == "/canonical/checkpoints"
     )
 
 
 def test_hydra_arg_value_strips_override_markers():
     assert (
-        RLJobRunner._hydra_arg_value(["++trainer.max_steps=80"], "trainer.max_steps")
+        hydra_override_values(["++trainer.max_steps=80"]).get("trainer.max_steps")
         == "80"
     )
     assert (
-        RLJobRunner._hydra_arg_value(["+trainer.max_steps=80"], "trainer.max_steps")
+        hydra_override_values(["+trainer.max_steps=80"]).get("trainer.max_steps")
         == "80"
     )
 
 
 def test_hydra_arg_value_strips_surrounding_quotes():
     assert (
-        RLJobRunner._hydra_arg_value(
-            ["trainer.ckpt_path='/a path/ckpts'"], "trainer.ckpt_path"
+        hydra_override_values(["trainer.ckpt_path='/a path/ckpts'"]).get(
+            "trainer.ckpt_path"
         )
         == "/a path/ckpts"
     )
     assert (
-        RLJobRunner._hydra_arg_value(
-            ['trainer.ckpt_path="/a:b/ckpts"'], "trainer.ckpt_path"
+        hydra_override_values(['trainer.ckpt_path="/a:b/ckpts"']).get(
+            "trainer.ckpt_path"
         )
         == "/a:b/ckpts"
     )

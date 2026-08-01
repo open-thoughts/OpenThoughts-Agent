@@ -27,8 +27,19 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from hpc.hf_utils import is_hf_dataset_path
 from hpc.launch_utils import get_daytona_api_key_override
-from hpc.rl_config_utils import get_skyrl_command_preview
-from hpc.rl_paths import LATEST_CHECKPOINT_FILE, RLPathManager, RLRunPaths, hydra_override_values
+from hpc.rl_config_utils import (
+    build_skyrl_hydra_args,
+    extract_terminal_bench_agent_env,
+    get_skyrl_command_preview,
+    parse_rl_config,
+)
+from hpc.rl_paths import (
+    LATEST_CHECKPOINT_FILE,
+    RLLaunchIntent,
+    RLPathManager,
+    RLRunPaths,
+    hydra_override_values,
+)
 
 
 # Default Apptainer bind mounts for the RL container runtime mode.
@@ -948,7 +959,6 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
         build_sbatch_directives,
         resolve_conda_activate,
     )
-    from hpc.rl_config_utils import parse_rl_config, build_skyrl_hydra_args, extract_terminal_bench_agent_env
 
     print("\n=== RL MODE (Universal Launcher) ===")
 
@@ -1081,7 +1091,11 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
         trainer_config=parsed.trainer,
         terminal_bench_config=parsed.terminal_bench or {},
         skyrl_overrides=skyrl_overrides,
-        fresh_start_requested=bool(exp_args.get("overwrite_output_dir") or exp_args.get("allow_overwrite")),
+        launch_intent=(
+            RLLaunchIntent.FRESH
+            if exp_args.get("overwrite_output_dir") or exp_args.get("allow_overwrite")
+            else RLLaunchIntent.AUTO
+        ),
     )
     print(run_paths.describe())
 
@@ -1456,11 +1470,11 @@ class RLJobRunner:
             if upload_exit_code == 0:
                 print(f"[RLJobRunner] Trace upload completed successfully.", flush=True)
                 if self.config.trace_upload_cleanup:
-                    trace_jobs_dir = Path(self.config.trials_dir)
-                    if trace_jobs_dir.exists():
+                    trials_dir = Path(self.config.trials_dir)
+                    if trials_dir.exists():
                         import shutil
-                        print(f"[RLJobRunner] Cleaning up traces directory: {trace_jobs_dir}", flush=True)
-                        shutil.rmtree(trace_jobs_dir, ignore_errors=True)
+                        print(f"[RLJobRunner] Cleaning up traces directory: {trials_dir}", flush=True)
+                        shutil.rmtree(trials_dir, ignore_errors=True)
                         print(f"[RLJobRunner] Traces directory removed.", flush=True)
             else:
                 print(f"[RLJobRunner] Trace upload failed with exit code {upload_exit_code}.", flush=True)
@@ -1540,9 +1554,9 @@ class RLJobRunner:
             print(f"[RLJobRunner] Trace upload disabled, skipping.", flush=True)
             return None
 
-        trace_jobs_dir = Path(self.config.trials_dir)
-        if not trace_jobs_dir.exists():
-            print(f"[RLJobRunner] No trace_jobs directory found at {trace_jobs_dir}, skipping upload.", flush=True)
+        trials_dir = Path(self.config.trials_dir)
+        if not trials_dir.exists():
+            print(f"[RLJobRunner] No trials directory found at {trials_dir}, skipping upload.", flush=True)
             return None
 
         repo_id = f"{self.config.trace_upload_repo_org}/{self.config.job_name}"
@@ -1554,7 +1568,7 @@ class RLJobRunner:
 
         cmd = [
             sys.executable, "-m", "scripts.harbor.make_and_upload_trace_dataset",
-            "--job_dir", str(trace_jobs_dir),
+            "--job_dir", str(trials_dir),
             "--repo_id", repo_id,
             "--episodes", self.config.trace_upload_episodes,
             "--dataset_type", self.config.trace_upload_dataset_type,
@@ -1562,7 +1576,7 @@ class RLJobRunner:
 
         print(f"[RLJobRunner] Launching trace upload (training exit code: {training_exit_code}):", flush=True)
         print(f"  repo_id: {repo_id}", flush=True)
-        print(f"  trials_dir: {trace_jobs_dir}", flush=True)
+        print(f"  trials_dir: {trials_dir}", flush=True)
         print(f"  episodes: {self.config.trace_upload_episodes}", flush=True)
         print(f"  log: {log_path}", flush=True)
 

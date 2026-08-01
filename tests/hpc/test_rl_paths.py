@@ -5,6 +5,7 @@ import pytest
 from hpc.rl_paths import (
     AmbiguousCheckpointError,
     CheckpointLayoutError,
+    RLLaunchIntent,
     RLPathManager,
     RLResumeMode,
 )
@@ -42,7 +43,6 @@ def test_forked_checkpoint_becomes_the_single_durable_run_root(tmp_path: Path) -
 
     assert resolved.resume_mode is RLResumeMode.FROM_PATH
     assert resolved.resume_path == checkpoint_path
-    assert resolved.state_root == checkpoint_root
     assert resolved.checkpoint_dir == checkpoint_root / JOB_NAME / "checkpoints"
     assert resolved.export_dir == checkpoint_root / JOB_NAME / "exports"
     assert resolved.trials_dir == checkpoint_root / JOB_NAME / "trace_jobs"
@@ -72,8 +72,21 @@ def test_new_run_uses_canonical_state_root_after_artifact_collision(
 
     assert resolved.resume_mode is RLResumeMode.NONE
     assert resolved.resume_path is None
-    assert resolved.state_root == canonical_root
     assert resolved.checkpoint_dir == canonical_root / JOB_NAME / "checkpoints"
+
+
+def test_explicit_fresh_launch_uses_the_launch_root(tmp_path: Path) -> None:
+    canonical_root = tmp_path / JOB_NAME
+    launch_root = tmp_path / f"{JOB_NAME}_2"
+    _write_checkpoint(canonical_root, 8)
+
+    resolved = RLPathManager(JOB_NAME, canonical_root, launch_root).resolve(
+        launch_intent=RLLaunchIntent.FRESH,
+    )
+
+    assert resolved.resume_mode is RLResumeMode.NONE
+    assert resolved.resume_path is None
+    assert resolved.checkpoint_dir == launch_root / JOB_NAME / "checkpoints"
 
 
 def test_explicit_latest_rejects_empty_checkpoint_directory(tmp_path: Path) -> None:
@@ -104,7 +117,7 @@ def test_explicit_resume_path_becomes_the_checkpoint_write_directory(
 
     assert resolved.resume_path == checkpoint_path
     assert resolved.checkpoint_dir == checkpoint_path.parent
-    assert resolved.state_root == tmp_path / f"{JOB_NAME}_3"
+    assert resolved.export_dir == tmp_path / f"{JOB_NAME}_3" / JOB_NAME / "exports"
 
 
 def test_explicit_resume_path_rejects_a_different_checkpoint_write_directory(

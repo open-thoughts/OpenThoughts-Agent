@@ -245,7 +245,7 @@ class LocalRLRunner:
             return 0
 
         # Set up environment
-        self._setup_environment(exp_args, run_paths)
+        self._setup_environment(run_paths)
 
         # Start Ray and run SkyRL
         return self._run_with_ray(parsed.entrypoint, hydra_args)
@@ -270,7 +270,7 @@ class LocalRLRunner:
             "master_port": self.config.master_port,
         }
 
-    def _setup_environment(self, exp_args: Dict[str, Any], run_paths: RLRunPaths) -> None:
+    def _setup_environment(self, run_paths: RLRunPaths) -> None:
         """Configure environment variables for RL training."""
         # Tensor parallelism and inference engines
         os.environ["TENSOR_PARALLEL_SIZE"] = str(self.config.tensor_parallel_size)

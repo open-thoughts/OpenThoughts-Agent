@@ -34,6 +34,11 @@ class RLResumeMode(StrEnum):
     FROM_PATH = "from_path"
 
 
+class RLLaunchIntent(StrEnum):
+    AUTO = "auto"
+    FRESH = "fresh"
+
+
 class RLPathDecision(StrEnum):
     NEW = "new"
     RESUME = "resume"
@@ -53,7 +58,6 @@ class RLRunPaths:
     """Resolved paths consumed by the launcher and SkyRL configuration."""
 
     job_name: str
-    state_root: Path
     checkpoint_dir: Path
     export_dir: Path
     trials_dir: Path
@@ -129,21 +133,21 @@ class RLPathManager:
         trainer_config: Mapping[str, object] | None = None,
         terminal_bench_config: Mapping[str, object] | None = None,
         skyrl_overrides: Sequence[str] = (),
-        fresh_start_requested: bool = False,
+        launch_intent: RLLaunchIntent = RLLaunchIntent.AUTO,
     ) -> RLRunPaths:
         cli_values = hydra_override_values(skyrl_overrides)
         overrides = _configured_path_values(trainer_config or {}, terminal_bench_config or {})
         overrides.update(cli_values)
-        requested_mode, requested_resume_path = self._requested_resume(overrides, fresh_start_requested)
+        requested_mode, requested_resume_path = self._requested_resume(overrides, launch_intent)
 
-        state_root = self.launch_root if fresh_start_requested else self.canonical_root
+        state_root = self.launch_root if launch_intent is RLLaunchIntent.FRESH else self.canonical_root
         checkpoint_dir = self._configured_checkpoint_dir(overrides, state_root)
         state_root = self._state_root_for_checkpoint_dir(checkpoint_dir, state_root)
 
         explicit = self._resolve_explicit_request(
             requested_mode,
             requested_resume_path,
-            fresh_start_requested,
+            launch_intent,
             state_root,
             checkpoint_dir,
             overrides,
@@ -188,7 +192,7 @@ class RLPathManager:
 
     @staticmethod
     def _requested_resume(
-        overrides: dict[str, str], fresh_start_requested: bool
+        overrides: dict[str, str], launch_intent: RLLaunchIntent
     ) -> tuple[str | None, str | None]:
         requested_mode = overrides.get(RESUME_MODE_KEY)
         requested_resume_path = overrides.get(RESUME_PATH_KEY)
@@ -197,7 +201,7 @@ class RLPathManager:
         if requested_resume_path in HYDRA_NULL_VALUES:
             requested_resume_path = None
 
-        if fresh_start_requested and requested_mode not in (None, RLResumeMode.NONE.value):
+        if launch_intent is RLLaunchIntent.FRESH and requested_mode not in (None, RLResumeMode.NONE.value):
             raise CheckpointLayoutError("A fresh start cannot also request checkpoint resume")
         if requested_resume_path and requested_mode != RLResumeMode.FROM_PATH.value:
             raise CheckpointLayoutError("trainer.resume_path requires trainer.resume_mode=from_path")
@@ -209,12 +213,12 @@ class RLPathManager:
         self,
         requested_mode: str | None,
         requested_resume_path: str | None,
-        fresh_start_requested: bool,
+        launch_intent: RLLaunchIntent,
         state_root: Path,
         checkpoint_dir: Path,
         overrides: dict[str, str],
     ) -> RLRunPaths | None:
-        if fresh_start_requested or requested_mode == RLResumeMode.NONE.value:
+        if launch_intent is RLLaunchIntent.FRESH or requested_mode == RLResumeMode.NONE.value:
             return self._resolved_paths(
                 state_root,
                 checkpoint_dir,
@@ -363,7 +367,6 @@ class RLPathManager:
         )
         return RLRunPaths(
             job_name=self.job_name,
-            state_root=state_root,
             checkpoint_dir=checkpoint_dir,
             export_dir=export_dir,
             trials_dir=trials_dir,

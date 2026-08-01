@@ -5,9 +5,11 @@ replacing 50+ Hydra CLI arguments with a single --rl_config YAML file.
 
 Usage:
     from hpc.rl_config_utils import parse_rl_config, build_skyrl_hydra_args
+    from hpc.rl_paths import RLPathManager
 
     parsed = parse_rl_config("terminal_bench.yaml")
-    hydra_args = build_skyrl_hydra_args(parsed, exp_args, hpc)
+    run_paths = RLPathManager(job_name, canonical_root, launch_root).resolve()
+    hydra_args = build_skyrl_hydra_args(parsed, exp_args, hpc, run_paths=run_paths)
 """
 
 from __future__ import annotations
@@ -17,6 +19,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+
+from hpc.rl_paths import RLRunPaths
 
 # Directory containing built-in SkyRL config YAML files
 SKYRL_CONFIG_DIR = Path(__file__).parent / "skyrl_yaml"
@@ -416,12 +420,14 @@ def build_skyrl_hydra_args(
     parsed: ParsedRLConfig,
     exp_args: Dict[str, Any],
     hpc: Any,
+    *,
+    run_paths: RLRunPaths,
 ) -> List[str]:
     """Convert parsed config + exp_args to Hydra CLI arguments.
 
     This function:
     1. Adds config groups with + prefix
-    2. Derives paths from experiments_dir/job_name if not set
+    2. Applies paths resolved by the RL path manager
     3. Computes num_inference_engines from cluster config
     4. Flattens nested dicts to dotted Hydra keys
     5. Applies data paths from CLI
@@ -430,6 +436,7 @@ def build_skyrl_hydra_args(
         parsed: ParsedRLConfig from parse_rl_config().
         exp_args: Experiment arguments dictionary from CLI.
         hpc: HPC configuration object with cluster settings.
+        run_paths: Validated checkpoint, export, trial, and resume paths.
 
     Returns:
         List of Hydra CLI argument strings.
@@ -444,19 +451,14 @@ def build_skyrl_hydra_args(
     trainer = dict(parsed.trainer)
     generator = dict(parsed.generator)
     data = dict(parsed.data)
+    job_name = run_paths.job_name
 
-    # Derive paths if null
-    experiments_dir = exp_args.get("experiments_dir", "")
-    job_name = exp_args.get("job_name", "")
-
-    if not trainer.get("run_name") and job_name:
+    if not trainer.get("run_name"):
         trainer["run_name"] = job_name
-    if not trainer.get("export_path") and experiments_dir and job_name:
-        trainer["export_path"] = f"{experiments_dir}/{job_name}/exports"
-        print(f"Auto-set trainer.export_path: {trainer['export_path']}")
-    if not trainer.get("ckpt_path") and experiments_dir and job_name:
-        trainer["ckpt_path"] = f"{experiments_dir}/{job_name}/checkpoints"
-        print(f"Auto-set trainer.ckpt_path: {trainer['ckpt_path']}")
+    trainer["export_path"] = str(run_paths.export_dir)
+    trainer["ckpt_path"] = str(run_paths.checkpoint_dir)
+    trainer["resume_mode"] = run_paths.resume_mode.value
+    trainer["resume_path"] = str(run_paths.resume_path) if run_paths.resume_path is not None else None
 
     # Derive placement from num_nodes
     num_nodes = int(exp_args.get("num_nodes", 1))
@@ -587,10 +589,7 @@ def build_skyrl_hydra_args(
     if parsed.terminal_bench:
         terminal_bench = dict(parsed.terminal_bench)
 
-        # Derive trials_dir from experiments_dir if not set
-        # This is where Harbor stores trial execution artifacts
-        if not terminal_bench.get("trials_dir") and experiments_dir and job_name:
-            terminal_bench["trials_dir"] = f"{experiments_dir}/{job_name}/trace_jobs"
+        terminal_bench["trials_dir"] = str(run_paths.trials_dir)
 
         for key, val in _flatten_dict(terminal_bench).items():
             args.append(_format_hydra_arg(f"terminal_bench_config.{key}", val, prefix="+"))

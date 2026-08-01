@@ -53,8 +53,8 @@ from hpc.rl_launch_utils import (
     check_rl_environment,
     resolve_rl_train_data,
     compute_num_inference_engines,
-    derive_skyrl_export_path,
 )
+from hpc.rl_paths import RLPathManager, RLRunPaths
 
 
 @dataclass
@@ -226,7 +226,12 @@ class LocalRLRunner:
             gpus_per_node=self.config.gpus,
             cpus_per_node=self.config.cpus,
         )
-        hydra_args = build_skyrl_hydra_args(parsed, exp_args, hpc_stub)
+        experiments_root = Path(self.config.experiments_dir)
+        run_paths = RLPathManager(self.config.job_name, experiments_root, experiments_root).resolve(
+            skyrl_overrides=self.config.skyrl_overrides,
+        )
+        print(run_paths.describe())
+        hydra_args = build_skyrl_hydra_args(parsed, exp_args, hpc_stub, run_paths=run_paths)
 
         # Add CLI overrides
         if self.config.skyrl_overrides:
@@ -238,7 +243,7 @@ class LocalRLRunner:
             return 0
 
         # Set up environment
-        self._setup_environment(exp_args)
+        self._setup_environment(exp_args, run_paths)
 
         # Start Ray and run SkyRL
         return self._run_with_ray(parsed.entrypoint, hydra_args)
@@ -263,7 +268,7 @@ class LocalRLRunner:
             "master_port": self.config.master_port,
         }
 
-    def _setup_environment(self, exp_args: Dict[str, Any]) -> None:
+    def _setup_environment(self, exp_args: Dict[str, Any], run_paths: RLRunPaths) -> None:
         """Configure environment variables for RL training."""
         # Tensor parallelism and inference engines
         os.environ["TENSOR_PARALLEL_SIZE"] = str(self.config.tensor_parallel_size)
@@ -277,10 +282,7 @@ class LocalRLRunner:
         os.environ["POLICY_NUM_NODES"] = str(self.config.num_nodes)
 
         # Export path
-        export_path = derive_skyrl_export_path(
-            self.config.experiments_dir,
-            self.config.job_name,
-        )
+        export_path = str(run_paths.export_dir)
         os.environ["SKYRL_EXPORT_PATH"] = export_path
 
         # vLLM settings

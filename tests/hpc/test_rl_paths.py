@@ -37,7 +37,7 @@ def test_forked_checkpoint_becomes_the_single_durable_run_root(tmp_path: Path) -
 
     resolved = RLPathManager(JOB_NAME, canonical_root, launch_root).resolve()
 
-    assert resolved.resume_mode is RLResumeMode.FROM_PATH
+    assert resolved.resume_mode is RLResumeMode.LATEST
     assert resolved.resume_path == checkpoint_path
     assert resolved.checkpoint_dir == checkpoint_root / JOB_NAME / "checkpoints"
     assert resolved.export_dir == checkpoint_root / JOB_NAME / "exports"
@@ -213,7 +213,7 @@ def test_hydra_builder_consumes_the_resolved_path_contract(tmp_path: Path) -> No
 
     assert _hydra_value(arguments, "trainer.ckpt_path") == str(run_paths.checkpoint_dir)
     assert _hydra_value(arguments, "trainer.export_path") == str(run_paths.export_dir)
-    assert _hydra_value(arguments, "trainer.resume_mode") == "from_path"
+    assert _hydra_value(arguments, "trainer.resume_mode") == "latest"
     assert _hydra_value(arguments, "trainer.resume_path") == str(checkpoint_path)
     assert _hydra_value(arguments, "terminal_bench_config.trials_dir") == str(
         run_paths.trials_dir

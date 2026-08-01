@@ -8,6 +8,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Mapping, Sequence
 
+from hpc.experiment_path_names import numbered_experiment_fork_pattern
+
 
 CHECKPOINTS_SUBDIR = "checkpoints"
 EXPORTS_SUBDIR = "exports"
@@ -45,7 +47,6 @@ class RLLaunchIntent(StrEnum):
 @dataclass(frozen=True)
 class CheckpointCandidate:
     state_root: Path
-    checkpoint_dir: Path
     checkpoint_path: Path
     step: int
 
@@ -150,7 +151,7 @@ class RLPathManager:
             return explicit
 
         if CKPT_PATH_KEY in overrides:
-            candidate = self._checkpoint_candidate(state_root, checkpoint_dir, required=False)
+            candidate = self._checkpoint_candidate(state_root, checkpoint_dir)
             candidates = [candidate] if candidate is not None else []
         else:
             candidates = self._checkpoint_candidates()
@@ -176,9 +177,9 @@ class RLPathManager:
         selected = highest[0]
         return self._resolved_paths(
             selected.state_root,
-            selected.checkpoint_dir,
+            selected.checkpoint_path.parent,
             overrides,
-            resume_mode=RLResumeMode.FROM_PATH,
+            resume_mode=RLResumeMode.LATEST,
             resume_path=selected.checkpoint_path,
         )
 
@@ -221,8 +222,7 @@ class RLPathManager:
                 resume_path=None,
             )
         if requested_mode == RLResumeMode.LATEST.value:
-            candidate = self._checkpoint_candidate(state_root, checkpoint_dir, required=True)
-            assert candidate is not None
+            candidate = self._required_checkpoint_candidate(state_root, checkpoint_dir)
             return self._resolved_paths(
                 state_root,
                 checkpoint_dir,
@@ -273,7 +273,7 @@ class RLPathManager:
         candidates: list[CheckpointCandidate] = []
         for state_root in self._candidate_state_roots():
             checkpoint_dir = state_root / self.job_name / CHECKPOINTS_SUBDIR
-            candidate = self._checkpoint_candidate(state_root, checkpoint_dir, required=False)
+            candidate = self._checkpoint_candidate(state_root, checkpoint_dir)
             if candidate is not None:
                 candidates.append(candidate)
         return candidates
@@ -283,7 +283,7 @@ class RLPathManager:
         parent = self.canonical_root.parent
         if not parent.is_dir():
             return roots
-        fork_pattern = re.compile(rf"{re.escape(self.canonical_root.name)}_(\d+)$")
+        fork_pattern = numbered_experiment_fork_pattern(self.canonical_root.name)
         roots.extend(
             path.resolve() for path in parent.iterdir() if path.is_dir() and fork_pattern.fullmatch(path.name)
         )
@@ -293,19 +293,13 @@ class RLPathManager:
         self,
         state_root: Path,
         checkpoint_dir: Path,
-        *,
-        required: bool,
     ) -> CheckpointCandidate | None:
         marker_path = checkpoint_dir / LATEST_CHECKPOINT_FILE
-        step_dirs = self._step_directories(checkpoint_dir)
+        checkpoint_steps = self._checkpoint_steps(checkpoint_dir)
         if not marker_path.is_file():
-            if step_dirs:
+            if checkpoint_steps:
                 raise CheckpointLayoutError(
                     f"Checkpoint directories exist under {checkpoint_dir}, but {LATEST_CHECKPOINT_FILE} is missing"
-                )
-            if required:
-                raise CheckpointLayoutError(
-                    f"trainer.resume_mode=latest requires a usable checkpoint under {checkpoint_dir}"
                 )
             return None
 
@@ -317,15 +311,25 @@ class RLPathManager:
         checkpoint_path = checkpoint_dir / f"{GLOBAL_STEP_PREFIX}{step}"
         if not checkpoint_path.is_dir():
             raise CheckpointLayoutError(f"Checkpoint marker {marker_path} names missing {checkpoint_path.name}")
-        if step_dirs and max(step_dirs) != step:
+        if checkpoint_steps and max(checkpoint_steps) != step:
             raise CheckpointLayoutError(
                 f"Checkpoint marker {marker_path} names {GLOBAL_STEP_PREFIX}{step}, "
-                f"but {GLOBAL_STEP_PREFIX}{max(step_dirs)} also exists"
+                f"but {GLOBAL_STEP_PREFIX}{max(checkpoint_steps)} also exists"
             )
-        return CheckpointCandidate(state_root, checkpoint_dir, checkpoint_path, step)
+        return CheckpointCandidate(state_root, checkpoint_path, step)
+
+    def _required_checkpoint_candidate(
+        self, state_root: Path, checkpoint_dir: Path
+    ) -> CheckpointCandidate:
+        candidate = self._checkpoint_candidate(state_root, checkpoint_dir)
+        if candidate is None:
+            raise CheckpointLayoutError(
+                f"trainer.resume_mode=latest requires a usable checkpoint under {checkpoint_dir}"
+            )
+        return candidate
 
     @staticmethod
-    def _step_directories(checkpoint_dir: Path) -> list[int]:
+    def _checkpoint_steps(checkpoint_dir: Path) -> list[int]:
         if not checkpoint_dir.is_dir():
             return []
         steps: list[int] = []

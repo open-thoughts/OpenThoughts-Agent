@@ -23,7 +23,8 @@ resume source differs from the checkpoint write directory.
 ## Decision rule
 
 An automatically selected checkpoint makes its containing run root the owner of checkpoints, exports, and
-trials for the resumed launch. With no checkpoint, durable state uses the canonical root even if configs and
+trials for the resumed launch. It uses `resume_mode=latest` on that fixed checkpoint directory so chained
+restarts observe checkpoints written after submission. With no checkpoint, durable state uses the canonical root even if configs and
 logs were collision-renamed. Explicit resume settings are validated only at their stated path and never fall
 back to a sibling. Built-in launcher configs leave `resume_mode` unset so first launches use automatic
 discovery; a user-authored `resume_mode=latest` is strict and requires a usable checkpoint at the resolved path.

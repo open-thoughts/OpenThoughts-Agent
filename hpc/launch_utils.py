@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Union
 
 from hpc.hpc import detect_hpc
+from hpc.experiment_path_names import numbered_experiment_fork_name
 
 # Re-export HuggingFace utilities for backwards compatibility
 from hpc.hf_utils import sanitize_hf_repo_id
@@ -684,7 +685,7 @@ def setup_experiments_dir(
                 if (experiments_abs / "configs").exists()
                 else []
             ):
-                experiments_abs = base.parent / f"{base.name}_{suffix}"
+                experiments_abs = base.parent / numbered_experiment_fork_name(base.name, suffix)
                 suffix += 1
             renamed_for_collision = experiments_abs != base
             if renamed_for_collision:

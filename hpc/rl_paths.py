@@ -11,9 +11,10 @@ from typing import Mapping, Sequence
 
 CHECKPOINTS_SUBDIR = "checkpoints"
 EXPORTS_SUBDIR = "exports"
-TRIALS_SUBDIR = "trace_jobs"
+TRACE_JOBS_SUBDIR = "trace_jobs"
 LATEST_CHECKPOINT_FILE = "latest_ckpt_global_step.txt"
-GLOBAL_STEP_PATTERN = re.compile(r"global_step_(\d+)$")
+GLOBAL_STEP_PREFIX = "global_step_"
+GLOBAL_STEP_PATTERN = re.compile(rf"{GLOBAL_STEP_PREFIX}(\d+)$")
 HYDRA_NULL_VALUES = frozenset({"", "null", "None", "~"})
 CKPT_PATH_KEY = "trainer.ckpt_path"
 EXPORT_PATH_KEY = "trainer.export_path"
@@ -313,13 +314,13 @@ class RLPathManager:
         except (OSError, ValueError) as error:
             raise CheckpointLayoutError(f"Invalid checkpoint marker: {marker_path}") from error
 
-        checkpoint_path = checkpoint_dir / f"global_step_{step}"
+        checkpoint_path = checkpoint_dir / f"{GLOBAL_STEP_PREFIX}{step}"
         if not checkpoint_path.is_dir():
             raise CheckpointLayoutError(f"Checkpoint marker {marker_path} names missing {checkpoint_path.name}")
         if step_dirs and max(step_dirs) != step:
             raise CheckpointLayoutError(
-                f"Checkpoint marker {marker_path} names global_step_{step}, "
-                f"but global_step_{max(step_dirs)} also exists"
+                f"Checkpoint marker {marker_path} names {GLOBAL_STEP_PREFIX}{step}, "
+                f"but {GLOBAL_STEP_PREFIX}{max(step_dirs)} also exists"
             )
         return CheckpointCandidate(state_root, checkpoint_dir, checkpoint_path, step)
 
@@ -360,7 +361,7 @@ class RLPathManager:
         trials_dir = (
             _absolute_path(overrides[TRIALS_DIR_KEY])
             if TRIALS_DIR_KEY in overrides
-            else trainer_root / TRIALS_SUBDIR
+            else trainer_root / TRACE_JOBS_SUBDIR
         )
         return RLRunPaths(
             job_name=self.job_name,

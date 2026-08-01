@@ -164,7 +164,7 @@ def test_duplicate_highest_steps_require_explicit_resume_path(tmp_path: Path) ->
         RLPathManager(JOB_NAME, canonical_root, launch_root).resolve()
 
 
-def test_hydra_builder_consumes_the_resolved_path_contract(tmp_path: Path) -> None:
+def test_yaml_path_settings_feed_the_manager_contract(tmp_path: Path) -> None:
     root = tmp_path / JOB_NAME
     configured_root = tmp_path / "configured"
     checkpoint_path = _write_checkpoint(configured_root, 7)
@@ -183,6 +183,28 @@ def test_hydra_builder_consumes_the_resolved_path_contract(tmp_path: Path) -> No
         trainer_config=parsed.trainer,
         terminal_bench_config=parsed.terminal_bench,
     )
+
+    assert run_paths.checkpoint_dir == checkpoint_path.parent
+    assert run_paths.export_dir == configured_root / JOB_NAME / "model_exports"
+    assert run_paths.trials_dir == configured_root / JOB_NAME / "trials"
+    assert run_paths.resume_path == checkpoint_path
+
+
+def test_hydra_builder_consumes_the_resolved_path_contract(tmp_path: Path) -> None:
+    root = tmp_path / JOB_NAME
+    checkpoint_path = _write_checkpoint(root, 7)
+    run_paths = RLPathManager(JOB_NAME, root, root).resolve()
+    parsed = ParsedRLConfig(
+        config_path=tmp_path / "config.yaml",
+        raw={},
+        entrypoint="skyrl_train.entrypoints.main_base",
+        trainer={
+            "resume_mode": "latest",
+            "ckpt_path": "/stale/checkpoints",
+            "export_path": "/stale/exports",
+        },
+        terminal_bench={"trials_dir": "/stale/trials"},
+    )
     hpc = type("HPC", (), {"gpus_per_node": 4})()
 
     arguments = build_skyrl_hydra_args(
@@ -191,7 +213,7 @@ def test_hydra_builder_consumes_the_resolved_path_contract(tmp_path: Path) -> No
 
     assert _hydra_value(arguments, "trainer.ckpt_path") == str(run_paths.checkpoint_dir)
     assert _hydra_value(arguments, "trainer.export_path") == str(run_paths.export_dir)
-    assert _hydra_value(arguments, "trainer.resume_mode") == "latest"
+    assert _hydra_value(arguments, "trainer.resume_mode") == "from_path"
     assert _hydra_value(arguments, "trainer.resume_path") == str(checkpoint_path)
     assert _hydra_value(arguments, "terminal_bench_config.trials_dir") == str(
         run_paths.trials_dir

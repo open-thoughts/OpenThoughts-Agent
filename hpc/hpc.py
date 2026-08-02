@@ -792,6 +792,10 @@ echo "[proxy] ✓ Proxy environment configured"'''
         return "\n".join(lines)
 
 
+# NCCL treats 0 and values >=32 as infinite, not seconds. Keep JSC at 23; do not raise it to lengthen waits.
+JSC_NCCL_IB_TIMEOUT = "23"
+
+
 jureca = HPC(
     name="jureca",
     hostname_pattern=r"jr.*?.jureca",
@@ -816,7 +820,7 @@ jureca = HPC(
     nccl_settings={
         "NCCL_NET_GDR_LEVEL": "0",
         "NCCL_SOCKET_IFNAME": "ib0",
-        "NCCL_IB_TIMEOUT": "60",
+        "NCCL_IB_TIMEOUT": JSC_NCCL_IB_TIMEOUT,
     },
     training_launcher="accelerate",
     # JSC shared SOCKS5 proxy (more reliable than SSH tunnels)
@@ -959,7 +963,7 @@ jupiter = HPC(
         "NCCL_DEBUG": "WARN",
         "NCCL_NET_GDR_LEVEL": "0",
         "NCCL_SOCKET_IFNAME": "ib0",
-        "NCCL_IB_TIMEOUT": "60",
+        "NCCL_IB_TIMEOUT": JSC_NCCL_IB_TIMEOUT,
     },
     training_launcher="accelerate",
     needs_ssh_tunnel=True,
@@ -1052,7 +1056,7 @@ juwels = HPC(
     nccl_settings={
         "NCCL_NET_GDR_LEVEL": "0",
         "NCCL_SOCKET_IFNAME": "ib0",
-        "NCCL_IB_TIMEOUT": "60",
+        "NCCL_IB_TIMEOUT": JSC_NCCL_IB_TIMEOUT,
     },
     training_launcher="accelerate",
     # JSC shared SOCKS5 proxy (more reliable than SSH tunnels)

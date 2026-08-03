@@ -75,7 +75,7 @@ rsync -avz --progress -e "ssh -i ~/.ssh/id_ed25519_jsc -4" \
 ## sbatch signal-53 trap (true cluster-side variant)
 Distinct from EDQUOT: `sbatch` returns a JID, RUNS 9–18s, then FAILS `0:53` `Reason=RaisedSignal:53(Real-time_signal_19)`, **no log file at all** (script's first line never runs). `srun` from the same shell works; already-running sbatches keep running — affects NEW submissions only. Per-user/per-account, not per-node. Ruled out: reservation, account, node count, cpus-per-task, mail dirs, `--export=NONE`, WorkDir, `--exclude`, raw `--wrap='echo hello'`. **Probe:**
 ```
-sbatch --reservation=reformo --account=reformo --partition=booster --time=00:02:00 --nodes=1 --gres=gpu:4 --wrap='echo hello'
+sbatch --account=reformo --partition=booster --time=00:02:00 --nodes=1 --gres=gpu:4 --wrap='echo hello'
 ```
 FAIL 0:53 → trap active → fall back to `srun` for one-offs, or use `python -m hpc.launch` (its submission path has been observed healthy). Untried: fresh login shell, different login node, CPU-only sbatch, JSC support.
 

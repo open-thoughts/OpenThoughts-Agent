@@ -18,14 +18,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from data.nemotron_cpp_v2 import generate as G
-from data.nemotron_cpp_v2 import templates as T
 from data.nemotron_cpp_v2.transform import transform
 
 PREFIX = G.PREFIX

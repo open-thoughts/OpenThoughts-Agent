@@ -49,7 +49,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -561,7 +561,7 @@ def run(args: argparse.Namespace) -> int:
             return 2
         print(f"model_id={info['model_id']}  base_model_id={info.get('base_model_id')}")
         if info["matched"]:
-            print(f"\nMatched pairs (sorted by delta desc; pass --eval-benchmark <id> to pin):")
+            print("\nMatched pairs (sorted by delta desc; pass --eval-benchmark <id> to pin):")
             print(f"  {'benchmark':<38} {'post':>8} {'base':>8} {'delta':>8}")
             for r in info["matched"]:
                 ps = "—" if r["post_score"] is None else f"{r['post_score']:.4f}"

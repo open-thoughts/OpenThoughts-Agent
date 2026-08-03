@@ -28,10 +28,10 @@ _repo_root = Path(__file__).resolve().parents[2]
 if str(_repo_root) not in sys.path:
     sys.path.append(str(_repo_root))
 
-from hpc.iris_launch_utils import IrisLauncher
-from hpc.iris.outputs import IrisOutputPaths
-from hpc.cloud_launch_utils import repo_relative, infer_harbor_env_from_config
-from hpc.arg_groups import (
+from hpc.iris_launch_utils import IrisLauncher  # noqa: E402
+from hpc.iris.outputs import IrisOutputPaths  # noqa: E402
+from hpc.cloud_launch_utils import repo_relative, infer_harbor_env_from_config  # noqa: E402
+from hpc.arg_groups import (  # noqa: E402
     add_harbor_args,
     add_harbor_env_arg,
     add_model_compute_args,
@@ -39,12 +39,12 @@ from hpc.arg_groups import (
     add_database_upload_args,
     add_ingress_literal_args,
 )
-from hpc.harbor_utils import load_harbor_config
-from hpc.datagen_config_utils import parse_datagen_config
-from hpc.hf_utils import is_hf_dataset_path
-from hpc.launch_utils import PROJECT_ROOT
-from eval.presets import load_presets
-from database.unified_db.infra_errors import INFRA_ERROR_TYPES
+from hpc.harbor_utils import load_harbor_config  # noqa: E402
+from hpc.datagen_config_utils import parse_datagen_config  # noqa: E402
+from hpc.hf_utils import is_hf_dataset_path  # noqa: E402
+from hpc.launch_utils import PROJECT_ROOT  # noqa: E402
+from eval.presets import load_presets  # noqa: E402
+from database.unified_db.infra_errors import INFRA_ERROR_TYPES  # noqa: E402
 
 # Default re-fire filter: the non-benign INFRA error types a warm-dir re-fire
 # should DELETE-and-re-run (so the harbor auto-resume actually re-runs them

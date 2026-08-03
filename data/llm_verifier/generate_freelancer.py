@@ -4,7 +4,7 @@ Generate Freelancer projects dataset with LLM verifier tests.
 """
 
 from data.freelancer.generate import scrape_freelancer_projects
-from data.commons import generate_tasks_from_questions, upsample_tasks_directory, upload_tasks_to_hf
+from data.commons import generate_tasks_from_questions, upload_tasks_to_hf
 from data.llm_verifier.utils import add_llm_verifier_tests_to_questions
 
 

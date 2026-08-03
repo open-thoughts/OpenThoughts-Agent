@@ -1,5 +1,4 @@
 import os
-import re
 import sys
 import json
 import yaml
@@ -435,7 +434,7 @@ def _maybe_assign_tokenized_path(base_config: dict, exp_args: dict, dataset_entr
         lf_caches = glob.glob(os.path.join(tokenized_dir, "*_tokenized"))
         if lf_caches:
             print(f"[pretok] Found {len(lf_caches)} LlamaFactory tokenized cache(s) in {tokenized_dir}")
-            print(f"[pretok] Setting overwrite_cache=false so LlamaFactory reuses them")
+            print("[pretok] Setting overwrite_cache=false so LlamaFactory reuses them")
             base_config["overwrite_cache"] = False
 
 

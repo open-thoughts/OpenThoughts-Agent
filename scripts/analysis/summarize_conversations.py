@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 import os
@@ -12,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from typing import Dict, Iterable, Iterator
+from typing import Dict, Iterable  # noqa: E402
 
 # Make tokenizers robust on HPC nodes with strict thread limits
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -23,7 +22,7 @@ try:
 except ImportError:  # pragma: no cover - import guard for informative error message
     AutoTokenizer = None  # type: ignore[assignment]
 
-from scripts.analysis.utils import (
+from scripts.analysis.utils import (  # noqa: E402
     extract_conversation_text,
     count_turns,
     iter_jsonl,

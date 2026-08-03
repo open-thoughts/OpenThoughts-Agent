@@ -80,9 +80,9 @@ def pre_download_dataset(exp_args):
                 # Set HF token for authentication
                 hf_token = os.environ.get("HF_TOKEN")
                 if hf_token and hf_token != "hf_your_token_here":
-                    print(f"  Using HF token for authentication")
+                    print("  Using HF token for authentication")
                 else:
-                    print(f"  Warning: No valid HF token found, trying without authentication")
+                    print("  Warning: No valid HF token found, trying without authentication")
                 
                 # Use snapshot_download to get all dataset files without format issues
                 try:

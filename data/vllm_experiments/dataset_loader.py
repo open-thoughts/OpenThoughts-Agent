@@ -319,14 +319,14 @@ class DatasetLoader:
         prompt_lengths = [p.prompt_length for p in prompts]
         output_lengths = [p.expected_output_length for p in prompts]
 
-        print(f"\nDataset Statistics:")
+        print("\nDataset Statistics:")
         print(f"  Total prompts: {len(prompts)}")
-        print(f"\n  Prompt lengths (tokens):")
+        print("\n  Prompt lengths (tokens):")
         print(f"    Mean: {np.mean(prompt_lengths):.1f}")
         print(f"    Median: {np.median(prompt_lengths):.1f}")
         print(f"    Min: {np.min(prompt_lengths)}")
         print(f"    Max: {np.max(prompt_lengths)}")
-        print(f"\n  Expected output lengths (tokens):")
+        print("\n  Expected output lengths (tokens):")
         print(f"    Mean: {np.mean(output_lengths):.1f}")
         print(f"    Median: {np.median(output_lengths):.1f}")
         print(f"    Min: {np.min(output_lengths)}")
@@ -338,7 +338,7 @@ class DatasetLoader:
         for cat in categories:
             category_counts[cat] = category_counts.get(cat, 0) + 1
 
-        print(f"\n  Category distribution:")
+        print("\n  Category distribution:")
         for cat, count in sorted(category_counts.items()):
             print(f"    {cat}: {count} ({count/len(prompts)*100:.1f}%)")
 

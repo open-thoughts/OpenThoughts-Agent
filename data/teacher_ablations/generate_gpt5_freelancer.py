@@ -1,5 +1,5 @@
 from data.freelancer.generate import scrape_freelancer_projects
-from data.commons import upload_tasks_to_hf, generate_tasks_from_questions, upsample_tasks_directory, upload_traces_to_hf
+from data.commons import generate_tasks_from_questions, upsample_tasks_directory, upload_traces_to_hf
 from scripts.harbor.run_and_export_traces import run_dataset_to_traces
 
 def main() -> None:

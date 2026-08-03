@@ -17,7 +17,7 @@ import urllib.request
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterator, List, Sequence, Tuple
+from typing import Callable, Iterator, List, Tuple
 
 try:
     from data.commons import (

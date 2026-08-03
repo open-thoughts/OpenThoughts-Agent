@@ -37,20 +37,19 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 # Add project root to path for imports
 PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from hpc.launch_utils import PROJECT_ROOT as HPC_PROJECT_ROOT
-from hpc.rl_config_utils import (
+from hpc.rl_config_utils import (  # noqa: E402
     apply_context_budget_overrides,
     parse_rl_config,
     build_skyrl_hydra_args,
     get_skyrl_command_preview,
 )
-from hpc.rl_launch_utils import (
+from hpc.rl_launch_utils import (  # noqa: E402
     check_rl_environment,
     resolve_rl_train_data,
     compute_num_inference_engines,
@@ -369,7 +368,7 @@ class LocalRLRunner:
 
         cmd = [python_exe, "-m", entrypoint] + hydra_args
 
-        print(f"\nRunning SkyRL:")
+        print("\nRunning SkyRL:")
         print(f"  Entrypoint: {entrypoint}")
         print(f"  Args: {len(hydra_args)} Hydra arguments")
 

@@ -262,7 +262,7 @@ def recompute(
     )
 
     # Print summary
-    print(f"\nResults summary:")
+    print("\nResults summary:")
     print(f"  Total trials: {stats.n_trials}")
     print(f"  Total errors: {stats.n_errors}")
     for evals_key, eval_stats in stats.evals.items():

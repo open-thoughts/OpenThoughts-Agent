@@ -63,7 +63,6 @@ import re
 import sys
 from pathlib import Path
 from textwrap import dedent
-from typing import Optional
 
 from datasets import load_dataset
 
@@ -200,12 +199,12 @@ def _extract_post_body(container_def: str) -> str:
     # de-indent: drop a common leading indentation (Singularity %post is indented)
     text = "\n".join(body)
     # compute min indent of non-empty lines
-    nonempty = [l for l in body if l.strip()]
+    nonempty = [l for l in body if l.strip()]  # noqa: E741
     if nonempty:
-        indents = [len(l) - len(l.lstrip(" ")) for l in nonempty]
+        indents = [len(l) - len(l.lstrip(" ")) for l in nonempty]  # noqa: E741
         common = min(indents)
         if common:
-            text = "\n".join(l[common:] if len(l) >= common else l for l in body)
+            text = "\n".join(l[common:] if len(l) >= common else l for l in body)  # noqa: E741
     return text
 
 
@@ -409,8 +408,8 @@ def _is_buildable(record: dict) -> bool:
 # Dockerfile => 1 snapshot, full 12,926 tasks, no solution/quality filter.
 # --------------------------------------------------------------------------- #
 
-import base64
-import shlex
+import base64  # noqa: E402
+import shlex  # noqa: E402
 
 
 def _hub_fixtures_block(env_dir: Path) -> str:
@@ -454,7 +453,7 @@ def _build_hub_setup_script(task_dir: Path, base_install: str) -> str:
     env_dir = task_dir / "environment"
     post = (env_dir / "post_install.sh").read_text(encoding="utf-8", errors="replace") if (env_dir / "post_install.sh").exists() else ""
     # Drop a redundant `export DEBIAN_FRONTEND` (set in the shared image env).
-    post = "\n".join(l for l in post.splitlines() if not re.match(r"\s*export\s+DEBIAN_FRONTEND", l))
+    post = "\n".join(l for l in post.splitlines() if not re.match(r"\s*export\s+DEBIAN_FRONTEND", l))  # noqa: E741
     fixtures = _hub_fixtures_block(env_dir)
 
     header = dedent(
@@ -495,7 +494,7 @@ def _build_hub_setup_script(task_dir: Path, base_install: str) -> str:
 # apt/pip/torch base every hub task was built against) so the runtime setup.sh only has
 # to run each task's post_install + fixtures. One Dockerfile string for all tasks.
 def _shared_dockerfile_full(base_install: str) -> str:
-    bi = base_install.rstrip("\n")
+    base_install.rstrip("\n")
     return (
         "FROM ubuntu:22.04\n\n"
         "ENV DEBIAN_FRONTEND=noninteractive\n"

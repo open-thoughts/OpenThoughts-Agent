@@ -23,8 +23,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 # Log prefix for consistent messaging
 LOG_PREFIX = "[checkpoint]"

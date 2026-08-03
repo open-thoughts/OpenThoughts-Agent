@@ -122,8 +122,6 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 from patch_exp_flat25_subtle_debug_tasks import (  # noqa: E402
-    NEW_TEST_SH,
-    V2_MARKER,
     patch_test_sh,
 )
 
@@ -545,7 +543,7 @@ def main() -> None:
               "other", "kept"):
         print(f"[patch_exp_flat25_subtle_debug_v3] {k:<16}: {counts[k]:>5}")
     print()
-    print(f"[patch_exp_flat25_subtle_debug_v3] test.sh mutation (on KEPT tasks):")
+    print("[patch_exp_flat25_subtle_debug_v3] test.sh mutation (on KEPT tasks):")
     for k in ("patched", "patched_unusual", "already",
               "missing", "skipped_no_pytest", "unparseable"):
         print(f"  {k:<20}: {patch_counts.get(k, 0):>5}")

@@ -13,7 +13,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import requests
 import yaml
 
 from scripts.beam.config import Beta9Config, S3StorageConfig
@@ -478,9 +477,9 @@ def _build_config_json(s3_config: Optional[S3StorageConfig]) -> str:
         # awsS3Bucket = endpoint + bucket (no extra path; JuiceFS uses fsName for internal paths).
         juicefs_bucket_url = f"{s3_config.endpoint_url}/{s3_config.bucket_name}"
 
-        logger.info(f"[CONFIG] Using EXTERNAL S3 storage (not LocalStack)")
+        logger.info("[CONFIG] Using EXTERNAL S3 storage (not LocalStack)")
         logger.info(f"[CONFIG]   JuiceFS bucket URL: {juicefs_bucket_url}")
-        logger.info(f"[CONFIG]   JuiceFS fsName: beta9-fs")
+        logger.info("[CONFIG]   JuiceFS fsName: beta9-fs")
         logger.info(f"[CONFIG]   Workspace endpoint: {s3_config.endpoint_url}")
 
         config["storage"]["juicefs"].update({
@@ -626,7 +625,7 @@ def deploy_beta9(
         # Format: endpoint/bucket (no extra path; JuiceFS uses fsName for internal paths)
         juicefs_bucket_url = f"{s3_config.endpoint_url}/{s3_config.bucket_name}"
 
-        logger.info(f"[CONFIG] Using EXTERNAL S3 storage (not LocalStack)")
+        logger.info("[CONFIG] Using EXTERNAL S3 storage (not LocalStack)")
         logger.info(f"[CONFIG]   JuiceFS bucket URL: {juicefs_bucket_url}")
         logger.info(f"[CONFIG]   JuiceFS fsName: {config.juicefs_fs_name}")
         logger.info(f"[CONFIG]   Workspace endpoint: {s3_config.endpoint_url}")
@@ -703,7 +702,7 @@ def deploy_beta9(
 
     # Write values to a temp file and use --values (deep-merges with the chart's values.yaml).
     if dry_run:
-        logger.info(f"[DRY RUN] Would deploy with values:")
+        logger.info("[DRY RUN] Would deploy with values:")
         logger.info(yaml.dump(values, default_flow_style=False))
         return True
 
@@ -831,7 +830,7 @@ def delete_namespace_pvcs(namespace: str, dry_run: bool = False) -> bool:
 
     if result.returncode != 0:
         # PVCs may be stuck due to finalizers - force delete them
-        logger.warning(f"PVC deletion timed out, removing finalizers...")
+        logger.warning("PVC deletion timed out, removing finalizers...")
         for pvc in pvcs:
             patch_cmd = [
                 "kubectl", "patch", "pvc", pvc,
@@ -952,7 +951,7 @@ def wait_for_gateway_ready(
 
                             return True
                         else:
-                            logger.debug(f"Gateway pod running but not ready yet")
+                            logger.debug("Gateway pod running but not ready yet")
                             crash_count = 0  # Reset crash counter if we see progress
 
         logger.debug(f"Gateway status: {result.stdout.strip()}")

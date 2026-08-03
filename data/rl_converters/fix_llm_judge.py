@@ -658,7 +658,6 @@ Each task follows the `nemotron_gym` LLM-judge verifier contract:
 
 
 def upload(workdir: Path) -> None:
-    import json
 
     from huggingface_hub import HfApi, create_repo
 

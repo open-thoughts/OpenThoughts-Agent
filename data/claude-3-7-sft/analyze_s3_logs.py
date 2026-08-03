@@ -6,7 +6,6 @@ from datetime import datetime
 from typing import List, Tuple, Dict, Any
 import re
 from datasets import Dataset
-from huggingface_hub import HfApi
 import os
 import ray
 
@@ -158,7 +157,7 @@ def extract_conversation_data(bucket: str, debug_file: str) -> Dict[str, Any]:
                 date_str = date_part.replace('__', ' ')
                 try:
                     conversation_data['date'] = datetime.strptime(date_str, '%Y-%m-%d %H-%M-%S').isoformat()
-                except:
+                except:  # noqa: E722
                     conversation_data['date'] = date_str
             
             # Extract task name
@@ -197,7 +196,7 @@ def extract_conversation_data(bucket: str, debug_file: str) -> Dict[str, Any]:
                 if original_response:  # Only add if response is not empty
                     try:
                         data = json.loads(original_response)
-                    except Exception as e:
+                    except Exception:
                        return None
                     if 'content' in data:
                         if "values" not in data['content'][0]['input']:

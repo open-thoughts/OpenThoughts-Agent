@@ -381,7 +381,7 @@ def print_report(report: dict, top_loaded: int) -> None:
           f"{gd['min']:.4f} / {gd['mean']:.4f} / {gd['max']:.4f} / {gd['std']:.4f}")
     print()
 
-    print(f"MOST-COLLAPSED LAYERS (lowest entropy):")
+    print("MOST-COLLAPSED LAYERS (lowest entropy):")
     for item in report["most_collapsed_layers"]:
         print(f"  {item['layer']:<48} H={item['entropy_normalized']:.4f}  G={item['gini']:.4f}")
     print()

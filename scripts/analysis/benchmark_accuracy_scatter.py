@@ -431,7 +431,7 @@ def main():
 
     # ---- Radar plot ----
     if args.radar_models:
-        print(f"\n=== Radar Plot ===")
+        print("\n=== Radar Plot ===")
         print(f"Matching models for: {args.radar_models}")
 
         matched_models = resolve_model_ids_by_name(client, args.radar_models)

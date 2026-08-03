@@ -153,7 +153,7 @@ def detect_overlong_jobs(jobs_dir, min_elapsed_h=20, benchmark_filter=None):
         # Check elapsed
         try:
             d = json.load(open(entry / "result.json"))
-        except:
+        except:  # noqa: E722
             continue
         started = parse_iso(d.get("started_at"))
         if not started:
@@ -172,7 +172,7 @@ def detect_overlong_jobs(jobs_dir, min_elapsed_h=20, benchmark_filter=None):
                         ft = parse_iso(fa)
                         if ft and (latest is None or ft > latest):
                             latest = ft
-                except:
+                except:  # noqa: E722
                     pass
 
         if latest is None:

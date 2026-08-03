@@ -65,10 +65,10 @@ REPO_ROOT = SCRIPT_DIR.parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from datasets import load_dataset
+from datasets import load_dataset  # noqa: E402
 
-from scripts.harbor import tasks_parquet_converter as tpc
-from data.commons import upload_tasks_to_hf
+from scripts.harbor import tasks_parquet_converter as tpc  # noqa: E402
+from data.commons import upload_tasks_to_hf  # noqa: E402
 
 CONSOLE = Console()
 
@@ -92,8 +92,8 @@ PROGRESS_COLUMNS = (
 
 
 # ---- Daytona imports (lazy within worker as well) ----
-from daytona import AsyncDaytona, CreateSandboxFromImageParams, Image, Resources
-from daytona.common.errors import DaytonaError
+from daytona import AsyncDaytona, CreateSandboxFromImageParams, Image, Resources  # noqa: E402
+from daytona.common.errors import DaytonaError  # noqa: E402
 
 
 def _extract_hf_dataset(repo_id: str, revision: Optional[str], base_dir: Path) -> Path:
@@ -364,7 +364,7 @@ def _run_harbor_smoke_test(
     EnvironmentConfig = components["EnvironmentConfig"]
     LocalDatasetConfig = components["LocalDatasetConfig"]
     VerifierConfig = components["VerifierConfig"]
-    OrchestratorEvent = components["OrchestratorEvent"]
+    components["OrchestratorEvent"]
     add_trial_completed_hook = components["add_trial_completed_hook"]
     set_orchestrator_field = components["set_orchestrator_field"]
     create_job = components["create_job"]
@@ -478,7 +478,7 @@ def _run_harbor_smoke_test(
 
         try:
             asyncio.run(job.run())
-        except Exception as exc:  # pragma: no cover - dependent on Harbor env
+        except Exception:  # pragma: no cover - dependent on Harbor env
             CONSOLE.print(
                 f"[red]Harbor validation encountered an error. Logs retained at {job_dir}.[/red]"
             )
@@ -520,7 +520,7 @@ def _run_oracle_solution_check(
     EnvironmentConfig = components["EnvironmentConfig"]
     LocalDatasetConfig = components["LocalDatasetConfig"]
     VerifierConfig = components["VerifierConfig"]
-    OrchestratorEvent = components["OrchestratorEvent"]
+    components["OrchestratorEvent"]
     add_trial_completed_hook = components["add_trial_completed_hook"]
     set_orchestrator_field = components["set_orchestrator_field"]
     create_job = components["create_job"]

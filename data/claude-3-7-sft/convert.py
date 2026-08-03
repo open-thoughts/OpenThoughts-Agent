@@ -21,7 +21,7 @@ def convert_openai_to_sharegpt(
     dataset = dataset.map(f)
     return dataset
 
-from datasets import load_dataset
+from datasets import load_dataset  # noqa: E402
 dataset = load_dataset("mlfoundations-dev/terminal-bench-traces-local", split="train")
 # ds = dataset.filter(lambda x: x['model'] == "claude-3-7-sonnet-20250219")
 ds = dataset

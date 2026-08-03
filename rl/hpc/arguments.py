@@ -146,7 +146,7 @@ def _add_dataclass_arguments(arg_group, dataclass_type, exclude_fields=None):
         else:
             raise argparse.ArgumentTypeError('Boolean value expected.')
 
-    for field in dataclasses.fields(dataclass_type):
+    for field in dataclasses.fields(dataclass_type):  # noqa: F402
         if field.name in exclude_fields:
             continue
 
@@ -167,7 +167,7 @@ def _add_dataclass_arguments(arg_group, dataclass_type, exclude_fields=None):
                 help=field.metadata.get("help"),
                 default=field.default,
             )
-        elif field.type == bool or (field.type is Optional[bool] and field.default is not None):
+        elif field.type == bool or (field.type is Optional[bool] and field.default is not None):  # noqa: E721
             arg_group.add_argument(
                 f"--{field.name}",
                 type=str_to_bool,
@@ -205,7 +205,7 @@ def parse_args():
         "total_partition_nodes",
         "qos",
     ]
-    for field in hpc_fields:
+    for field in hpc_fields:  # noqa: F402
         hpc_group.add_argument(
             f"--{field}",
             type=(

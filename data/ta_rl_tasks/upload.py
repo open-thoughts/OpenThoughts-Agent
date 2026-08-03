@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.sandboxes.tasks_parquet_converter import convert_to_parquet
+from scripts.sandboxes.tasks_parquet_converter import convert_to_parquet  # noqa: E402
 
 OUTPUT_ROOT = ROOT / "data" / "ta_rl_tasks" / "out"
 

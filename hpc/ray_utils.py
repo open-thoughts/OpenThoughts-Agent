@@ -340,13 +340,13 @@ class RayCluster:
         # Clean up any lingering Ray instances from previous jobs
         self._cleanup_existing_ray()
 
-        print(f"=== Starting Ray Cluster ===", flush=True)
+        print("=== Starting Ray Cluster ===", flush=True)
         print(f"  Nodes: {len(self.node_list)}", flush=True)
         print(f"  GPUs per node: {self.config.gpus_per_node}", flush=True)
         print(f"  CPUs per node: {self.config.cpus_per_node}", flush=True)
         print(f"  Head node: {self.node_list[0]} ({self.head_ip})", flush=True)
         print(f"  Ray port: {self.config.ray_port}", flush=True)
-        print(f"============================", flush=True)
+        print("============================", flush=True)
 
         # Set NUMA affinity for the Ray orchestrator process (binds to GPU 0's NUMA node).
         # On GH200 (Jupiter), this ensures the Python process managing the Ray cluster
@@ -386,10 +386,10 @@ class RayCluster:
         # Start NUMA monitoring if enabled (useful for GH200 debugging)
         self._start_numa_monitoring()
 
-        print(f"=== Ray Cluster Ready ===", flush=True)
+        print("=== Ray Cluster Ready ===", flush=True)
         print(f"  Address: {self.address}", flush=True)
         print(f"  Total GPUs: {self.total_gpus}", flush=True)
-        print(f"=========================", flush=True)
+        print("=========================", flush=True)
 
     def stop(self) -> None:
         """Stop the Ray cluster.
@@ -654,7 +654,7 @@ class RayCluster:
         for attempt in range(max_retries):
             try:
                 # Run with stderr captured but stdout visible to user
-                result = subprocess.run(
+                subprocess.run(
                     srun_cmd,
                     check=True,
                     stderr=subprocess.PIPE,
@@ -693,7 +693,6 @@ class RayCluster:
         This runs a polling loop ON the head node via srun, since ray.init()
         requires a local raylet connection.
         """
-        import tempfile
 
         # Build Python script for polling
         poll_script = f'''import ray

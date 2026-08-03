@@ -44,7 +44,7 @@ def sync_outputs(
     local_spec = str(target) + "/"
 
     if verbose:
-        print(f"[cloud-sync] Syncing outputs from cluster...")
+        print("[cloud-sync] Syncing outputs from cluster...")
         print(f"[cloud-sync]   Remote: {remote_spec}")
         print(f"[cloud-sync]   Local:  {local_spec}")
 

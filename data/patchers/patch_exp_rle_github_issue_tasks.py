@@ -627,11 +627,11 @@ def _missing_fixtures(tree: ast.Module, has_conftest: bool, instr_tokens: set[st
                     fn_parametrize = _parametrize_arg_names(sub.decorator_list)
                     args = [a.arg for a in sub.args.args]
                     for a in args:
-                        if a in {"self", "cls"}: continue
-                        if a in STANDARD_PYTEST_FIXTURES: continue
-                        if a in local_fixtures: continue
-                        if a in class_parametrize or a in fn_parametrize: continue
-                        if a.lower() in instr_tokens: continue
+                        if a in {"self", "cls"}: continue  # noqa: E701
+                        if a in STANDARD_PYTEST_FIXTURES: continue  # noqa: E701
+                        if a in local_fixtures: continue  # noqa: E701
+                        if a in class_parametrize or a in fn_parametrize: continue  # noqa: E701
+                        if a.lower() in instr_tokens: continue  # noqa: E701
                         unknown.add(a)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             if node not in tree.body:
@@ -643,11 +643,11 @@ def _missing_fixtures(tree: ast.Module, has_conftest: bool, instr_tokens: set[st
             fn_parametrize = _parametrize_arg_names(node.decorator_list)
             args = [a.arg for a in node.args.args]
             for a in args:
-                if a in {"self", "cls"}: continue
-                if a in STANDARD_PYTEST_FIXTURES: continue
-                if a in local_fixtures: continue
-                if a in fn_parametrize: continue
-                if a.lower() in instr_tokens: continue
+                if a in {"self", "cls"}: continue  # noqa: E701
+                if a in STANDARD_PYTEST_FIXTURES: continue  # noqa: E701
+                if a in local_fixtures: continue  # noqa: E701
+                if a in fn_parametrize: continue  # noqa: E701
+                if a.lower() in instr_tokens: continue  # noqa: E701
                 unknown.add(a)
     return sorted(unknown)
 

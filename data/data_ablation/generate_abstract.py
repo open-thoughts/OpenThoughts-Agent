@@ -18,7 +18,6 @@ from data.commons import (
     GenerationResult,
     GenerationStatus,
 )
-from scripts.harbor.run_and_export_traces import run_dataset_to_traces
 
 
 METADATA = """version = "1.0"

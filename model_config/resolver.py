@@ -11,10 +11,9 @@ file exists, preserving the eval registry's size-inference defaults.
 """
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
 import yaml
 

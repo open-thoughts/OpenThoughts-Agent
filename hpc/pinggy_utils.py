@@ -20,7 +20,6 @@ Usage:
 from __future__ import annotations
 
 import os
-import shlex
 import signal
 import subprocess
 import time
@@ -121,10 +120,10 @@ class PinggyTunnel:
             print(f"Pinggy tunnel already running at {self.public_endpoint}")
             return self.public_endpoint
 
-        print(f"=== Starting Pinggy Tunnel ===")
+        print("=== Starting Pinggy Tunnel ===")
         print(f"  Persistent URL: {self.config.persistent_url}")
         print(f"  Local target: {self.config.local_host}:{self.config.local_port}")
-        print(f"==============================")
+        print("==============================")
 
         # Open log file if path provided
         if self.log_path:
@@ -165,9 +164,9 @@ class PinggyTunnel:
         # Wait for tunnel to be healthy
         self._wait_for_healthy()
 
-        print(f"=== Pinggy Tunnel Ready ===")
+        print("=== Pinggy Tunnel Ready ===")
         print(f"  Public endpoint: {self.public_endpoint}")
-        print(f"===========================")
+        print("===========================")
 
         return self.public_endpoint
 
@@ -489,7 +488,7 @@ if __name__ == "__main__":
 
     print(f"Testing Pinggy tunnel to {config.persistent_url}")
     print(f"SSH command: {config.get_ssh_command()}")
-    print(f"Press Ctrl+C to stop")
+    print("Press Ctrl+C to stop")
 
     try:
         with PinggyTunnel(config) as tunnel:

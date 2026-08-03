@@ -82,7 +82,7 @@ def get_or_create_token(gateway_host: str, gateway_port: int = 1993, force_refre
 
     # Return cached token if available
     if _cached_token and not force_refresh:
-        logger.debug(f"Using cached token")
+        logger.debug("Using cached token")
         return _cached_token
 
     import grpc
@@ -417,7 +417,7 @@ def validate_sandbox_isolation(
                 process = await instance2.aio.process.exec(
                     "bash", "-c", "cat /tmp/secret.txt 2>/dev/null || echo 'FILE_NOT_FOUND'"
                 )
-                exit_code = await process.wait()
+                await process.wait()
                 stdout = process._sync.stdout.read()
                 return stdout
 

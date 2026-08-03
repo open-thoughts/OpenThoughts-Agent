@@ -7,15 +7,11 @@ Searches GitHub for Dockerfiles using keywords and returns the top result
 import requests
 import aiohttp
 import asyncio
-from typing import List, Dict, Set, Optional, Tuple
+from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 from tqdm import tqdm
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import time
 import logging
-import base64
 import re
-import json
 import hashlib
 import os
 import pickle
@@ -25,11 +21,11 @@ from pathlib import Path
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-from bespokelabs import curator
+from bespokelabs import curator  # noqa: E402
 KEYBERT_AVAILABLE = False
 _keybert_model = None
 
-from data.gcs_cache import gcs_cache
+from data.gcs_cache import gcs_cache  # noqa: E402
 
 class KeywordExtractor(curator.LLM):
     def prompt(self, prompt: str) -> str:
@@ -122,7 +118,7 @@ if CACHE_FILE.exists():
         with open(CACHE_FILE, 'rb') as f:
             _dockerfile_cache = pickle.load(f)
         print(f"Loaded {len(_dockerfile_cache)} cached dockerfiles from disk")
-    except:
+    except:  # noqa: E722
         _dockerfile_cache = {}
 
 def _save_cache():
@@ -164,7 +160,7 @@ def get_all_github_tokens() -> List[str]:
                 match = re.search(r'oauth_token:\s*(\S+)', content)
                 if match and match.group(1) not in tokens:
                     tokens.append(match.group(1))
-    except:
+    except:  # noqa: E722
         pass
     
     return tokens
@@ -841,7 +837,7 @@ async def convert_prompt_to_dockerfile_batched(prompts: List[str]) -> List[str]:
             try:
                 result = extract_keywords_fallback(prompt)
                 keywords.append(result[0] if result else "python")
-            except:
+            except:  # noqa: E722
                 keywords.append("python")
     
     # Step 2: Deduplicate keywords and create smart batching
@@ -890,7 +886,7 @@ async def convert_prompt_to_dockerfile_batched(prompts: List[str]) -> List[str]:
                 
                 # Add delay between batches if not the last batch
                 if i + batch_size < len(unique_keywords):
-                    pbar.set_description(f"Waiting between batches...")
+                    pbar.set_description("Waiting between batches...")
                     await asyncio.sleep(3)  # 3 second delay between batches
     
     # Step 3: Map unique results back to all prompts

@@ -60,7 +60,6 @@ def test_endpoint_format(endpoint: str) -> str:
     print()
     print("Checking endpoint format...")
 
-    original = endpoint
 
     # Check if protocol is missing
     if not endpoint.startswith("http://") and not endpoint.startswith("https://"):

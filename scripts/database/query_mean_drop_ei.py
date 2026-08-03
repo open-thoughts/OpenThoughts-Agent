@@ -2,7 +2,6 @@
 """Query sandbox_jobs for entries containing mean_drop_ei_tasks_dropped in stats JSON."""
 
 import csv
-import json
 import os
 import sys
 

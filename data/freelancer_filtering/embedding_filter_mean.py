@@ -4,9 +4,7 @@ Embedding Filter Mean strategy for Freelancer dataset
 Filters based on mean similarity to positive/negative embeddings
 """
 
-import sys
-from pathlib import Path
-from typing import List, Tuple
+from typing import List
 import numpy as np
 from sentence_transformers import SentenceTransformer
 

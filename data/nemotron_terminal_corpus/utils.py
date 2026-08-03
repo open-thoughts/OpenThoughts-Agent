@@ -4,7 +4,6 @@ Utilities for Nemotron-Terminal-Corpus task extraction.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Iterator
 

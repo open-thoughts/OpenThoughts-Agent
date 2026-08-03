@@ -8,7 +8,7 @@ import json
 from datetime import datetime
 import subprocess
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Iterable, Tuple
 
 
 @dataclass
@@ -873,7 +873,6 @@ def main() -> None:
         print(unified_diff(original, modified, dockerfile))
 
     # Do not apply immediately; we will validate baseline first, then apply and re-run
-    applied_changes = False
     pending_apply = bool(args.apply and (original != modified))
     backup: Path | None = None
     created_artifacts: list[Path] = []
@@ -902,7 +901,6 @@ def main() -> None:
         from datetime import datetime
 
         from harbor.models.agent.name import AgentName
-        from harbor.models.environment_type import EnvironmentType
         from harbor.models.trial.config import (
             AgentConfig,
             EnvironmentConfig,
@@ -973,7 +971,6 @@ def main() -> None:
             backup.write_text(original)
             dockerfile.write_text(modified)
             print(f"Updated {dockerfile} (backup at {backup})")
-            applied_changes = True
 
             # Prewarm Docker build caches to avoid counting build time against timeout
             try:

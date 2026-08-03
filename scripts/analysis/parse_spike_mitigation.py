@@ -221,7 +221,6 @@ def collapse_signals(step_data: dict[int, tuple[str, dict[str, Any]]]) -> None:
     print()
     print("== CLAUDE.md COLLAPSE-SIGNAL SCAN ==")
     sustained_grad = 0
-    last_grad = 0.0
     flags = []
     for s in steps:
         m = step_data[s][1]

@@ -6,8 +6,7 @@ Provides utilities to count tokens in text using tiktoken (OpenAI's tokenizer)
 which is commonly used for estimating API costs and dataset sizes.
 """
 
-import sys
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from pathlib import Path
 
 try:

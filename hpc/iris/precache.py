@@ -274,7 +274,7 @@ def ensure_dataset_cached(
         return DatasetArtifact(repo=repo, gs_uri=gs_uri, present=False)
 
     try:
-        mirrored_uri = _mirror_dataset(repo, verbose=verbose)  # writes to both buckets
+        _mirror_dataset(repo, verbose=verbose)  # writes to both buckets
         present = _dataset_present(_gcs_fs(), gs_uri)
         return DatasetArtifact(repo=repo, gs_uri=gs_uri, present=present, mirrored=present)
     except Exception as e:  # noqa: BLE001 - a mirror failure must not crash the launch

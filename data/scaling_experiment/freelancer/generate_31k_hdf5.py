@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 
 from data.commons import (
-    generate_tasks_from_questions_hdf5,
-    upsample_tasks_hdf5,
-    extract_hdf5_to_task_paths,
-    upload_tasks_to_hf,
     upload_traces_to_hf
 )
 from datasets import load_dataset
-import time
-from data.freelancer.generate import scrape_freelancer_projects
-from scripts.sandboxes.run_and_export_traces import run_dataset_to_traces, only_export_traces, force_resume
 
 
 def main() -> None:

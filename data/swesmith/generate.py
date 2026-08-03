@@ -8,7 +8,7 @@ import tempfile
 import argparse
 from pathlib import Path
 from datasets import load_dataset
-from data.commons import upload_tasks_to_hf, upload_traces_to_hf, subsample_tasks_directory
+from data.commons import upload_tasks_to_hf, subsample_tasks_directory
 from data.swesmith.task_templates import (
     TASK_TOML,
     render_instruction_md,
@@ -18,7 +18,6 @@ from data.swesmith.task_templates import (
     render_test_state_py,
 )
 from data.swesmith.utils import get_image_names
-from scripts.harbor.run_and_export_traces import run_dataset_to_traces
 from swesmith.profiles import registry
 
 

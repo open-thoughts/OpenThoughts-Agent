@@ -10,7 +10,7 @@ import os
 import textwrap
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
 from datasets import Dataset, load_dataset
 from huggingface_hub import HfApi

@@ -29,7 +29,6 @@ import argparse
 import json
 import re
 import stat
-import tempfile
 from pathlib import Path
 from typing import Optional
 

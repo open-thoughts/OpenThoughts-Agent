@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from config import INSTRUCT_MODEL_ID, OUTPUT_DIR, SHIM_LOG
 from render_tokens import render_to_html

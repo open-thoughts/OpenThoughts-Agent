@@ -5,7 +5,6 @@ import sys
 import os
 import asyncio
 from pathlib import Path
-from typing import Optional
 from dotenv import load_dotenv
 
 # Add project root to path
@@ -32,23 +31,23 @@ if not os.getenv('ANTHROPIC_API_KEY'):
 # Import sandboxes
 sys.path.insert(0, "/Users/etash/Documents/sandboxes/src")
 
-from harbor.job import Job
-from harbor.models.agent.name import AgentName
-from harbor.models.environment_type import EnvironmentType
-from harbor.models.job.config import JobConfig
-from harbor.models.trial.config import AgentConfig, EnvironmentConfig
-from harbor.utils.traces_utils import export_traces
+from harbor.job import Job  # noqa: E402
+from harbor.models.agent.name import AgentName  # noqa: E402
+from harbor.models.environment_type import EnvironmentType  # noqa: E402
+from harbor.models.job.config import JobConfig  # noqa: E402
+from harbor.models.trial.config import AgentConfig, EnvironmentConfig  # noqa: E402
+from harbor.utils.traces_utils import export_traces  # noqa: E402
 
-from scripts.harbor._harbor_compat import LocalDatasetConfig, create_job, set_orchestrator_field
+from scripts.harbor._harbor_compat import LocalDatasetConfig, create_job, set_orchestrator_field  # noqa: E402
 
 if __name__ == "__main__":
     # Path to converted tasks
     dataset_path = Path("/Users/etash/Downloads/sandboxes_tasks_terminal_bench")
     
-    print(f"Running verification on converted Terminal-Bench tasks")
+    print("Running verification on converted Terminal-Bench tasks")
     print(f"Dataset: {dataset_path}")
-    print(f"Agent: terminus-2")
-    print(f"Model: gpt-5-mini")
+    print("Agent: terminus-2")
+    print("Model: gpt-5-mini")
     print("=" * 80)
     
     # Build JobConfig programmatically

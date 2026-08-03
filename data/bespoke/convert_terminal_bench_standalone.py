@@ -4,7 +4,7 @@
 import shutil
 import yaml
 from pathlib import Path
-from typing import Optional, Dict, List, Any
+from typing import Dict, List, Any
 
 class TerminalBenchConverter:
     """Convert Terminal-Bench tasks to sandboxes format."""
@@ -42,7 +42,7 @@ class TerminalBenchConverter:
                 if target_task_dir.exists():
                     shutil.rmtree(target_task_dir)
                     
-        print(f"\nConversion complete:")
+        print("\nConversion complete:")
         print(f"  - Successfully converted: {len(converted_tasks)}")
         print(f"  - Failed: {len(failed_tasks)}")
         
@@ -259,7 +259,7 @@ def main():
     source_dir = Path("/Users/etash/Downloads/ot-agent-tasks")
     target_dir = Path("/Users/etash/Downloads/sandboxes_tasks_terminal_bench")
     
-    print(f"Converting Terminal-Bench tasks")
+    print("Converting Terminal-Bench tasks")
     print(f"Source: {source_dir}")
     print(f"Target: {target_dir}")
     print("=" * 80)

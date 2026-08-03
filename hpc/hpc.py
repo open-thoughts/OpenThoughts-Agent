@@ -780,7 +780,7 @@ echo "[proxy] PROXYCHAINS_CONF_FILE=$PROXYCHAINS_CONF_FILE"
 
 # Also set SOCKS_PROXY_URL for applications that can use it directly
 export SOCKS_PROXY_URL="socks5h://$PROXY_HOST:$PROXY_PORT"
-echo "[proxy] SOCKS_PROXY_URL=$SOCKS_PROXY_URL"'''
+echo "[proxy] SOCKS_PROXY_URL=$SOCKS_PROXY_URL"'''  # noqa: F821
 
         if self.proxychains_binary:
             # Wrapped binary approach (preferred for Jupiter ARM GH200 nodes)

@@ -160,7 +160,6 @@ def resolve_dataset_path(
     Returns:
         Resolved local filesystem path (absolute)
     """
-    from pathlib import Path
 
     if path_or_repo.startswith(("gs://", "s3://")):
         # Pre-cached dataset snapshot in object storage (offline path — the iris

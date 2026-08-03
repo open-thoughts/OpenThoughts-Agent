@@ -128,7 +128,7 @@ def convert_tests(source_tests_dir, source_run_tests_sh, target_tests_dir, sourc
 
     # Create test.sh based on run-tests.sh
     with open(source_run_tests_sh, 'r') as f:
-        run_tests_content = f.read()
+        f.read()
 
     # Create a more generic test.sh
     test_sh_content = """#!/bin/bash

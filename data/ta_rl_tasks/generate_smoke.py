@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from data.ta_rl_tasks.generate import generate_dataset
+from data.ta_rl_tasks.generate import generate_dataset  # noqa: E402
 
 def describe_task(task_dir: Path) -> None:
     instruction_path = task_dir / "instruction.md"

@@ -146,7 +146,7 @@ def create_sandbox(
             print(f"  Snapshot '{snapshot_name}' failed: {e}")
             if dockerfile_path is None:
                 raise
-            print(f"  Falling back to Dockerfile build...")
+            print("  Falling back to Dockerfile build...")
 
     if dockerfile_path:
         image = Image.from_dockerfile(str(dockerfile_path))
@@ -424,7 +424,7 @@ def main():
         )
     else:
         print(f"\n{'='*60}")
-        print(f"DAYTONA HEALTH CHECK")
+        print("DAYTONA HEALTH CHECK")
         print(f"{'='*60}\n")
 
         result = run_single_health_check(
@@ -439,17 +439,17 @@ def main():
         )
 
         print(f"\n{'='*60}")
-        print(f"SUMMARY")
+        print("SUMMARY")
         print(f"{'='*60}")
         if result.get("success"):
-            print(f"  Status:      OK")
+            print("  Status:      OK")
             print(f"  Create:      {result['create_sec']:.1f}s")
             print(f"  Turns:       {result.get('turns_succeeded', 0)}/{result.get('turns_total', 0)}")
             print(f"  Turn latency: min={result.get('turn_min_sec', 0):.2f}s  avg={result.get('turn_avg_sec', 0):.2f}s  max={result.get('turn_max_sec', 0):.2f}s")
             print(f"  Delete:      {result['delete_sec']:.1f}s")
             print(f"  Total:       {result['total_sec']:.1f}s")
         else:
-            print(f"  Status:      FAILED")
+            print("  Status:      FAILED")
             for k, v in result.items():
                 if "error" in k:
                     print(f"  {k}: {v}")

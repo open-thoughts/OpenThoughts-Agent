@@ -562,7 +562,6 @@ def maybe_preprocess_thinking(
     )
 
     # Decide template based on thinking rate, but always preprocess below.
-    use_nothink = False
     if thinking_rate < _THINKING_RATE_THRESHOLD:
         nothink_template = _NOTHINK_TEMPLATE_MAP.get(template)
         if nothink_template:
@@ -572,7 +571,6 @@ def maybe_preprocess_thinking(
                 f"Switching template: {template} -> {nothink_template}"
             )
             base_config["template"] = nothink_template
-            use_nothink = True
             # Try to load the _nothink config variant for any additional
             # overrides (e.g. different save_steps, hyperparams).
             _apply_nothink_config_overrides(base_config, exp_args)

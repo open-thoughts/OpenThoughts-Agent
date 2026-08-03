@@ -481,8 +481,8 @@ def _docker_run_verifier(image: str, task_dir: Path, populate_gold: bool, timeou
     import tempfile
     with tempfile.TemporaryDirectory() as wd:
         wd = Path(wd)
-        app = wd / "app"; tests = wd / "tests"; logs = wd / "logs" / "verifier"
-        app.mkdir(); tests.mkdir(); logs.mkdir(parents=True)
+        app = wd / "app"; tests = wd / "tests"; logs = wd / "logs" / "verifier"  # noqa: E702
+        app.mkdir(); tests.mkdir(); logs.mkdir(parents=True)  # noqa: E702
         src_tests = task_dir / "tests"
         if src_tests.exists():
             for f in src_tests.iterdir():
@@ -530,10 +530,9 @@ def _build_image(dockerfile_text: str, tag: str) -> str:
 
 
 def smoke(workdir: Path, source: str | None = None, sample: int = 3) -> None:
-    import io
     keys = [source] if source else list(SOURCES)
     for key in keys:
-        cfg = SOURCES[key]
+        SOURCES[key]
         pq_path = workdir / "out" / f"{key}.parquet"
         import pandas as pd
         df = pd.read_parquet(pq_path)
@@ -550,15 +549,15 @@ def smoke(workdir: Path, source: str | None = None, sample: int = 3) -> None:
                 _materialize_task(files, task_dir)
                 # Pick Dockerfile text + image tag.
                 if key == "quixbugs":
-                    df_text = PYTHON_DOCKERFILE; tag = "smoke_quixbugs"
+                    df_text = PYTHON_DOCKERFILE; tag = "smoke_quixbugs"  # noqa: E702
                 elif key == "bugswarm":
                     lang = _parse_metadata(files).get("language", "").lower()
                     if lang == "java":
-                        df_text = BUGSWARM_JAVA_DOCKERFILE; tag = "smoke_bs_java"
+                        df_text = BUGSWARM_JAVA_DOCKERFILE; tag = "smoke_bs_java"  # noqa: E702
                     else:
-                        df_text = PYTHON_DOCKERFILE; tag = "smoke_bs_py"
+                        df_text = PYTHON_DOCKERFILE; tag = "smoke_bs_py"  # noqa: E702
                 else:
-                    df_text = STACK_RSPEC_DOCKERFILE; tag = "smoke_rspec"
+                    df_text = STACK_RSPEC_DOCKERFILE; tag = "smoke_rspec"  # noqa: E702
                 _build_image(df_text, tag)
                 # empty /app -> must be reward 0
                 r0, out0 = _docker_run_verifier(tag, task_dir, populate_gold=False)
@@ -576,13 +575,13 @@ def smoke(workdir: Path, source: str | None = None, sample: int = 3) -> None:
                 if r1 == 1:
                     ok_gold1 += 1
                 if r0 != 0 or (has_gold and r1 != 1):
-                    print("    --- empty out tail ---"); print(out0[-500:])
+                    print("    --- empty out tail ---"); print(out0[-500:])  # noqa: E702
                     if has_gold:
-                        print("    --- gold out tail ---"); print(out1[-700:])
+                        print("    --- gold out tail ---"); print(out1[-700:])  # noqa: E702
         print(f"  summary: empty->0 ok {ok_empty0}/{n}; gold->1 ok {ok_gold1}/{gold_exists}")
 
 
-import contextlib
+import contextlib  # noqa: E402
 
 
 @contextlib.contextmanager

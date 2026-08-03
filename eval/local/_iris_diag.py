@@ -3,7 +3,11 @@
 Run via the iris launcher in place of run_eval.py to dump the worker's
 view of sys.path, site-packages contents, and pydantic's import spec.
 """
-import sys, os, importlib.util, pathlib, traceback
+import sys
+import os
+import importlib.util
+import pathlib
+import traceback
 
 
 def banner(s):

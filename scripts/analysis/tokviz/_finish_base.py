@@ -24,7 +24,7 @@ from config import SHIM_LOG
 def keep_only_instruct() -> int:
     if not SHIM_LOG.exists():
         return 0
-    recs = [json.loads(l) for l in SHIM_LOG.read_text().splitlines() if l.strip()]
+    recs = [json.loads(l) for l in SHIM_LOG.read_text().splitlines() if l.strip()]  # noqa: E741
     instruct = [r for r in recs if not r.get("model_id", "").endswith("Base")]
     with open(SHIM_LOG, "w", encoding="utf-8") as f:
         for r in instruct:

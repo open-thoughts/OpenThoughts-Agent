@@ -6,7 +6,7 @@ Filters for questions that generate concise, efficient responses
 
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import List
 import numpy as np
 from datasets import Dataset
 
@@ -67,7 +67,7 @@ def calculate_response_lengths(responses: List[str]) -> List[int]:
     response_lengths = [len(response) for response in responses]
     
     # Print statistics
-    print(f"Response length statistics:")
+    print("Response length statistics:")
     print(f"  Min: {min(response_lengths)} chars")
     print(f"  Max: {max(response_lengths)} chars")
     print(f"  Mean: {np.mean(response_lengths):.1f} chars")

@@ -17,7 +17,7 @@ import os
 from typing import List
 
 from datasets import load_dataset, Dataset, DatasetDict, concatenate_datasets
-from huggingface_hub import HfApi, create_repo
+from huggingface_hub import create_repo
 
 try:
     from data.commons import clean_empty_structs  # best-effort cleanup before push

@@ -8,7 +8,6 @@ import json
 import random
 from pathlib import Path
 from datasets import Dataset
-from huggingface_hub import HfApi
 
 # Configuration
 INPUT_DIR = Path("/data/horse/ws/rehe951g-dcagent/dclm-terminal-like/results_all_20251117_155756")

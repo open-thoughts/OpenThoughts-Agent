@@ -26,7 +26,6 @@ Target repos on HF (laion/), 316 and 1000 only this pass (per rollout plan):
   - Sera-4.6-Lite-T2-v4-1000
 """
 import argparse
-import copy
 import json
 import os
 import random

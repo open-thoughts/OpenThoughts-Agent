@@ -215,7 +215,6 @@ def main():
     import sys
     sys.path.append(str(Path(__file__).parent.parent.parent))
     from data.freelancer_filtering.embedding_filter_mean import create_positive_negative_samples
-    from data.commons import get_all_dcagent_positive_samples, get_code_contests_negative_samples
     
     # Create positive and negative samples
     logger.info("Creating positive and negative samples...")

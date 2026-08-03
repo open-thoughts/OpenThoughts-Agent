@@ -9,7 +9,6 @@ only needs the agent's ``/app/solution.py`` plus (for graph/linked tasks) a
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from . import quixbugs_correct as qc
@@ -437,7 +436,8 @@ def build_gold_solution(name: str) -> str:
 if __name__ == "__main__":
     # Self-test: every algorithm produces a syntactically valid test + gold
     # whose gold passes its own test.
-    import subprocess, sys
+    import subprocess
+    import sys
     tmp = Path("/tmp/qb_selftest")
     import shutil
     if tmp.exists():

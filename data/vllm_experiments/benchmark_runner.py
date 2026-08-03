@@ -403,38 +403,38 @@ class BenchmarkRunner:
         print(f"\nConfiguration: {results.config_hash}")
         print(f"Dataset: {results.dataset_name}")
         print(f"Timestamp: {results.timestamp}")
-        print(f"\nRequests:")
+        print("\nRequests:")
         print(f"  Total: {results.num_requests}")
         print(f"  Successful: {results.successful_requests}")
         print(f"  Failed: {results.failed_requests}")
         print(f"  Success Rate: {results.success_rate * 100:.2f}%")
 
-        print(f"\nThroughput:")
+        print("\nThroughput:")
         print(f"  Tokens/sec: {results.throughput_tokens_per_sec:.2f}")
         print(f"  Requests/sec: {results.throughput_requests_per_sec:.2f}")
         print(f"  Total tokens: {results.total_tokens_generated}")
         print(f"  Total time: {results.total_time:.2f}s")
 
-        print(f"\nTime to First Token (TTFT):")
+        print("\nTime to First Token (TTFT):")
         print(f"  Mean: {results.ttft_mean * 1000:.2f}ms")
         print(f"  P50: {results.ttft_p50 * 1000:.2f}ms")
         print(f"  P95: {results.ttft_p95 * 1000:.2f}ms")
         print(f"  P99: {results.ttft_p99 * 1000:.2f}ms")
 
-        print(f"\nEnd-to-End Latency:")
+        print("\nEnd-to-End Latency:")
         print(f"  Mean: {results.e2e_latency_mean * 1000:.2f}ms")
         print(f"  P50: {results.e2e_latency_p50 * 1000:.2f}ms")
         print(f"  P95: {results.e2e_latency_p95 * 1000:.2f}ms")
         print(f"  P99: {results.e2e_latency_p99 * 1000:.2f}ms")
 
-        print(f"\nInter-Token Latency (ITL):")
+        print("\nInter-Token Latency (ITL):")
         print(f"  Mean: {results.itl_mean * 1000:.2f}ms")
         print(f"  P50: {results.itl_p50 * 1000:.2f}ms")
         print(f"  P95: {results.itl_p95 * 1000:.2f}ms")
         print(f"  P99: {results.itl_p99 * 1000:.2f}ms")
 
         if results.prometheus_metrics:
-            print(f"\nPrometheus Metrics:")
+            print("\nPrometheus Metrics:")
             for key, value in results.prometheus_metrics.items():
                 print(f"  {key}: {value}")
 
@@ -478,11 +478,11 @@ async def main():
         output_dir=args.output_dir,
     )
 
-    print(f"\nRunning benchmark...")
+    print("\nRunning benchmark...")
     if args.request_rate:
         print(f"  Request rate: {args.request_rate} req/s")
     else:
-        print(f"  Request rate: unlimited")
+        print("  Request rate: unlimited")
 
     start_time = time.time()
     request_metrics = await runner.run_benchmark(

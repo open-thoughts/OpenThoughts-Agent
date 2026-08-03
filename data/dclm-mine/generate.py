@@ -5,7 +5,6 @@ Generate DCLM-extracted shell tasks in sandboxes format.
 
 from __future__ import annotations
 import argparse
-import json
 from pathlib import Path
 import tempfile
 import shutil
@@ -204,7 +203,7 @@ def main() -> None:
     )
 
     # Subsample if needed (to match HF upload expectations)
-    print(f"[2/2] Preparing final dataset...")
+    print("[2/2] Preparing final dataset...")
     final_dataset_dir = subsample_tasks_directory(
         source_dir=temp_dir,
         num_samples=min(10_000, args.limit) if args.limit else 10_000,

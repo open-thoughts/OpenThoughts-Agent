@@ -165,7 +165,7 @@ def main() -> int:
         "=" * 72,
         f"  INGRESS_HOST   {public_host}",
         f"  proxy path     {public_host}/proxy/<endpoint_name>/v1",
-        f"  auth header    Authorization: Bearer $IRIS_INGRESS_API_KEY",
+        "  auth header    Authorization: Bearer $IRIS_INGRESS_API_KEY",
         f"  healthz        {public_host}/healthz",
         f"  upstream       {proxy_base}",
         f"  tunnel log     {log_path}",

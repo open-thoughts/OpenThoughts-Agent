@@ -30,7 +30,7 @@ def create_engine(*, model_name: str, engine_type: Optional[str] = None) -> Infe
     Returns:
         InferenceEngine instance
     """
-    from data.generation.engines import OpenAIEngine, AnthropicEngine, create_inference_engine
+    from data.generation.engines import AnthropicEngine, create_inference_engine
     
     # Auto-detect engine type from model name if not specified
     if engine_type is None:

@@ -181,7 +181,7 @@ print(content, end='')
         return True
 
     except Exception as e:
-        print(f"\n=== Test Failed ===")
+        print("\n=== Test Failed ===")
         print(f"Error: {e}")
         import traceback
 
@@ -261,7 +261,7 @@ def main():
 
     # Check connectivity
     if not args.skip_connectivity_check:
-        print(f"\n=== Checking Connectivity ===")
+        print("\n=== Checking Connectivity ===")
         print(f"Testing connection to {host}:{port}...")
         connected, message = check_connectivity(host, port)
 

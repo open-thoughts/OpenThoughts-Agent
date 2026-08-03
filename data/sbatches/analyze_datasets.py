@@ -12,7 +12,6 @@ Usage:
 import json
 import os
 import shutil
-import sys
 import traceback
 from pathlib import Path
 
@@ -21,8 +20,8 @@ PLAYGROUND_TMP = "/e/data1/datasets/playground/mmlaion/shared/guha1/tmp_glm47"
 os.environ["TMPDIR"] = PLAYGROUND_TMP
 os.environ["HF_HOME"] = os.path.join(PLAYGROUND_TMP, "hf_cache")
 
-from tasks_parquet_converter import from_hf_dataset, find_tasks
-from harbor.utils.container_cache import analyze_task_dockerfiles
+from tasks_parquet_converter import from_hf_dataset, find_tasks  # noqa: E402
+from harbor.utils.container_cache import analyze_task_dockerfiles  # noqa: E402
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPORT_PATH = SCRIPT_DIR / "dataset_analysis_report.jsonl"

@@ -25,7 +25,7 @@ OUTPUT_MARK = re.compile(r'(?i)(?:^|\n)[\s>*\-]*#{0,6}\s*\**\s*output\b(?![^\n]*
 
 
 def _label_for(prefix_text: str):
-    lines = [l for l in prefix_text.split("\n") if l.strip()]
+    lines = [l for l in prefix_text.split("\n") if l.strip()]  # noqa: E741
     if not lines:
         return None
     last = re.sub(r'[#*`:>\-]', '', lines[-1].strip().lower()).strip()
@@ -145,7 +145,12 @@ def extract_io_pairs(instr: str):
 
 
 if __name__ == "__main__":
-    import pandas as pd, gzip, io, tarfile, sys, collections
+    import pandas as pd
+    import gzip
+    import io
+    import tarfile
+    import sys
+    import collections
     df = pd.read_parquet(sys.argv[1])
     n = len(df)
     dist = collections.Counter()

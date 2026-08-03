@@ -304,7 +304,7 @@ class VLLMServer:
             except OSError as e:
                 print(f"  Warning: could not remove stale endpoint file: {e}")
 
-        print(f"=== Starting vLLM Server ===")
+        print("=== Starting vLLM Server ===")
         print(f"  Model: {self.config.model_path}")
         print(f"  Tensor Parallel: {self.config.tensor_parallel_size}")
         print(f"  Pipeline Parallel: {self.config.pipeline_parallel_size}")
@@ -312,7 +312,7 @@ class VLLMServer:
         print(f"  Host: {self.ray_cluster.head_ip}")
         print(f"  Port: {self.config.api_port}")
         print(f"  Ray Address: {self.ray_cluster.address}")
-        print(f"============================")
+        print("============================")
 
         # NOTE: We intentionally do NOT call apply_numa_affinity(gpu_id=0) here.
         # The orchestrator process may already be pinned (by ray_utils.py), but the
@@ -554,10 +554,10 @@ class VLLMServer:
         except Exception as e:
             print(f"  [warmup] non-fatal exception during warmup: {e!r}")
 
-        print(f"=== vLLM Server Ready ===")
+        print("=== vLLM Server Ready ===")
         print(f"  Endpoint: {self.endpoint}")
         print(f"  Metrics: {self.metrics_endpoint}")
-        print(f"=========================")
+        print("=========================")
 
         return self.endpoint
 

@@ -36,7 +36,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Dict, List
+from typing import List
 
 try:
     import torch

@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 
-import os
 import hashlib
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
 from collections import defaultdict
 import difflib
 
@@ -96,8 +94,8 @@ def find_duplicates():
     dir2 = Path("/Users/etash/Documents/ot-agent/successful_runs_again")
     
     # Check duplicates within each folder first
-    stats1 = check_duplicates_within_folder(dir1, "successful_runs")
-    stats2 = check_duplicates_within_folder(dir2, "successful_runs_again")
+    check_duplicates_within_folder(dir1, "successful_runs")
+    check_duplicates_within_folder(dir2, "successful_runs_again")
     
     print(f"\n{'='*80}")
     print("CHECKING DUPLICATES BETWEEN FOLDERS")
@@ -132,14 +130,14 @@ def find_duplicates():
                     # Check for exact duplicate
                     if prev_hash == task_hash:
                         print(f"\n✓ EXACT DUPLICATE: {task_dir.name}")
-                        print(f"  - Found in both directories with identical content")
+                        print("  - Found in both directories with identical content")
                     else:
                         # Check similarity
                         similarity = compute_similarity(prev_content, content)
                         if similarity > 0.9:  # 90% similar
                             print(f"\n⚠ SIMILAR TASK: {task_dir.name}")
                             print(f"  - Similarity: {similarity:.2%}")
-                            print(f"  - Different content but highly similar")
+                            print("  - Different content but highly similar")
                 else:
                     # New task not in first directory
                     tasks_info[task_dir.name] = ("successful_runs_again", content, task_hash)
@@ -171,11 +169,11 @@ def find_duplicates():
     print("SUMMARY:")
     print("=" * 80)
     
-    tasks_only_in_1 = sum(1 for tid, (d, _, _) in tasks_info.items() 
-                          if d == "successful_runs" and tid not in 
+    sum(1 for tid, (d, _, _) in tasks_info.items()
+                          if d == "successful_runs" and tid not in
                           [t for t in dir2.iterdir() if t.is_dir()])
-    tasks_only_in_2 = sum(1 for tid, (d, _, _) in tasks_info.items() 
-                          if d == "successful_runs_again" and tid not in 
+    sum(1 for tid, (d, _, _) in tasks_info.items()
+                          if d == "successful_runs_again" and tid not in
                           [t for t in dir1.iterdir() if t.is_dir()])
     
     print(f"Total unique task IDs: {len(tasks_info)}")

@@ -23,19 +23,19 @@ if "--list-providers" in sys.argv:
     print(list_providers(verbose=True))
     sys.exit(0)
 
-import argparse
+import argparse  # noqa: E402
 
-from hpc.launch_utils import PROJECT_ROOT
-from hpc.cloud_launch_utils import CloudLauncher, repo_relative, parse_gpu_count
-from hpc.cloud_sync_utils import sync_outputs
-from hpc.arg_groups import (
+from hpc.launch_utils import PROJECT_ROOT  # noqa: E402
+from hpc.cloud_launch_utils import CloudLauncher, repo_relative, parse_gpu_count  # noqa: E402
+from hpc.cloud_sync_utils import sync_outputs  # noqa: E402
+from hpc.arg_groups import (  # noqa: E402
     add_harbor_args,
     add_harbor_env_arg,
     add_model_compute_args,
     add_hf_upload_args,
     add_tasks_input_arg,
 )
-from hpc.cloud_launch_utils import infer_harbor_env_from_config
+from hpc.cloud_launch_utils import infer_harbor_env_from_config  # noqa: E402
 
 
 class TracegenCloudLauncher(CloudLauncher):

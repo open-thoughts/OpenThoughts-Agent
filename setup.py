@@ -9,7 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from build_support import DATA_EXTRAS, resolve_llamafactory_requirement
+from build_support import DATA_EXTRAS, resolve_llamafactory_requirement  # noqa: E402
 
 
 def compute_extras() -> dict[str, list[str]]:

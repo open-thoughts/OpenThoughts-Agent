@@ -27,7 +27,7 @@ def _controller_row(
 def test_harbor_job_from_row_discovers_callable_eval_job():
     row = _controller_row(
         "/owner/eval-20260729-model-abcd",
-        'exec $IRIS_PYTHON -u $IRIS_WORKDIR/_callable_runner.py',
+        "exec $IRIS_PYTHON -u $IRIS_WORKDIR/_callable_runner.py",
     )
 
     job = watcher.harbor_job_from_row(
@@ -42,13 +42,11 @@ def test_harbor_job_from_row_discovers_callable_eval_job():
 def test_harbor_job_from_row_ignores_child_eval_worker():
     row = _controller_row(
         "/owner/eval-20260729-model-abcd/inference-1234",
-        'exec $IRIS_PYTHON -u $IRIS_WORKDIR/_callable_runner.py',
+        "exec $IRIS_PYTHON -u $IRIS_WORKDIR/_callable_runner.py",
     )
 
     assert (
-        watcher.harbor_job_from_row(
-            watcher.Cluster("test", Path("/tmp/iris"), {}), row
-        )
+        watcher.harbor_job_from_row(watcher.Cluster("test", Path("/tmp/iris"), {}), row)
         is None
     )
 
@@ -101,7 +99,7 @@ def test_harbor_job_uses_task_state_while_root_job_waits_for_placement():
 def test_harbor_job_from_row_does_not_guess_non_eval_callable_job():
     row = _controller_row(
         "/owner/train-20260729-model-abcd",
-        'exec $IRIS_PYTHON -u $IRIS_WORKDIR/_callable_runner.py',
+        "exec $IRIS_PYTHON -u $IRIS_WORKDIR/_callable_runner.py",
     )
 
     job = watcher.harbor_job_from_row(
@@ -178,9 +176,7 @@ def _job(
     )
 
 
-def test_queued_harbor_job_does_not_require_a_running_worker_pod(
-    monkeypatch, tmp_path
-):
+def test_queued_harbor_job_does_not_require_a_running_worker_pod(monkeypatch, tmp_path):
     job = _job(task_state="building")
 
     def fail_if_called(*_args, **_kwargs):
@@ -282,10 +278,22 @@ def test_gcs_trial_artifacts_uses_server_filtered_blob_listings():
 def test_s3_trial_artifacts_classifies_recent_agent_timeout_as_benign(monkeypatch):
     root = "jobs/run"
     objects = [
-        {"Key": f"{root}/timeout/result.json", "LastModified": NOW - timedelta(minutes=15)},
-        {"Key": f"{root}/timeout/exception.txt", "LastModified": NOW - timedelta(minutes=14)},
-        {"Key": f"{root}/error/result.json", "LastModified": NOW - timedelta(minutes=15)},
-        {"Key": f"{root}/error/exception.txt", "LastModified": NOW - timedelta(minutes=14)},
+        {
+            "Key": f"{root}/timeout/result.json",
+            "LastModified": NOW - timedelta(minutes=15),
+        },
+        {
+            "Key": f"{root}/timeout/exception.txt",
+            "LastModified": NOW - timedelta(minutes=14),
+        },
+        {
+            "Key": f"{root}/error/result.json",
+            "LastModified": NOW - timedelta(minutes=15),
+        },
+        {
+            "Key": f"{root}/error/exception.txt",
+            "LastModified": NOW - timedelta(minutes=14),
+        },
     ]
     messages = {
         f"{root}/timeout/exception.txt": b"AgentTimeoutError: trial deadline exceeded",
@@ -344,7 +352,10 @@ def test_health_treats_agent_timeouts_as_benign_in_the_two_hour_signal():
         "advancing (+4/2h; 0 errors; 4 benign timeouts)"
     )
     assert watcher.recent_trend_cell(_job(), progress).tone == "success"
-    assert watcher.report_row(_job(), progress, "advancing", None, "saved")[6].tone == "muted"
+    assert (
+        watcher.report_row(_job(), progress, "advancing", None, "saved")[6].tone
+        == "muted"
+    )
 
 
 def test_terminal_states_render_retryable_and_nonretryable_failures():
@@ -352,9 +363,9 @@ def test_terminal_states_render_retryable_and_nonretryable_failures():
     assert watcher.display_state("unschedulable") == "FAILED (RETRYABLE)"
     assert watcher.display_state("failed") == "FAILED (NON-RETRYABLE)"
     assert watcher.display_state("killed") == "FAILED (NON-RETRYABLE)"
-    assert watcher.health_label(_job(state="worker_failed"), watcher.Progress(None, None, "test"), {}, NOW, 120)[0] == (
-        "terminal (FAILED (RETRYABLE))"
-    )
+    assert watcher.health_label(
+        _job(state="worker_failed"), watcher.Progress(None, None, "test"), {}, NOW, 120
+    )[0] == ("terminal (FAILED (RETRYABLE))")
     assert watcher._health_cell("terminal (FAILED (RETRYABLE))").tone == "error"
 
 

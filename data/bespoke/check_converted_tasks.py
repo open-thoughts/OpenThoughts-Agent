@@ -105,14 +105,14 @@ def main():
             print(f"✗ {task_dir.name}: {message}")
     
     print("\n" + "=" * 80)
-    print(f"Validation Summary:")
+    print("Validation Summary:")
     print(f"  Valid tasks: {valid_count}/{len(task_dirs)}")
     print(f"  Invalid tasks: {invalid_count}/{len(task_dirs)}")
     
     if valid_count == len(task_dirs):
         print("\nAll tasks are valid! ✓")
     else:
-        print(f"\nSome tasks have issues. Please check the errors above.")
+        print("\nSome tasks have issues. Please check the errors above.")
     
     return 0 if invalid_count == 0 else 1
 

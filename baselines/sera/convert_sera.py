@@ -2,7 +2,11 @@
 """Convert allenai/Sera-4.5A-Full-T1 to shareGPT format + upload to laion/Sera-4.5A-Full-T1-v2 + size subsets.
 Memory-bounded: writes to parquet in 500-row chunks, then loads via pyarrow for upload.
 """
-import os, json, sys, argparse, random, gc
+import os
+import json
+import argparse
+import random
+import gc
 from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq

@@ -1,6 +1,6 @@
 import re
 
-from prm.base import PRMJudgment, ProcessRewardModel, Trajectory, register_prm
+from prm.base import PRMJudgment, ProcessRewardModel, register_prm
 
 
 @register_prm

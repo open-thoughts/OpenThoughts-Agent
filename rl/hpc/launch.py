@@ -42,7 +42,7 @@ import sys
 ot_agent_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ot_agent_root)
 
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader  # noqa: E402
 
 def launch_sbatch(sbatch_script_path, dependency=None, has_internet=False) -> str:
     if not has_internet:
@@ -294,7 +294,7 @@ def main():
     # Parse command line arguments
     cli_args = parse_args()
     for key, value in cli_args.items():
-        if type(value) == str:
+        if type(value) == str:  # noqa: E721
             value = value.lower()
             if value == "false":
                 cli_args[key] = False
@@ -357,7 +357,7 @@ def main():
     )
 
     # Display train arguments
-    print("=" * 20 + f" Train Args " + "=" * 20)
+    print("=" * 20 + " Train Args " + "=" * 20)
     for key, value in exp_args.items():
         print(f"{key}: {value}")
     print("=" * 50)

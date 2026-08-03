@@ -10,14 +10,16 @@
 # Train: DigitalLearningGmbH/MATH-lighteval (full Hendrycks MATH train, 7500),
 #        filtered to Level 3-5 (harder -> naturally longer CoT).
 # Val:   HuggingFaceH4/MATH-500.
-import argparse, importlib.util, os
+import argparse
+import importlib.util
+import os
 import datasets
 
 # Import the aime env's verifier utils directly (avoid the skyrl_gym package
 # __init__ which pulls heavy tool deps not installed in this prep env).
 _UPATH = "/leonardo_work/AIFAC_5C0_290/bfeuer00/code/MarinSkyRL/skyrl-gym/skyrl_gym/envs/aime/utils.py"
 _spec = importlib.util.spec_from_file_location("aime_utils", _UPATH)
-U = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(U)
+U = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(U)  # noqa: E702
 
 INSTRUCTION = (
     " Please reason step by step. At the very end, output your final answer on its "

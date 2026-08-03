@@ -129,10 +129,10 @@ def save_sample(tasks, output_dir=OUTPUT_DIR):
     # Save task list
     (output_path / "task_list.txt").write_text('\n'.join(tasks) + '\n')
 
-    print(f"\nCompleted:")
+    print("\nCompleted:")
     print(f"  Downloaded: {downloaded}")
     print(f"  Skipped: {skipped}")
-    print(f"\nDistribution:")
+    print("\nDistribution:")
     for proj, count in sorted(by_project.items(), key=lambda x: -x[1]):
         print(f"  {proj}: {count}")
 

@@ -14,7 +14,6 @@ import concurrent.futures
 import subprocess
 import json
 import os
-import sys
 import time
 from collections import defaultdict
 from datetime import datetime
@@ -639,7 +638,7 @@ def run_live_dashboard(jobs_dir, interval, sort_key="progress", compact=False,
         n_retry = sum(1 for j in running_data if j["status"] == "retry")
         n_done = sum(1 for j in running_data if j["status"] == "done")
         header_parts = [
-            f"[bold]EVAL DASHBOARD[/bold]",
+            "[bold]EVAL DASHBOARD[/bold]",
             f"[green]{n_fresh} fresh[/green]" if n_fresh else None,
             f"[purple]{n_resume} resume[/purple]" if n_resume else None,
             f"[yellow]{n_retry} retry[/yellow]" if n_retry else None,

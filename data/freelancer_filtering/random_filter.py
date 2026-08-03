@@ -12,7 +12,6 @@ from typing import List
 sys.path.append(str(Path(__file__).parent.parent.parent))
 from data.freelancer.generate import scrape_freelancer_projects
 from data.commons import generate_tasks_from_questions, upload_tasks_to_hf, subsample_tasks_directory, select_top_n_by_score
-from data.gcs_cache import gcs_cache
 from scripts.harbor.run_and_export_traces import run_dataset_to_traces
 from data.commons import upload_traces_to_hf
 

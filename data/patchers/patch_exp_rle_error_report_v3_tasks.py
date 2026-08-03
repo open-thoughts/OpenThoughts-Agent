@@ -513,7 +513,7 @@ def main() -> None:
     print(f"[patch_exp_rle_error_report_v3] total:           {total}")
     print(f"[patch_exp_rle_error_report_v3] kept:            {kept}")
     print(f"[patch_exp_rle_error_report_v3] dropped:         {dropped}")
-    print(f"[patch_exp_rle_error_report_v3] dropped breakdown:")
+    print("[patch_exp_rle_error_report_v3] dropped breakdown:")
     for reason, n in sorted(by_reason.items(), key=lambda kv: -kv[1]):
         print(f"    {reason:30s} {n:4d}")
 

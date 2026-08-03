@@ -3,7 +3,6 @@ Monkeypatches launch_sbatch to capture the sbatch path instead of calling sbatch
 Usage: python gen_only_delphi.py <argstring...>  (same flags as hpc.launch, minus --dry_run)
 The captured sbatch path is printed as: GENERATED_SBATCH=<path>
 """
-import sys
 import hpc.launch_utils as lu
 import hpc.sft_launch_utils as slu
 import hpc.launch as launch

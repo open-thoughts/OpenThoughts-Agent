@@ -38,7 +38,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import io
 import re
 import shutil
 import tarfile
@@ -396,7 +395,7 @@ def main() -> None:
         if len(dockerfiles) <= 10:
             print("✓ Within Daytona's snapshot limit (≤10)")
         else:
-            print(f"⚠ Exceeds recommended limit of 10 — consider consolidating Dockerfiles")
+            print("⚠ Exceeds recommended limit of 10 — consider consolidating Dockerfiles")
 
 
 if __name__ == "__main__":

@@ -72,7 +72,6 @@ import argparse
 import sys
 from pathlib import Path
 from textwrap import dedent
-from typing import Optional
 
 import yaml
 

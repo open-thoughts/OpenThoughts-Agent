@@ -3,7 +3,6 @@
 Common utilities for dataset operations.
 """
 
-import argparse
 import asyncio
 import json
 import logging
@@ -14,7 +13,6 @@ import tempfile
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
@@ -23,8 +21,6 @@ import pyarrow as pa
 import yaml
 from datasets import (
     Dataset,
-    get_dataset_config_names,
-    get_dataset_split_names,
     load_dataset,
 )
 from huggingface_hub import HfApi, hf_hub_download, snapshot_download
@@ -37,35 +33,9 @@ from tqdm.asyncio import tqdm_asyncio
 
 from database.unified_db.utils import register_hf_dataset
 from data.gcs_cache import gcs_cache
-from data.generation import (
-    GenerationContext,
-    GenerationError,
-    GenerationRequest,
-    GenerationResult,
-    GenerationStage,
-    GenerationStatus,
-    InferenceEngine,
-    InferenceFailure,
-    InputValidationError,
-    TraceFailure,
-    UploadFailure,
-    BaseDataGenerator,
-    add_generation_args,
-    create_engine_from_args,
-    create_inference_engine,
-    OpenAIEngine,
-    AnthropicEngine,
-    GenericOpenAIEngine,
-)
-from tqdm.asyncio import tqdm_asyncio
-import pyarrow as pa
-from data.gcs_cache import gcs_cache
 from harbor.models.trial.config import TrialConfig, TaskConfig, EnvironmentConfig    
-import asyncio
 from harbor.models.environment_type import EnvironmentType
 from harbor.trial.trial import Trial
-import traceback
-import json
 from rapidfuzz import fuzz
 # NOTE: `from transformers import AutoTokenizer` is intentionally NOT imported at
 # module level. It is used only by `decontaminate_ngram_overlap` (below), and a
@@ -242,7 +212,6 @@ def upload_tasks_to_hf(
     logger.info(f"Private repository: {private}")
     
     from huggingface_hub import HfApi, create_repo
-    from huggingface_hub.utils import RepositoryNotFoundError
     
     # Initialize HF API
     api = HfApi(token=token)
@@ -327,7 +296,6 @@ def upload_logs_to_hf(
     logger.info(f"Private repository: {private}")
     
     from huggingface_hub import HfApi, create_repo
-    from huggingface_hub.utils import RepositoryNotFoundError
     
     # Initialize HF API
     api = HfApi(token=token)
@@ -409,7 +377,7 @@ def download_hf_dataset(
     else:
         # Use load_dataset for dataset-specific download
         # Load the dataset to trigger download
-        dataset = load_dataset(
+        load_dataset(
             repo_id,
             cache_dir=str(cache_path),
             revision=revision,
@@ -991,7 +959,7 @@ async def can_daytona_start(task_path: str) -> bool:
         try:
             if trial._environment._sandbox is not None:
                 await trial._environment._sandbox.delete()
-        except:
+        except:  # noqa: E722
             pass
         return False
 
@@ -1678,9 +1646,9 @@ def _extract_single_task(
         task_group = h5file[task_group_name]
 
         # Get task metadata - use original task_name from attrs
-        original_task_name = task_group.attrs.get('task_name', task_group_name)
+        task_group.attrs.get('task_name', task_group_name)
         dataset_prefix = task_group.attrs.get('dataset_prefix', 'task')
-        task_id = task_group.attrs.get('task_id', 0)
+        task_group.attrs.get('task_id', 0)
 
         # Extract task index from group name (e.g., "task_0000" -> 0)
         # Use this to create a unique directory name even if task_name repeats
@@ -2393,7 +2361,7 @@ def decontaminate_questions(
     clean_questions = [q for q, is_contaminated in zip(questions, combined_mask) if not is_contaminated]
 
     num_removed = len(questions) - len(clean_questions)
-    print(f"\n=== Summary ===")
+    print("\n=== Summary ===")
     print(f"Total contaminated (n-gram OR fuzzy): {num_removed} ({num_removed/len(questions)*100:.1f}%)")
     print(f"Remaining clean questions: {len(clean_questions)}")
 

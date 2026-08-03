@@ -31,11 +31,11 @@ def test_ask_llm_filter():
             else:
                 # Mock ratings for testing
                 ratings = [75.0, 45.0, 90.0]
-                print(f"Using mock ratings (no API key)")
+                print("Using mock ratings (no API key)")
         except Exception:
             # Use mock ratings if any error
             ratings = [75.0, 45.0, 90.0]
-            print(f"Using mock ratings")
+            print("Using mock ratings")
         
         print(f"Got {len(ratings)} ratings: {ratings}")
         
@@ -136,7 +136,7 @@ def test_gemini_length_filtering():
                     "Another medium response with some context."
                 ][:len(questions)]
                 lengths = [len(r) for r in responses]
-                print(f"Using mock responses (no API key)")
+                print("Using mock responses (no API key)")
         except Exception:
             # Use mock responses if any error
             responses = [
@@ -147,7 +147,7 @@ def test_gemini_length_filtering():
                 "Another medium response with some context."
             ][:len(questions)]
             lengths = [len(r) for r in responses]
-            print(f"Using mock responses")
+            print("Using mock responses")
         
         print(f"Got {len(responses)} responses with lengths: {lengths}")
 

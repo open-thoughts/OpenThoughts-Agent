@@ -4,13 +4,10 @@ Generate Stack Overflow dataset in sandboxes style - 100k deduplicated tasks
 """
 
 import random
-from pathlib import Path
-from typing import List, Dict, Any
 
 # Import from parent package
-from data.commons import upload_tasks_to_hf, generate_tasks_from_questions, subsample_tasks_directory, upload_traces_to_hf
+from data.commons import upload_tasks_to_hf, generate_tasks_from_questions
 from data.stackexchange.generate_codereview import download_and_extract_dataset, parse_posts_xml, extract_questions_from_data
-from scripts.harbor.run_and_export_traces import run_dataset_to_traces
 
 
 def main() -> None:

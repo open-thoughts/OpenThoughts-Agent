@@ -233,7 +233,7 @@ def main():
         if task_yaml_path.exists():
             with open(task_yaml_path) as f:
                 data = yaml.safe_load(f)
-            print(f"\nTask metadata:")
+            print("\nTask metadata:")
             print(f"  Difficulty: {data.get('difficulty', 'N/A')}")
             print(f"  Category: {data.get('category', 'N/A')}")
             print(f"  Tags: {data.get('tags', [])}")

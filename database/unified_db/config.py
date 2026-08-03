@@ -109,7 +109,7 @@ def test_connection() -> bool:
     try:
         client = get_default_client()
         # Try a simple query to test connection
-        response = client.table('datasets').select('id').limit(1).execute()
+        client.table('datasets').select('id').limit(1).execute()
         print("✅ Connected to Supabase successfully!")
         return True
     except Exception as e:

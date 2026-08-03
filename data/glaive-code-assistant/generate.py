@@ -6,7 +6,7 @@ Generate Glaive Code Assistant dataset in sandboxes style
 import os
 import random
 from pathlib import Path
-from datasets import load_dataset, Dataset
+from datasets import load_dataset
 import tempfile
 from typing import List, Dict, Any
 
@@ -73,7 +73,7 @@ def create_task_directory(output_dir: Path, problem_data: Dict[str, Any], task_i
     answer = problem_data["answer"]
 
     # Create task.toml
-    task_toml = f'''version = "1.0"
+    task_toml = '''version = "1.0"
 
 [metadata]
 author_name = "Glaive Generator"

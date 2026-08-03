@@ -5,18 +5,15 @@ Generate self-instruct dataset in sandboxes style.
 from __future__ import annotations
 import argparse
 import time
-import tempfile
 from pathlib import Path
 from functools import partial
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 
 import litellm
 from datasets import load_dataset
 
 from data.commons import (
-    upload_tasks_to_hf, 
-    subsample_tasks_directory, 
-    upload_traces_to_hf
+    subsample_tasks_directory
 )
 from data.self_instruct.utils import (
     load_prompt_templates, 
@@ -139,7 +136,7 @@ def create_sandboxed_tasks(
                 
                 # delete everything from the container
                 exec_container_command(container, 
-                                       cmd=["bash", "-lc", f"rm -rf *"])
+                                       cmd=["bash", "-lc", "rm -rf *"])
                 
                 print("time taken for synthesis:", time_taken)
                 print("accumulated_token_stats:", accumulated_token_stats)
@@ -216,8 +213,8 @@ def main() -> None:
             tasks_dir = future.result()
     
     if not args.no_upload:
-        print(f"[2/3] Subsampling and uploading tasks")
-        final_dataset_dir = subsample_tasks_directory(
+        print("[2/3] Subsampling and uploading tasks")
+        subsample_tasks_directory(
             source_dir=tasks_dir,
             num_samples=min(10_000, args.limit),
         )

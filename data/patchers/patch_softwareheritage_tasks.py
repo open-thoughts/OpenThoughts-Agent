@@ -127,7 +127,6 @@ PIP_NAME_MAP = {
     "oslo_rootwrap": "oslo.rootwrap",
     "oslo_service": "oslo.service",
     "oslo_versionedobjects": "oslo.versionedobjects",
-    "google.cloud": "google-cloud-storage",
     "requests_mock": "requests-mock",
     "all_repos": "all-repos",
     "pre_commit": "pre-commit",

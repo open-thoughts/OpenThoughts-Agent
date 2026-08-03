@@ -61,7 +61,7 @@ def get_example_task_str(tasks_dir="few_shot_tasks"):
                 with open(file_path, 'r', encoding='utf-8') as f:
                     content = f.read()
                 EXAMPLE[rel_file_path] = content
-            except:
+            except:  # noqa: E722
                 EXAMPLE[rel_file_path] = "some content..."
     return EXAMPLE
 

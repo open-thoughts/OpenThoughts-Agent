@@ -132,7 +132,7 @@ class ExperimentConfigGenerator:
                 f"--data-parallel-size-local {config['data_parallel_size_local']}",
                 f"--data-parallel-start-rank {node_id * config['data_parallel_size_local']}",
                 "--enable-expert-parallel" if config.get("enable_expert_parallel") else "",
-                f"--data-parallel-address $HEAD_NODE_IP",
+                "--data-parallel-address $HEAD_NODE_IP",
                 "--data-parallel-rpc-port 13345",
                 f"--distributed-executor-backend {config['distributed_executor_backend']}",
             ])

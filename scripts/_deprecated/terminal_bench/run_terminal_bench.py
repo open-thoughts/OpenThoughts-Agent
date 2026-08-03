@@ -85,7 +85,7 @@ def run_terminal_bench(
                 print("Detected Podman Docker emulation, setting DOCKER_HOST...")
                 user_id = subprocess.run(["id", "-u"], capture_output=True, text=True).stdout.strip()
                 env["DOCKER_HOST"] = f"unix:///run/user/{user_id}/podman/podman.sock"
-        except:
+        except:  # noqa: E722
             pass
         
         # Run the command

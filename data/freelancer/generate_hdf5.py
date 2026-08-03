@@ -63,8 +63,8 @@ def main_hdf5() -> None:
     print("=" * 80)
     print(f"HDF5 dataset: {upsampled_hdf5}")
     print(f"Extracted directory: {extracted_dir}")
-    print(f"Traces uploaded to: mlfoundations-dev/freelancer-projects-sandboxes-traces-terminus-2")
-    print(f"Tasks uploaded to: mlfoundations-dev/freelancer-projects-sandboxes")
+    print("Traces uploaded to: mlfoundations-dev/freelancer-projects-sandboxes-traces-terminus-2")
+    print("Tasks uploaded to: mlfoundations-dev/freelancer-projects-sandboxes")
 
 
 if __name__ == "__main__":

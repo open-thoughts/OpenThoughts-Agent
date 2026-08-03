@@ -40,7 +40,7 @@ with torch.no_grad():
 assert isinstance(ref, torch.Tensor), f"stock forward returned {type(ref)}, expected Tensor"
 
 # --- apply the DenseMixer patch (class-level forward swap) ---
-from densemixer.patching import apply_qwen3_moe_patch
+from densemixer.patching import apply_qwen3_moe_patch  # noqa: E402
 apply_qwen3_moe_patch()
 
 xin = x.clone().requires_grad_(True)

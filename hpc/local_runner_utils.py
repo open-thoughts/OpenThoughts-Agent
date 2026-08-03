@@ -6,7 +6,6 @@ datagen config parsing, Docker runtime setup, and Harbor command building.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import resource
 import subprocess
@@ -19,7 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from hpc.vllm_utils import _build_vllm_cli_args, run_endpoint_health_check
-from hpc.launch_utils import generate_served_model_id, hosted_vllm_alias, maybe_int, PROJECT_ROOT
+from hpc.launch_utils import generate_served_model_id, hosted_vllm_alias, maybe_int
 from hpc.arg_groups import (
     add_harbor_args,
     add_model_compute_args,
@@ -31,8 +30,6 @@ from hpc.arg_groups import (
 from hpc.model_utils import (
     is_gpt_oss_model,
     setup_gpt_oss_tiktoken,
-    get_model_specific_env_vars,
-    GPT_OSS_TIKTOKEN_FILES,
 )
 
 # Re-export harbor utilities for backward compatibility
@@ -49,7 +46,6 @@ from hpc.harbor_utils import (
     merge_agent_kwargs,
     collect_extra_agent_kwargs,
     resolve_jobs_dir_path,
-    build_endpoint_meta,
     load_endpoint_metadata,
 )
 
@@ -196,7 +192,7 @@ class FileDescriptorMonitor:
             percent_used = (current_fds / soft_limit * 100) if soft_limit > 0 else 0
 
             return current_fds, soft_limit, hard_limit, percent_used
-        except Exception as e:
+        except Exception:
             return -1, -1, -1, 0.0
 
     def _log_status(self) -> None:
@@ -226,7 +222,7 @@ class FileDescriptorMonitor:
 
         if percent >= 75:
             print(
-                f"[fd-monitor] Consider reducing --n_concurrent or increasing ulimit -n",
+                "[fd-monitor] Consider reducing --n_concurrent or increasing ulimit -n",
                 flush=True,
             )
 

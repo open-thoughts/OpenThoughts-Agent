@@ -4,19 +4,16 @@ AskLLM filtering strategy for Freelancer dataset
 Uses curator-based completions to rate the quality/relevance of questions
 """
 
-import sys
-from pathlib import Path
 from typing import List
 from datasets import Dataset
 from pydantic import BaseModel, Field
 
 from data.freelancer.generate import scrape_freelancer_projects
 from data.commons import generate_tasks_from_questions, upload_tasks_to_hf, subsample_tasks_directory, select_top_n_by_score
-from data.commons import upload_tasks_to_hf, subsample_tasks_directory, upload_traces_to_hf
+from data.commons import upload_traces_to_hf
 from scripts.harbor.run_and_export_traces import run_dataset_to_traces
 from data.gcs_cache import gcs_cache
-from data.completions import run_completions, CustomLLM
-from bespokelabs.curator import LLM
+from data.completions import CustomLLM
 
 
 class ScoreResponse(BaseModel):

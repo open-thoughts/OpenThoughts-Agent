@@ -233,7 +233,7 @@ async def main():
     print(f"Tokens (in/out): {total_input_tokens:,} / {total_output_tokens:,}")
 
     # Create HF dataset and upload
-    print(f"\nCreating HF dataset...")
+    print("\nCreating HF dataset...")
     output_hf_dataset = Dataset.from_list(valid_results)
 
     print(f"Uploading to {args.output_dataset}...")

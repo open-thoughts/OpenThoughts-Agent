@@ -18,7 +18,7 @@ import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator, Optional
+from typing import Iterator, Optional
 
 from hpc.local_paths import PATHS, ensure as ensure_local_paths
 

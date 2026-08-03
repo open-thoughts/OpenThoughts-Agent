@@ -20,7 +20,7 @@ try:
     from ray import serve
     from ray.serve.llm import LLMConfig, LLMServingArgs, build_openai_app
     from ray.serve.config import ProxyLocation
-except ImportError as exc:  # pragma: no cover - defensive guard for misconfigured envs
+except ImportError:  # pragma: no cover - defensive guard for misconfigured envs
     print(
         "[start_vllm_ray_serve] Ray Serve LLM components are unavailable. "
         "Install a Ray version that includes ray.serve.llm before using the "

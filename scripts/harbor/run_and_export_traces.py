@@ -7,36 +7,35 @@ Hugging Face Dataset of extracted traces, without invoking subprocesses.
 Assumes `harbor` is importable (e.g., installed via `pip install -e .`).
 """
 
-import asyncio
-import hashlib
-import json
-import logging
-import shutil
-import tempfile
-from pathlib import Path
-from typing import Any, Optional
-import re
-import importlib
-import inspect
-import os
-from pydantic import BaseModel
-from datasets import Dataset
+import asyncio  # noqa: E402
+import hashlib  # noqa: E402
+import json  # noqa: E402
+import logging  # noqa: E402
+import shutil  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Any, Optional  # noqa: E402
+import re  # noqa: E402
+import importlib  # noqa: E402
+import inspect  # noqa: E402
+import os  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
+from datasets import Dataset  # noqa: E402
 
-from harbor.job import Job
-from harbor.models.agent.name import AgentName
-from harbor.models.environment_type import EnvironmentType
-from harbor.models.job.config import JobConfig
-from harbor.models.trial.config import AgentConfig, EnvironmentConfig, VerifierConfig
+from harbor.job import Job  # noqa: E402
+from harbor.models.agent.name import AgentName  # noqa: E402
+from harbor.models.environment_type import EnvironmentType  # noqa: E402
+from harbor.models.job.config import JobConfig  # noqa: E402
+from harbor.models.trial.config import AgentConfig, EnvironmentConfig, VerifierConfig  # noqa: E402
 
-from scripts.harbor._harbor_compat import (
+from scripts.harbor._harbor_compat import (  # noqa: E402
     LocalDatasetConfig,
     create_job,
     get_orchestrator_field,
     set_orchestrator_field,
 )
-from harbor.utils.traces_utils import export_traces as _export_traces
-from data.gcs_cache import gcs_cache
-from scripts.harbor.job_config_utils import (
+from harbor.utils.traces_utils import export_traces as _export_traces  # noqa: E402
+from data.gcs_cache import gcs_cache  # noqa: E402
+from scripts.harbor.job_config_utils import (  # noqa: E402
     ensure_trailing_dataset,
     set_job_metadata,
     set_local_dataset,
@@ -216,7 +215,7 @@ def _merge_verifier_timeout_into_config(config: JobConfig, verifier_timeout_sec:
     if _is_pydantic_model(v):
         config.verifier = v.model_copy(update={"override_timeout_sec": verifier_timeout_sec})
     elif isinstance(v, dict):
-        nv = dict(v); nv["override_timeout_sec"] = verifier_timeout_sec
+        nv = dict(v); nv["override_timeout_sec"] = verifier_timeout_sec  # noqa: E702
         config.verifier = nv
     else:
         raise TypeError(f"Unsupported verifier type on JobConfig: {type(v)}")
@@ -261,7 +260,7 @@ def _merge_agent_timeout_into_config(config: JobConfig, agent_timeout_sec: float
         if _is_pydantic_model(a):
             merged.append(a.model_copy(update={"override_timeout_sec": agent_timeout_sec}))
         elif isinstance(a, dict):
-            na = dict(a); na["override_timeout_sec"] = agent_timeout_sec
+            na = dict(a); na["override_timeout_sec"] = agent_timeout_sec  # noqa: E702
             merged.append(na)
         else:
             raise TypeError(f"Unsupported agent type on JobConfig.agents: {type(a)}")
@@ -431,7 +430,7 @@ def run_dataset_to_traces(
     # Check if a job with this checksum already exists
     try:
         existing_job_name = _find_job_by_checksum(jobs_dir, dataset_checksum)
-    except:
+    except:  # noqa: E722
         existing_job_name = None
         
     if existing_job_name and not job_name:
@@ -442,7 +441,7 @@ def run_dataset_to_traces(
         
         if data['agents'][0]['model_name'] != model_name or data['agents'][0]['kwargs'] != agent_kwargs or data['agents'][0]['name'] != agent_name:
             logger.warning(f"Existing job '{existing_job_name}' has different model name, kwargs, or name")
-            logger.warning(f" → Creating new job")
+            logger.warning(" → Creating new job")
             existing_job_name = None    
         else:
             logger.info(f"✓ Found existing job with matching checksum: {existing_job_name}")
@@ -459,8 +458,8 @@ def run_dataset_to_traces(
         logger.warning(f"  But you specified job_name='{job_name}'. Proceeding with your specified name.")
     else:
         if not existing_job_name:
-            logger.info(f"✗ No existing job found with matching checksum")
-            logger.info(f"→ Creating new job")
+            logger.info("✗ No existing job found with matching checksum")
+            logger.info("→ Creating new job")
 
 
     if existing_job_name:
@@ -903,7 +902,7 @@ def run_dataset_to_traces_hdf5(
 
         if data['agents'][0]['model_name'] != model_name or data['agents'][0]['kwargs'] != agent_kwargs or data['agents'][0]['name'] != agent_name:
             logger.warning(f"Existing job '{existing_job_name}' has different model name, kwargs, or name")
-            logger.warning(f" → Creating new job")
+            logger.warning(" → Creating new job")
             existing_job_name = None
         else:
             logger.info(f"✓ Found existing job with matching checksum: {existing_job_name}")
@@ -920,8 +919,8 @@ def run_dataset_to_traces_hdf5(
         logger.warning(f"  But you specified job_name='{job_name}'. Proceeding with your specified name.")
     else:
         if not existing_job_name:
-            logger.info(f"✗ No existing job found with matching checksum")
-            logger.info(f"→ Creating new job")
+            logger.info("✗ No existing job found with matching checksum")
+            logger.info("→ Creating new job")
 
     if existing_job_name:
         config = JobConfig.model_validate_json((existing_job_dir / "config.json").read_text())
@@ -938,7 +937,7 @@ def run_dataset_to_traces_hdf5(
     else:
         # Extract HDF5 to persistent directory for harbor to use (enables resuming)
         # Use a deterministic path based on HDF5 file location
-        logger.info(f"Extracting HDF5 to persistent directory for job execution...")
+        logger.info("Extracting HDF5 to persistent directory for job execution...")
         from data.commons import extract_hdf5_to_task_paths
 
         # Create persistent extraction directory next to the HDF5 file

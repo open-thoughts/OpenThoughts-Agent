@@ -13,7 +13,6 @@ import argparse
 import html
 import json
 import re
-import sys
 from pathlib import Path
 
 
@@ -133,7 +132,7 @@ def render_row(row: dict, idx: int) -> str:
         role_counts[r] = role_counts.get(r, 0) + 1
 
     parts = [
-        f"<!DOCTYPE html><html><head><meta charset='utf-8'>",
+        "<!DOCTYPE html><html><head><meta charset='utf-8'>",
         f"<title>Sera v4-1000 sample {idx} — {html.escape(instance_id)}</title>",
         f"<style>{CSS}</style></head><body>",
         f"<h1>Sample {idx}: {html.escape(instance_id)}</h1>",

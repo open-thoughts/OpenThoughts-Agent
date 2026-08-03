@@ -9,7 +9,6 @@ with support for both HuggingFace and local parquet file datasets.
 import json
 import logging
 import os
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -20,7 +19,7 @@ from harbor.utils.traces_utils import export_traces
 from supabase import Client
 
 from .config import get_default_client, get_admin_client
-from .models import *
+from .models import *  # noqa: F403
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +115,7 @@ def get_dataset_by_name(name: str) -> Optional[Dict[str, Any]]:
         if not response.data:
             return None
 
-        return clean_dataset_metadata(response.data[0])
+        return clean_dataset_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error retrieving dataset by name {name}: {e}")
         return None
@@ -128,7 +127,7 @@ def get_dataset_by_id(dataset_id: str) -> Optional[Dict[str, Any]]:
         response = client.table('datasets').select('*').eq('id', dataset_id).execute()
         if not response.data:
             return None
-        return clean_dataset_metadata(response.data[0])
+        return clean_dataset_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error retrieving dataset with ID {dataset_id}: {e}")
         return None
@@ -142,7 +141,7 @@ def create_dataset(dataset_data: Dict[str, Any]) -> Dict[str, Any]:
         if not response.data:
             raise ValueError("Failed to create dataset")
 
-        return clean_dataset_metadata(response.data[0])
+        return clean_dataset_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error creating dataset: {e}")
         raise
@@ -157,7 +156,7 @@ def update_dataset(dataset_id: str, dataset_data: Dict[str, Any]) -> Dict[str, A
         if not response.data:
             raise ValueError(f"Failed to update dataset with ID {dataset_id}")
 
-        return clean_dataset_metadata(response.data[0])
+        return clean_dataset_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error updating dataset {dataset_id}: {e}")
         raise
@@ -474,7 +473,7 @@ def get_model_by_name(name: str) -> Optional[Dict[str, Any]]:
         if not response.data:
             return None
 
-        return clean_model_metadata(response.data[0])
+        return clean_model_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error retrieving model by name {name}: {e}")
         return None
@@ -489,7 +488,7 @@ def create_model(model_data: Dict[str, Any]) -> Dict[str, Any]:
         if not response.data:
             raise ValueError("Failed to create model")
 
-        return clean_model_metadata(response.data[0])
+        return clean_model_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error creating model: {e}")
         raise
@@ -504,7 +503,7 @@ def update_model(model_id: str, model_data: Dict[str, Any]) -> Dict[str, Any]:
         if not response.data:
             raise ValueError(f"Failed to update model with ID {model_id}")
 
-        return clean_model_metadata(response.data[0])
+        return clean_model_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error updating model {model_id}: {e}")
         raise
@@ -840,7 +839,7 @@ def register_local_model(
                 try:
                     with open(readme_path, 'r') as f:
                         description = f.read()[:500]  # First 500 chars
-                    logger.info(f"Extracted description from README.md")
+                    logger.info("Extracted description from README.md")
                 except Exception as e:
                     logger.warning(f"Could not read README.md: {e}")
 
@@ -940,7 +939,7 @@ BASE_MODEL_TRAINING_START_SENTINEL = "1970-01-01T00:00:00Z"
 
 
 # ---- Helper: parse HF model name from URLs ----
-import re
+import re  # noqa: E402
 HF_RE = re.compile(r'https?://(?:www\.)?huggingface\.co/([^/\s]+)/([^/\s#?]+)')
 
 def parse_hf_model_name(val: Any) -> Optional[str]:
@@ -1204,7 +1203,7 @@ def get_agent_by_name(name: str) -> Optional[Dict[str, Any]]:
         if not response.data:
             return None
 
-        return clean_agent_metadata(response.data[0])
+        return clean_agent_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error retrieving agent by name {name}: {e}")
         return None
@@ -1219,7 +1218,7 @@ def create_agent(agent_data: Dict[str, Any]) -> Dict[str, Any]:
         if not response.data:
             raise ValueError("Failed to create agent")
 
-        return clean_agent_metadata(response.data[0])
+        return clean_agent_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error creating agent: {e}")
         raise
@@ -1234,7 +1233,7 @@ def update_agent(agent_id: str, agent_data: Dict[str, Any]) -> Dict[str, Any]:
         if not response.data:
             raise ValueError(f"Failed to update agent with ID {agent_id}")
 
-        return clean_agent_metadata(response.data[0])
+        return clean_agent_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error updating agent {agent_id}: {e}")
         raise
@@ -1316,7 +1315,7 @@ def get_benchmark_by_name(name: str) -> Optional[Dict[str, Any]]:
         if not response.data:
             return None
 
-        return clean_benchmark_metadata(response.data[0])
+        return clean_benchmark_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error retrieving benchmark by name {name}: {e}")
         return None
@@ -1331,7 +1330,7 @@ def create_benchmark(benchmark_data: Dict[str, Any]) -> Dict[str, Any]:
         if not response.data:
             raise ValueError("Failed to create benchmark")
 
-        return clean_benchmark_metadata(response.data[0])
+        return clean_benchmark_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error creating benchmark: {e}")
         raise
@@ -1346,7 +1345,7 @@ def update_benchmark(benchmark_id: str, benchmark_data: Dict[str, Any]) -> Dict[
         if not response.data:
             raise ValueError(f"Failed to update benchmark with ID {benchmark_id}")
 
-        return clean_benchmark_metadata(response.data[0])
+        return clean_benchmark_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error updating benchmark {benchmark_id}: {e}")
         raise
@@ -1697,7 +1696,7 @@ def get_sandbox_task_by_checksum(checksum: str) -> Optional[Dict[str, Any]]:
         if not response.data:
             return None
 
-        return clean_sandbox_task_metadata(response.data[0])
+        return clean_sandbox_task_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error retrieving sandbox task by checksum {checksum}: {e}")
         return None
@@ -1712,7 +1711,7 @@ def get_sandbox_task_by_name(source: str, name: str) -> Optional[Dict[str, Any]]
         if not response.data:
             return None
 
-        return clean_sandbox_task_metadata(response.data[0])
+        return clean_sandbox_task_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error retrieving sandbox task by name {source}/{name}: {e}")
         return None
@@ -1727,7 +1726,7 @@ def create_sandbox_task(task_data: Dict[str, Any]) -> Dict[str, Any]:
         if not response.data:
             raise ValueError("Failed to create sandbox task")
 
-        return clean_sandbox_task_metadata(response.data[0])
+        return clean_sandbox_task_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error creating sandbox task: {e}")
         raise
@@ -1742,7 +1741,7 @@ def update_sandbox_task(checksum: str, task_data: Dict[str, Any]) -> Dict[str, A
         if not response.data:
             raise ValueError(f"Failed to update sandbox task with checksum {checksum}")
 
-        return clean_sandbox_task_metadata(response.data[0])
+        return clean_sandbox_task_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error updating sandbox task {checksum}: {e}")
         raise
@@ -1876,7 +1875,7 @@ def link_benchmark_to_task(
             .execute()
 
         if existing.data:
-            result = clean_sandbox_benchmark_task_metadata(existing.data[0])
+            result = clean_sandbox_benchmark_task_metadata(existing.data[0])  # noqa: F405
             logger.info(f"Benchmark-task link already exists: {benchmark_id} -> {task_checksum}")
             return {"success": True, "link": result, "exists": True}
 
@@ -1892,7 +1891,7 @@ def link_benchmark_to_task(
         if not response.data:
             raise ValueError("Failed to create benchmark-task link")
 
-        result = clean_sandbox_benchmark_task_metadata(response.data[0])
+        result = clean_sandbox_benchmark_task_metadata(response.data[0])  # noqa: F405
         logger.info(f"Successfully linked benchmark {benchmark_id} to task {task_checksum}")
         return {"success": True, "link": result}
 
@@ -1946,7 +1945,7 @@ def get_sandbox_job_by_id(job_id: str) -> Optional[Dict[str, Any]]:
         if not response.data:
             return None
 
-        return clean_sandbox_job_metadata(response.data[0])
+        return clean_sandbox_job_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error retrieving sandbox job by ID {job_id}: {e}")
         return None
@@ -1978,7 +1977,7 @@ def get_sandbox_job_by_name(job_name: str) -> Optional[Dict[str, Any]]:
         if not response.data:
             return None
 
-        return clean_sandbox_job_metadata(response.data[0])
+        return clean_sandbox_job_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error retrieving sandbox job by name {job_name}: {e}")
         return None
@@ -1993,7 +1992,7 @@ def create_sandbox_job(job_data: Dict[str, Any]) -> Dict[str, Any]:
         if not response.data:
             raise ValueError("Failed to create sandbox job")
 
-        return clean_sandbox_job_metadata(response.data[0])
+        return clean_sandbox_job_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error creating sandbox job: {e}")
         raise
@@ -2008,7 +2007,7 @@ def update_sandbox_job(job_id: str, job_data: Dict[str, Any]) -> Dict[str, Any]:
         if not response.data:
             raise ValueError(f"Failed to update sandbox job with ID {job_id}")
 
-        return clean_sandbox_job_metadata(response.data[0])
+        return clean_sandbox_job_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error updating sandbox job {job_id}: {e}")
         raise
@@ -2152,7 +2151,7 @@ def get_sandbox_trial_by_id(trial_id: str) -> Optional[Dict[str, Any]]:
         if not response.data:
             return None
 
-        return clean_sandbox_trial_metadata(response.data[0])
+        return clean_sandbox_trial_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error retrieving sandbox trial by ID {trial_id}: {e}")
         return None
@@ -2167,7 +2166,7 @@ def get_sandbox_trial_by_name(trial_name: str) -> Optional[Dict[str, Any]]:
         if not response.data:
             return None
 
-        return clean_sandbox_trial_metadata(response.data[0])
+        return clean_sandbox_trial_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error retrieving sandbox trial by name {trial_name}: {e}")
         return None
@@ -2182,7 +2181,7 @@ def create_sandbox_trial(trial_data: Dict[str, Any]) -> Dict[str, Any]:
         if not response.data:
             raise ValueError("Failed to create sandbox trial")
 
-        return clean_sandbox_trial_metadata(response.data[0])
+        return clean_sandbox_trial_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error creating sandbox trial: {e}")
         raise
@@ -2197,7 +2196,7 @@ def update_sandbox_trial(trial_id: str, trial_data: Dict[str, Any]) -> Dict[str,
         if not response.data:
             raise ValueError(f"Failed to update sandbox trial with ID {trial_id}")
 
-        return clean_sandbox_trial_metadata(response.data[0])
+        return clean_sandbox_trial_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error updating sandbox trial {trial_id}: {e}")
         raise
@@ -2343,7 +2342,7 @@ def get_trial_model_usage(trial_id: str, model_id: str, model_provider: str) -> 
         if not response.data:
             return None
 
-        return clean_sandbox_trial_model_usage_metadata(response.data[0])
+        return clean_sandbox_trial_model_usage_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error retrieving trial model usage for trial {trial_id}, model {model_id}, provider {model_provider}: {e}")
         return None
@@ -2358,7 +2357,7 @@ def create_trial_model_usage(usage_data: Dict[str, Any]) -> Dict[str, Any]:
         if not response.data:
             raise ValueError("Failed to create trial model usage")
 
-        return clean_sandbox_trial_model_usage_metadata(response.data[0])
+        return clean_sandbox_trial_model_usage_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error creating trial model usage: {e}")
         raise
@@ -2377,7 +2376,7 @@ def update_trial_model_usage(trial_id: str, model_id: str, model_provider: str, 
         if not response.data:
             raise ValueError(f"Failed to update trial model usage for trial {trial_id}, model {model_id}, provider {model_provider}")
 
-        return clean_sandbox_trial_model_usage_metadata(response.data[0])
+        return clean_sandbox_trial_model_usage_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error updating trial model usage for trial {trial_id}, model {model_id}, provider {model_provider}: {e}")
         raise
@@ -2421,12 +2420,12 @@ def register_trial_model_usage(
         if existing and forced_update:
             logger.info(f"Updating existing trial model usage for trial {trial_id}, model {model_id}, provider {model_provider}")
             result = update_trial_model_usage(trial_id, model_id, model_provider, usage_data)
-            logger.info(f"Successfully updated trial model usage")
+            logger.info("Successfully updated trial model usage")
             return {"success": True, "usage": result, "updated": True}
         else:
             logger.info(f"Creating new trial model usage for trial {trial_id}, model {model_id}, provider {model_provider}")
             result = create_trial_model_usage(usage_data)
-            logger.info(f"Successfully registered trial model usage")
+            logger.info("Successfully registered trial model usage")
             return {"success": True, "usage": result}
 
     except Exception as e:
@@ -2633,7 +2632,7 @@ def get_agent_by_name_and_version(
 
         # Package version matching is not currently enforced in the DB schema,
         # so we return the first record for this agent name.
-        return clean_agent_metadata(response.data[0])
+        return clean_agent_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error retrieving agent by name {name} and version {version}: {e}")
         return None
@@ -2666,7 +2665,7 @@ def get_benchmark_by_name_and_version(
         if not response.data:
             return None
 
-        return clean_benchmark_metadata(response.data[0])
+        return clean_benchmark_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error retrieving benchmark by name {name} and version {version_hash}: {e}")
         return None
@@ -2852,7 +2851,7 @@ def _parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             return dt
-        except:
+        except:  # noqa: E722
             logger.warning(f"Failed to parse datetime: {dt_str}")
             return None
 
@@ -2884,7 +2883,7 @@ def _extract_trial_metadata(
     config_path = trial_dir / "config.json"
     result_path = trial_dir / "result.json"
 
-    config = json.loads(config_path.read_text())
+    json.loads(config_path.read_text())
     result = json.loads(result_path.read_text())
 
     # VALIDATION: Accept trials with agent_execution and either verifier_result OR reward
@@ -3167,7 +3166,7 @@ def calculate_standard_error(
     variance = (1.0 / (n ** 2)) * sum_variance
     stderr = np.sqrt(variance)
 
-    logger.info(f"Standard error calculation:")
+    logger.info("Standard error calculation:")
     logger.info(f"  Number of valid tasks (n): {n}")
     logger.info(f"  Sum of variance contributions: {sum_variance:.6f}")
     logger.info(f"  variance = (1/{n}^2) * {sum_variance:.6f} = {variance:.6f}")
@@ -3473,9 +3472,9 @@ def _hf_run_summary(model_name: str) -> Optional[Dict[str, Any]]:
 
     # normalize null-ish values -> None
     def norm(v):
-        if isinstance(v, dict):  return {k: norm(vv) for k, vv in v.items()}
-        if isinstance(v, list):  return [norm(vv) for vv in v]
-        if v is None:            return None
+        if isinstance(v, dict):  return {k: norm(vv) for k, vv in v.items()}  # noqa: E701
+        if isinstance(v, list):  return [norm(vv) for vv in v]  # noqa: E701
+        if v is None:            return None  # noqa: E701
         if isinstance(v, str) and v.strip().lower() in {"null", "none", ""}:
             return None
         return v
@@ -3573,7 +3572,7 @@ def upload_job_and_trial_records(
 
     job_config = json.loads(config_path.read_text())
     job_result = json.loads(result_path.read_text())
-    job_id = job_result["id"]
+    job_result["id"]
 
     # Step 3: Auto-detect and lookup foreign keys
     logger.info("Step 3: Auto-detecting and looking up foreign keys")
@@ -3752,17 +3751,17 @@ def upload_job_and_trial_records(
                     logger.info(f"Model run_summary missing agent_name, using eval agent: {agent_name}")
                     summary["agent_name"] = agent_name
                 uploaded_model = register_trained_model(summary, forced_update=forced_update)
-                if not uploaded_model or uploaded_model.get('success') == False:
+                if not uploaded_model or not uploaded_model.get('success'):
                     # If trained model registration fails, fall back to base model registration
                     logger.warning(f"register_trained_model failed for {hf_name}, trying register_base_model")
                     uploaded_model = register_base_model(hf_name, forced_update=forced_update)
-                    if not uploaded_model or uploaded_model.get('success') == False:
+                    if not uploaded_model or not uploaded_model.get('success'):
                         raise ValueError(f"Could not register model in database: {uploaded_model}")
             else:
                 # No run_summary.json - this is likely a base model (Qwen, Llama, etc.)
                 logger.info(f"No run_summary.json for {hf_name}, registering as base model")
                 uploaded_model = register_base_model(hf_name, forced_update=forced_update)
-                if not uploaded_model or uploaded_model.get('success') == False:
+                if not uploaded_model or not uploaded_model.get('success'):
                     raise ValueError(f"Could not register base model in database: {uploaded_model}")
             # Re-lookup after attempted registration
             model = get_model_by_name(hf_name)
@@ -3781,7 +3780,7 @@ def upload_job_and_trial_records(
 
     # If register_benchmark=True and benchmark not found, auto-register it
     if register_benchmark and not benchmark:
-        logger.info(f"Benchmark not found. Auto-registering benchmark and tasks from job...")
+        logger.info("Benchmark not found. Auto-registering benchmark and tasks from job...")
         reg_result = register_benchmark_and_tasks_from_job(
             job_dir=job_dir,
             benchmark_name=benchmark_name,
@@ -3983,7 +3982,7 @@ def upload_job_and_trial_records(
                 })
             else:
                 # Rollback mode: Trigger rollback and return immediately
-                logger.error(f"Triggering immediate rollback due to trial failure...")
+                logger.error("Triggering immediate rollback due to trial failure...")
                 _rollback_db_records(db_job_id, registered_trial_ids, registered_usage_records)
 
                 return {
@@ -4024,11 +4023,11 @@ def upload_job_and_trial_records(
                 }).eq("id", db_job_id).execute()
 
                 if update_result:
-                    logger.info(f"Successfully updated job record with standard error")
+                    logger.info("Successfully updated job record with standard error")
                     # Update the job record in our summary
                     job_record["job"]["metrics"] = updated_metrics
                 else:
-                    logger.warning(f"Failed to update job record with standard error")
+                    logger.warning("Failed to update job record with standard error")
         except Exception as e:
             logger.warning(f"Failed to calculate or upload standard error: {e}")
             # Don't fail the entire upload if stderr calculation fails
@@ -4050,7 +4049,7 @@ def upload_job_and_trial_records(
 
             # Write to new file
             result_with_stderr_path.write_text(json.dumps(result_data, indent=2))
-            logger.info(f"Created result_with_std_error.json with updated metrics")
+            logger.info("Created result_with_std_error.json with updated metrics")
     except Exception as e:
         logger.warning(f"Failed to create result_with_std_error.json: {e}")
         # Don't fail the entire upload if file creation fails
@@ -4218,7 +4217,7 @@ def upload_traces_to_hf(
     logger.info("Uploading dataset to HuggingFace Hub...")
     try:
         dataset.push_to_hub(hf_repo_id, token=token)
-        logger.info(f"Upload complete")
+        logger.info("Upload complete")
     except Exception as e:
         logger.error(f"Failed to upload to HuggingFace: {e}")
         raise
@@ -4646,7 +4645,7 @@ def get_job_by_model_benchmark(model_id: str, benchmark_id: str) -> Optional[Dic
         if not response.data:
             return None
 
-        return clean_sandbox_job_metadata(response.data[0])
+        return clean_sandbox_job_metadata(response.data[0])  # noqa: F405
     except Exception as e:
         logger.error(f"Error getting job for model={model_id}, benchmark={benchmark_id}: {e}")
         return None
@@ -4701,7 +4700,7 @@ def create_job_entry_pending(
         if existing:
             status = existing.get('job_status')
             if status == JOB_STATUS_FINISHED:
-                return {"success": False, "error": f"Job already finished", "job": existing}
+                return {"success": False, "error": "Job already finished", "job": existing}
             if status in (JOB_STATUS_PENDING, JOB_STATUS_STARTED):
                 return {"success": True, "job": existing, "exists": True}
 
@@ -4783,7 +4782,7 @@ def update_job_status_to_started(
 
         # Validate state transition
         if current_status == JOB_STATUS_FINISHED:
-            return {"success": False, "error": f"Job already finished, cannot restart"}
+            return {"success": False, "error": "Job already finished, cannot restart"}
         if current_status == JOB_STATUS_STARTED:
             # Already started, just return success (idempotent)
             logger.info(f"Job {job_name} already in Started status")
@@ -4809,7 +4808,7 @@ def update_job_status_to_started(
         return {"success": False, "error": str(e)}
 
 
-def create_job_entry_started(
+def create_job_entry_started(  # noqa: F811
     model_hf_name: str,
     benchmark_hf_name: str,
     job_name: str,

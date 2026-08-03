@@ -55,13 +55,22 @@ def test_duplicate_weight_formats_are_KEPT_when_the_repo_has_no_safetensors():
 
 def test_repository_plumbing_and_media_are_dropped():
     kept = select_model_files(
-        [".gitattributes", ".git/config", "figure.png", "demo.mp4", "config.json", *SHARDS]
+        [
+            ".gitattributes",
+            ".git/config",
+            "figure.png",
+            "demo.mp4",
+            "config.json",
+            *SHARDS,
+        ]
     )
     assert kept == ["config.json", *SHARDS]
 
 
 def test_metadata_is_ordered_before_shards_so_a_partial_mirror_leaves_usable_config():
-    kept = select_model_files([*SHARDS, "tokenizer.json", "config.json", "chat_template.jinja"])
+    kept = select_model_files(
+        [*SHARDS, "tokenizer.json", "config.json", "chat_template.jinja"]
+    )
     shard_positions = [kept.index(s) for s in SHARDS]
     metadata_positions = [
         kept.index(f) for f in ("config.json", "tokenizer.json", "chat_template.jinja")

@@ -56,7 +56,7 @@ def main():
     )
 
 
-    ratio = 10_000 / len(instructions)
+    10_000 / len(instructions)
 
     
     hdf5_path = generate_tasks_to_hdf5(

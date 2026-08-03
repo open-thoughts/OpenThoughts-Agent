@@ -8,13 +8,12 @@ from __future__ import annotations
 import csv
 import io
 import json
-import tempfile
 import textwrap
 import urllib.request
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterator, List, Optional, Sequence, Tuple
+from typing import Callable, Iterator, List, Optional
 
 from data.commons import (
     BaseDataGenerator,

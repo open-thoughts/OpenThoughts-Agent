@@ -114,7 +114,7 @@ def main():
     print(f"✓ Skills covered: {len(config.skill_coverage)}")
     
     # Print skill distribution
-    print(f"\n=== SKILL DISTRIBUTION ===")
+    print("\n=== SKILL DISTRIBUTION ===")
     sorted_skills = sorted(config.skill_coverage.items(), key=lambda x: -x[1])
     for skill, count in sorted_skills:
         target = TARGETS.get(skill, 0)
@@ -129,7 +129,7 @@ def main():
         for skill, remaining in sorted(config.unmet_targets.items(), key=lambda x: -x[1])[:10]:
             print(f"  - {skill}: {remaining} still needed")
     
-    print(f"\n=== NEXT STEP ===")
+    print("\n=== NEXT STEP ===")
     print(f"./data/nl2bash_sampled_verified/local_nl2bash.sh {config.total_samples} 1 1 {output_path}")
 
 

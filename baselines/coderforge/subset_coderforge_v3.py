@@ -27,10 +27,8 @@ Streaming one shard at a time keeps memory bounded.
 import argparse
 import gc
 import glob
-import json
 import os
 import random
-import re
 from pathlib import Path
 
 import pyarrow as pa
@@ -203,7 +201,7 @@ def push_dataset(api, target_repo, parquet_path, size, full_size, token):
     readme_tmp = parquet_path.parent / f"README_{size}.md"
     readme_tmp.write_text(make_readme(target_repo, size, full_size))
 
-    path_in_repo = f"data/train-00000-of-00001.parquet"   # HF default layout
+    path_in_repo = "data/train-00000-of-00001.parquet"   # HF default layout
     print(f"[push] uploading {parquet_path.name} ({parquet_path.stat().st_size / 1e9:.2f} GB) -> {target_repo}", flush=True)
     api.upload_file(
         path_or_fileobj=str(parquet_path),

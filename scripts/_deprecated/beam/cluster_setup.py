@@ -19,8 +19,6 @@ import sys
 
 from scripts.beam.config import (
     Beta9Config,
-    ClusterSetupConfig,
-    FilestoreConfig,
     GKEConfig,
     LoadBalancerConfig,
     PinggyConfig,
@@ -40,9 +38,7 @@ from scripts.beam.gke_provision import (
 )
 from scripts.beam.s3_storage import (
     S3Storage,
-    check_s3_configured,
     cleanup_juicefs_storage,
-    init_s3_storage,
 )
 from scripts.beam.beta9_deploy import (
     add_helm_repo,

@@ -34,7 +34,7 @@ import sys
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 
 # -----------------------------------------------------------------------------
@@ -727,10 +727,11 @@ def _cli() -> int:
     p = argparse.ArgumentParser(prog="python -m hpc.snapshot_manager")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    common_org = lambda sp: sp.add_argument(
-        "--org", action="append", required=True,
-        help="Daytona org spec NAME=API_KEY (can be repeated for multi-org)",
-    )
+    def common_org(sp):
+        return sp.add_argument(
+            "--org", action="append", required=True,
+            help="Daytona org spec NAME=API_KEY (can be repeated for multi-org)",
+        )
 
     ens = sub.add_parser("ensure", help="Pre-build snapshots for a tasks dir")
     ens.add_argument("--tasks", required=True, help="Local tasks directory")

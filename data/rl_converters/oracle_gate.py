@@ -12,7 +12,6 @@ Usage:
 
 from __future__ import annotations
 
-import re
 import shutil
 import subprocess
 import tempfile
@@ -92,7 +91,7 @@ class OracleGate:
                 if "1" in output.split("\n")[-1] if output else False:
                     return 1
                 # More robust check
-                reward_line = [l for l in output.split("\n") if l.strip() in ("0", "1")]
+                reward_line = [l for l in output.split("\n") if l.strip() in ("0", "1")]  # noqa: E741
                 if reward_line:
                     return int(reward_line[-1].strip())
                 return 0

@@ -2,7 +2,12 @@
 """Convert togethercomputer/CoderForge-Preview (4 subsets) to unified shareGPT + upload.
 Memory-bounded: streams each parquet shard, writes to unified output parquet in 500-row chunks.
 """
-import os, json, sys, argparse, random, glob, gc
+import os
+import json
+import argparse
+import random
+import glob
+import gc
 from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq

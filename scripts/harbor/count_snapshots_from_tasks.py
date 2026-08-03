@@ -46,12 +46,12 @@ def _run_maybe_async(value: Any) -> Any:
         return asyncio.run(value)
     return value
 
-from harbor.constants import TASK_CACHE_DIR
-from harbor.models.registry import RemoteRegistryInfo
+from harbor.constants import TASK_CACHE_DIR  # noqa: E402
+from harbor.models.registry import RemoteRegistryInfo  # noqa: E402
 
-from scripts.harbor._harbor_compat import LocalDatasetConfig, RegistryDatasetConfig
-from harbor.tasks.client import TaskClient
-from harbor.utils.container_cache import (
+from scripts.harbor._harbor_compat import LocalDatasetConfig, RegistryDatasetConfig  # noqa: E402
+from harbor.tasks.client import TaskClient  # noqa: E402
+from harbor.utils.container_cache import (  # noqa: E402
     DockerfileStats,
     analyze_task_dockerfiles,
 )
@@ -219,7 +219,7 @@ def print_stats(stats: DockerfileStats, verbose: bool = False) -> None:
     avg_reuse = stats.tasks_with_dockerfile / stats.unique_hashes if stats.unique_hashes > 0 else 0
     single_use = sum(1 for count in stats.hash_counts.values() if count == 1)
 
-    print(f"\nSnapshot reuse statistics:")
+    print("\nSnapshot reuse statistics:")
     print(f"  Average tasks per snapshot: {avg_reuse:.1f}")
     print(f"  Maximum tasks per snapshot: {max_reuse}")
     print(f"  Single-use snapshots:       {single_use} ({100*single_use/stats.unique_hashes:.1f}%)")

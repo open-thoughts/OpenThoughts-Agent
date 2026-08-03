@@ -40,9 +40,9 @@ if "--list-providers" in sys.argv or "--list_providers" in sys.argv:
     print(list_providers(verbose=True))
     sys.exit(0)
 
-from hpc.launch_utils import PROJECT_ROOT
-from hpc.cloud_launch_utils import CloudLauncher, repo_relative, parse_gpu_count
-from hpc.cloud_sync_utils import sync_outputs
+from hpc.launch_utils import PROJECT_ROOT  # noqa: E402
+from hpc.cloud_launch_utils import CloudLauncher, parse_gpu_count  # noqa: E402
+from hpc.cloud_sync_utils import sync_outputs  # noqa: E402
 
 # Default Docker image for RL (has SkyRL environment)
 DEFAULT_RL_DOCKER_IMAGE = "ghcr.io/open-thoughts/openthoughts-agent:gpu-rl"

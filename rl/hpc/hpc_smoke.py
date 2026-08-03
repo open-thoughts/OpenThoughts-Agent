@@ -18,8 +18,8 @@ hpc_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, hpc_dir)
 
 # Import HPC modules
-from hpc import detect_hpc, set_environment
-from launch_utils import pre_download_dataset
+from hpc import detect_hpc, set_environment  # noqa: E402
+from launch_utils import pre_download_dataset  # noqa: E402
 
 def test_hpc_detection():
     """Test HPC cluster detection"""
@@ -154,7 +154,7 @@ def main():
             passed += 1
         print()
     
-    print(f"=== Test Results ===")
+    print("=== Test Results ===")
     print(f"Passed: {passed}/{total}")
     
     if passed == total:

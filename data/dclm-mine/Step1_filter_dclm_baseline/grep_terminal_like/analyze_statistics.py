@@ -74,9 +74,9 @@ def analyze_domain_counts(stats_file: Path, output_file: Path, top_n: int = 200)
     with open(output_file, 'w') as f:
         json.dump(output, f, indent=2)
 
-    print(f"\nAnalysis complete!")
+    print("\nAnalysis complete!")
     print(f"Output written to: {output_file}")
-    print(f"\nTop 5 domains:")
+    print("\nTop 5 domains:")
     for i, (domain, count) in enumerate(top_domains[:5], 1):
         proportion = (count / total_count) * 100
         print(f"  {i}. {domain}: {count:,} ({proportion:.3f}%)")

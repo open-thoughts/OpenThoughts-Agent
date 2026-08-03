@@ -198,14 +198,14 @@ async def main():
     pct_has_task_desc = (has_task_description / processed * 100) if processed > 0 else 0
     pct_has_shell_sol = (has_shell_solution / processed * 100) if processed > 0 else 0
 
-    print(f"\nStatistics:")
+    print("\nStatistics:")
     print(f"  has_shell_task:       {has_shell_task:4d} / {processed} ({pct_has_shell_task:5.1f}%)")
     print(f"  has_task_description: {has_task_description:4d} / {processed} ({pct_has_task_desc:5.1f}%)")
     print(f"  has_shell_solution:   {has_shell_solution:4d} / {processed} ({pct_has_shell_sol:5.1f}%)")
     print(f"  Tokens (in/out):      {total_input_tokens:,} / {total_output_tokens:,}")
 
     # Create HF dataset and upload
-    print(f"\nCreating HF dataset...")
+    print("\nCreating HF dataset...")
     output_hf_dataset = Dataset.from_list(valid_results)
 
     print(f"Uploading to {args.output_dataset}...")

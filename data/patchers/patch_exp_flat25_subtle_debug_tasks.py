@@ -342,7 +342,7 @@ def main() -> None:
     print(f"[patch_exp_flat25_subtle_debug] import dropped: {import_dropped}")
     print(f"[patch_exp_flat25_subtle_debug] kept:           {kept}")
     print()
-    print(f"[patch_exp_flat25_subtle_debug] test.sh mutation (on KEPT tasks):")
+    print("[patch_exp_flat25_subtle_debug] test.sh mutation (on KEPT tasks):")
     for k in ("patched", "patched_unusual", "already",
               "missing", "skipped_no_pytest", "unparseable"):
         print(f"  {k:<20}: {patch_counts[k]:>5}")

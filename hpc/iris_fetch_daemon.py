@@ -45,7 +45,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 from hpc.iris_job_registry import (
     DB_PATH,
@@ -55,7 +55,6 @@ from hpc.iris_job_registry import (
     STATUS_FETCHED,
     STATUS_FETCHING,
     STATUS_RUNNING,
-    STATUS_SUBMITTED,
     STATUS_SUCCEEDED,
     get,
     list_all,

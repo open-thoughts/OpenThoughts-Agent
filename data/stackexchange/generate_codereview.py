@@ -5,12 +5,9 @@ Generate Stack Overflow Code Review dataset in sandboxes style
 
 import os
 import re
-import json
 import xml.etree.ElementTree as ET
 import tempfile
-import shutil
 import urllib.request
-import sys
 from pathlib import Path
 from typing import List, Dict, Any
 import py7zr
@@ -121,9 +118,9 @@ def extract_questions_from_data(questions_data: List[Dict[str, Any]]) -> List[st
     """Extract question strings from the parsed data"""
     questions = []
     for data in questions_data:
-        title = data["title"]
+        data["title"]
         body = data["body"]
-        tags = data["tags"]
+        data["tags"]
 
         # Combine title, body and tags into a single question string
         question = f"""

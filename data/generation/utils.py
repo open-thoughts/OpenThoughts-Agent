@@ -6,7 +6,7 @@ import argparse
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, List, Union
+from typing import Any, Dict, Optional, Union
 
 from omegaconf import DictConfig, OmegaConf
 from omegaconf.errors import OmegaConfBaseException

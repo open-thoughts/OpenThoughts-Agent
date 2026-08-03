@@ -112,7 +112,6 @@ from patch_rle_flat25_tasks import (  # noqa: E402
     STDLIB,
     _instruction_tokens,
     _top_level_imports,
-    evaluate_task as evaluate_task_v2,
 )
 
 
@@ -400,7 +399,7 @@ def main() -> None:
     print(f"[patch_exp_rle_detailed v3] no test file:   {no_test_dropped}")
     print(f"[patch_exp_rle_detailed v3] syntax errors:  {syntax_dropped}")
     if drop_counts:
-        print(f"[patch_exp_rle_detailed v3] drop reasons (by detail prefix):")
+        print("[patch_exp_rle_detailed v3] drop reasons (by detail prefix):")
         for k, v in sorted(drop_counts.items(), key=lambda kv: -kv[1]):
             print(f"    {v:5d}  {k}")
     print(f"[patch_exp_rle_detailed v3] kept:           {kept}")

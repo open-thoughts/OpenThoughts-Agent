@@ -42,7 +42,6 @@ from ..adapter import (
     HarborTask,
     LLM_JUDGE_TASK_TOML,
     STANDARD_TEST_SH,
-    SanitizationError,
     answer_delivery_guidance,
     render_dockerfile,
     render_metadata,

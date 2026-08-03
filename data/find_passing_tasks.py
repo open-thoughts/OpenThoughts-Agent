@@ -137,6 +137,6 @@ if __name__ == "__main__":
         for task_info in passing:
             print(f"  {task_info['task_name']}")
             
-        print(f"\nCreating successful_runs folders...")
+        print("\nCreating successful_runs folders...")
         create_successful_runs_folders(passing, "/Users/etash/Documents/ot-agent/successful_runs_again")
-        print(f"\nSuccessful runs folders created in: /Users/etash/Documents/ot-agent/successful_runs_again")
+        print("\nSuccessful runs folders created in: /Users/etash/Documents/ot-agent/successful_runs_again")

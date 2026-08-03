@@ -244,7 +244,7 @@ def judge_batch(
 
 def write_markdown_report(repo_id: str, output_path: Path, analyses: List[dict]) -> None:
     lines = [
-        f"# Failure Mode Analysis",
+        "# Failure Mode Analysis",
         "",
         f"- **Source repo**: `{repo_id}`",
         f"- **Trials analyzed**: {len(analyses)}",

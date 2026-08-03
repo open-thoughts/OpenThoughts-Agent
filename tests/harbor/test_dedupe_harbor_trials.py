@@ -7,7 +7,9 @@ from harbor.models.trial.result import TrialResult
 from scripts.harbor.dedupe_harbor_trials import deduplicate_job
 
 
-def _trial_result(source: TrialResult, *, started_at: datetime, reward: float | None) -> TrialResult:
+def _trial_result(
+    source: TrialResult, *, started_at: datetime, reward: float | None
+) -> TrialResult:
     data = source.model_dump(mode="json")
     data["id"] = str(data["id"])
     data["trial_name"] = f"{source.task_name}__{started_at.timestamp()}"
@@ -75,7 +77,9 @@ def test_deduplicate_job_prefers_earliest_scored_attempts_and_is_idempotent(
     assert (tmp_path / "dedupe_manifest.json").read_text() == manifest
 
 
-def test_deduplicate_job_preserves_kept_result_nested_below_removed_result(tmp_path: Path) -> None:
+def test_deduplicate_job_preserves_kept_result_nested_below_removed_result(
+    tmp_path: Path,
+) -> None:
     source = TrialResult.model_validate(
         {
             "task_name": "task",
@@ -109,7 +113,9 @@ def test_deduplicate_job_preserves_kept_result_nested_below_removed_result(tmp_p
     assert removed["removal_action"] == "file"
 
 
-def test_deduplicate_job_removes_duplicate_nested_below_kept_result(tmp_path: Path) -> None:
+def test_deduplicate_job_removes_duplicate_nested_below_kept_result(
+    tmp_path: Path,
+) -> None:
     source = TrialResult.model_validate(
         {
             "task_name": "task",

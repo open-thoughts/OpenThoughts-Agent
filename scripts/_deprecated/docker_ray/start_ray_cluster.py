@@ -1,7 +1,6 @@
 import argparse
 import logging
 import os
-import ray
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
 
@@ -27,12 +26,12 @@ def main():
         # Enable HuggingFace progress bars and logging
         os.environ["HF_HUB_VERBOSITY"] = "info"
         os.environ["TRANSFORMERS_VERBOSITY"] = "info"
-        print(f"Starting Ray Serve with verbose logging...")
+        print("Starting Ray Serve with verbose logging...")
     
     # Extract model ID from full model path for deployment naming
     model_id = args.model.split('/')[-1].replace('-', '_').replace('.', '_')
     
-    print(f"Configuration:")
+    print("Configuration:")
     print(f"  Model: {args.model}")
     print(f"  Model ID: {model_id}")
     print(f"  Min replicas: {args.min_replicas}")

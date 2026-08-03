@@ -38,7 +38,6 @@ import argparse
 import os
 import re
 import sys
-from collections import defaultdict
 
 # HF orgs to search for trace datasets
 HF_ORGS = ["DCAgent", "DCAgent2", "penfever", "laion"]
@@ -208,7 +207,7 @@ def main() -> None:
 
         if not tokens:
             if args.verbose:
-                print(f"    No search tokens extracted")
+                print("    No search tokens extracted")
             no_candidates.append(job_name)
             continue
 
@@ -246,7 +245,7 @@ def main() -> None:
 
         if not db_trial_names:
             if args.verbose:
-                print(f"    No trials in DB to match against")
+                print("    No trials in DB to match against")
             no_candidates.append(job_name)
             continue
 

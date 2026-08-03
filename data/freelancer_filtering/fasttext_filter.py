@@ -6,7 +6,7 @@ Uses FastText embeddings to score and rank questions
 
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import List
 import numpy as np
 
 sys.path.append(str(Path(__file__).parent.parent.parent))

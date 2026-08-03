@@ -5,7 +5,7 @@ import json
 import tempfile
 from pathlib import Path
 from scripts.harbor.run_and_export_traces import run_dataset_to_traces
-from data.commons import upload_tasks_to_hf, upload_traces_to_hf, subsample_tasks_directory
+from data.commons import upload_tasks_to_hf, upload_traces_to_hf
 from swesmith.bug_gen.llm.modify import main as bug_gen_main
 from swesmith.bug_gen.collect_patches import main as collect_main
 from swesmith.issue_gen.get_static import main as static_gen_main

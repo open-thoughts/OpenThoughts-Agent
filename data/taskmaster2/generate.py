@@ -5,9 +5,6 @@ Generate Taskmaster2 dataset in sandboxes style
 
 import json
 import urllib.request
-import tempfile
-import sys
-from pathlib import Path
 from typing import List, Dict, Any
 
 # Import from parent package

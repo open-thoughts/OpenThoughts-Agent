@@ -3,7 +3,6 @@
 Utility functions for R2E-Gym dataset generation.
 """
 
-import pandas as pd
 from typing import List, Tuple, Any, Dict
 from data.gcs_cache import gcs_cache
 

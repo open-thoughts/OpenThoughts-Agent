@@ -1,27 +1,20 @@
-import os
 import re
 import random
 from typing import Dict
 from bespokelabs import curator
 from datasets import Dataset, load_dataset
 from pydantic import BaseModel, Field
-from typing import Literal
 
 # Import from parent package
 from data.commons import (
-    upload_tasks_to_hf,
     generate_tasks_from_questions,
     subsample_tasks_directory,
     create_question_from_data,
     upload_traces_to_hf
 )
-from scripts.harbor.run_and_export_traces import run_dataset_to_traces, only_export_traces
+from scripts.harbor.run_and_export_traces import run_dataset_to_traces
 
-import tempfile
-import sys
-from pathlib import Path
-from typing import List, Dict, Any
-from datasets import load_dataset
+from typing import List, Any
 from datasets import concatenate_datasets
 from data.gcs_cache import gcs_cache
 
@@ -160,7 +153,7 @@ def main() -> None:
   traces_5k_new_context = generate(puzzles_5k_new_context, "All_Puzzles_5k_New_Context_GPT4o-mini")
   
   merged_traces = concatenate_datasets([traces_5k, traces_5k_new_context])
-  upload_traces_to_hf(merged_traces, f"DCAgent/All_Puzzles_5k_OG_5k_New_Context_GPT4o-mini_new_context", "SFT")
+  upload_traces_to_hf(merged_traces, "DCAgent/All_Puzzles_5k_OG_5k_New_Context_GPT4o-mini_new_context", "SFT")
 
 
 if __name__ == "__main__":

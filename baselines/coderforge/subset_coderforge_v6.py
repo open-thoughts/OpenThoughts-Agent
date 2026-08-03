@@ -55,7 +55,6 @@ import glob
 import json
 import os
 import random
-import xml.sax.saxutils as xml_utils
 from pathlib import Path
 
 import pyarrow.parquet as pq

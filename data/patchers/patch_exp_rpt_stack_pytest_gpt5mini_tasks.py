@@ -55,13 +55,9 @@ from pathlib import Path
 # Reuse the synthetic-v4 filter + mutation logic verbatim — same task
 # family, same scaffold. v4's docstring is the canonical design note.
 from data.patchers.patch_stack_pytest_synthetic_v4_tasks import (  # noqa: E402
-    IMPORT_TO_PIP_PKG,
-    STDLIB,
-    ALWAYS_INSTALLED,
     V4_MARKER,
     filter_one_task,
     _detect_pip_packages,
-    patch_test_sh,
 )
 
 

@@ -32,7 +32,6 @@ CLI shape mirrors the existing v2 patcher (`--root`, `--dry-run`,
 from __future__ import annotations
 
 import argparse
-import re
 import shutil
 import subprocess
 import sys

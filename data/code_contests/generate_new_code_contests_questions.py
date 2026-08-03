@@ -3,11 +3,7 @@
 Generate Code Contests dataset in sandboxes style
 """
 
-import json
-import tempfile
-import sys
-from pathlib import Path
-from typing import List, Dict, Any
+from typing import Dict
 from datasets import load_dataset
 
 # Import from parent package
@@ -15,15 +11,11 @@ from data.commons import upload_tasks_to_hf, generate_tasks_from_questions, subs
 from scripts.harbor.run_and_export_traces import run_dataset_to_traces
 from data.commons import upload_traces_to_hf
 
-import os
-import re
 import random
 import pandas as pd
-from typing import Dict
 from bespokelabs import curator
-from datasets import Dataset, load_dataset, concatenate_datasets  
+from datasets import Dataset, concatenate_datasets
 from pydantic import BaseModel, Field
-from typing import Literal
 
 PROMPT = """Help the user generate a new problem inspired by the original question.
 

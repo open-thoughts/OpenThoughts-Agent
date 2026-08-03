@@ -45,7 +45,7 @@ def _find_latest_checkpoint(checkpoint_dir):
         print(f"  Directory does not exist: {checkpoint_dir}")
         return None
     
-    print(f"  Directory exists, listing contents...")
+    print("  Directory exists, listing contents...")
     try:
         items = os.listdir(checkpoint_dir)
         print(f"  Found {len(items)} items")
@@ -71,7 +71,7 @@ def _find_latest_checkpoint(checkpoint_dir):
                 print(f"    ✗ Not a directory: {item}")
     
     if not checkpoint_dirs:
-        print(f"  No valid global_step_* directories found")
+        print("  No valid global_step_* directories found")
         return None
     
     checkpoint_dirs.sort(key=lambda x: x[0])
@@ -86,7 +86,7 @@ def _copy_final_checkpoint_policy(checkpoint_dir):
     import shutil
     
     print(f"\n{'='*50}")
-    print(f"Starting checkpoint policy copy")
+    print("Starting checkpoint policy copy")
     print(f"{'='*50}")
     
     latest_checkpoint = _find_latest_checkpoint(checkpoint_dir)
@@ -157,7 +157,7 @@ def _upload_to_huggingface(model_path, repo_name, hf_token=None):
         # Login to Hugging Face
         if hf_token:
             login(token=hf_token)
-            print(f"Logged in to Hugging Face with provided token")
+            print("Logged in to Hugging Face with provided token")
         else:
             print("Warning: No HF token provided, trying to use cached credentials")
         
@@ -177,7 +177,7 @@ def _upload_to_huggingface(model_path, repo_name, hf_token=None):
             api.upload_folder(
                 folder_path=model_path,
                 repo_id=repo_name,
-                commit_message=f"Upload model and checkpoints from training job"
+                commit_message="Upload model and checkpoints from training job"
             )
             print(f"✓ Successfully uploaded model to https://huggingface.co/{repo_name}")
             return True
@@ -486,7 +486,7 @@ def _finalize_and_upload_model(model_path, repo_name, hf_token, completion_messa
         
         # Register to database after successful upload submission
         try:
-            db_result = _register_rl_model_to_database(
+            _register_rl_model_to_database(
                 model_path=model_path,
                 hf_repo_name=repo_name,
                 exp_args=exp_args

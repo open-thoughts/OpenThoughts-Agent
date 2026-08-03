@@ -3,12 +3,9 @@
 Generate QASPER dataset in sandboxes style
 """
 
-import os
-import tempfile
 import sys
 import json
-from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import random
 
 # Import from parent package

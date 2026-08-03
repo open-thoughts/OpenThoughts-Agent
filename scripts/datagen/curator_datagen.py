@@ -34,7 +34,6 @@ import os
 import signal
 import sys
 import time
-from typing import Dict, List, Optional
 
 from bespokelabs import curator
 from datasets import Dataset, concatenate_datasets, load_dataset
@@ -380,8 +379,8 @@ def _save_and_upload(output_ds, out_path, args, input_rows, elapsed):
 
     # Print summary
     print("\n" + "=" * 60)
-    print(f"Curator Datagen Summary")
-    print(f"=" * 60)
+    print("Curator Datagen Summary")
+    print("=" * 60)
     print(f"Input:       {args.input_dataset} ({len(input_rows)} prompts this run)")
     print(f"Model:       {args.model}")
     print(f"Output:      {len(output_ds)} completions (cumulative)")

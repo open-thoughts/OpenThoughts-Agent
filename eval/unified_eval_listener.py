@@ -419,7 +419,6 @@ import subprocess
 import sys
 import time
 import warnings
-from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -440,8 +439,8 @@ if _PROJECT_ROOT not in sys.path:
 _DCFT_DEFAULT = os.path.abspath(os.path.join(_SCRIPT_DIR, ".."))
 os.environ.setdefault("DCFT", _DCFT_DEFAULT)
 
-from database.unified_db.utils import get_supabase_client, load_supabase_keys
-from eval.presets import load_presets
+from database.unified_db.utils import get_supabase_client, load_supabase_keys  # noqa: E402
+from eval.presets import load_presets  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -1126,7 +1125,7 @@ def _build_api_agent_kwargs_string(agent_kwargs: Dict[str, Any]) -> str:
 # Single source of truth: the set lives in database/unified_db/infra_errors.py
 # (also used by the DB write-point that persists n_infra_errors onto
 # sandbox_jobs.stats). Imported here, not duplicated.
-from database.unified_db.infra_errors import INFRA_ERROR_TYPES
+from database.unified_db.infra_errors import INFRA_ERROR_TYPES  # noqa: E402
 
 
 def _parse_job_dir(job_dir: Path) -> Optional[Dict]:
@@ -1798,7 +1797,7 @@ def resolve_hf_model_name(model_row: Dict) -> Optional[str]:
         return v
 
     # Check other URL fields
-    for field in ("weights_location", "training_parameters", "url", "hf_url"):
+    for field in ("weights_location", "training_parameters", "url", "hf_url"):  # noqa: F402
         vv = model_row.get(field)
         if isinstance(vv, str):
             name = _parse_hf_from_str(vv)
@@ -2888,8 +2887,7 @@ def submit_eval(
     db_job_id: Optional[str] = None
     try:
         from database.unified_db.utils import (
-            create_job_entry_pending, get_supabase_client,
-            get_model_by_name, get_benchmark_by_name,
+            create_job_entry_pending, get_model_by_name, get_benchmark_by_name,
             get_job_by_model_benchmark, update_sandbox_job,
         )
 
@@ -3793,7 +3791,7 @@ class EvalListener:
                         active_ids.add(slurm_job_id)
                 submitted += 1
             else:
-                log(f"  -> Submission failed")
+                log("  -> Submission failed")
                 self._dep_chain.append(f"FAILED_{idx}")
 
             if not self.config.dry_run and self.config.submission_delay > 0:

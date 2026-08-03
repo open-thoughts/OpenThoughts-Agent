@@ -322,7 +322,7 @@ def main():
             launch_script = generator.generate_launch_script(scripts)
             print(f"\nGenerated {len(scripts)} sbatch scripts")
             print(f"Launch script: {launch_script}")
-            print(f"\nTo launch all experiments:")
+            print("\nTo launch all experiments:")
             print(f"  ./{launch_script.name}")
 
 

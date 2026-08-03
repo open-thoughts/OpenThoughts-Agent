@@ -101,7 +101,7 @@ def create_cluster(config: GKEConfig, dry_run: bool = False) -> bool:
 
     logger.info(f"Creating GKE cluster '{config.cluster_name}' with {config.num_nodes} nodes...")
     logger.info(f"  Machine type: {config.machine_type}")
-    logger.info(f"  Image type: UBUNTU_CONTAINERD (required for Beta9 hostPath mounts)")
+    logger.info("  Image type: UBUNTU_CONTAINERD (required for Beta9 hostPath mounts)")
     logger.info(f"  Zone: {config.zone} (zonal cluster)")
     logger.info("  This may take 5-10 minutes...")
 

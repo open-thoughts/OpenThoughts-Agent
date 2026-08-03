@@ -20,7 +20,7 @@ import subprocess
 from pathlib import Path
 import os
 
-from datasets import load_dataset, get_dataset_split_names
+from datasets import get_dataset_split_names
 
 
 def parse_args() -> argparse.Namespace:

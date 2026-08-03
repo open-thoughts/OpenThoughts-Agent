@@ -33,8 +33,7 @@ import os
 import signal
 import sys
 import time
-from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Optional
 
 import httpx
 from datasets import Dataset, load_dataset
@@ -445,7 +444,7 @@ async def run(args):
 
     # Summary
     print(f"\n{'=' * 60}")
-    print(f"Async Datagen Summary")
+    print("Async Datagen Summary")
     print(f"{'=' * 60}")
     print(f"Input:       {args.input_dataset}")
     print(f"Model:       {args.model}")

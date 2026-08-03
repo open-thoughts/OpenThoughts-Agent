@@ -5,13 +5,12 @@ Generate trace hints dataset in sandboxes style
 
 import sys
 from pathlib import Path
-from typing import List, Dict, Any, Optional
-from collections import defaultdict
+from typing import List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 try:
-    from bespokelabs import curator
+    from bespokelabs import curator  # noqa: F401
     CURATOR_AVAILABLE = True
 except ImportError:
     CURATOR_AVAILABLE = False

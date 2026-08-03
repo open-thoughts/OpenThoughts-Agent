@@ -163,10 +163,8 @@ def patch_dockerfile_text(text: str) -> tuple[str, bool, str]:
 
     # Find the first WORKDIR after the LAST FROM (i.e. WORKDIR in the
     # final runtime stage, for multi-stage builds).
-    workdir_after_last_from: int | None = None
     for i, ln in enumerate(lines):
         if i > last_from and WORKDIR_RE.match(ln):
-            workdir_after_last_from = i
             break
 
     # If ALL output directives are after the first FROM already and at

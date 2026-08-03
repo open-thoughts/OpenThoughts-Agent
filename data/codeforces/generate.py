@@ -119,7 +119,6 @@ def create_sandboxed_tasks(limit: int, offset: int = 0) -> Path:
                 f"\n\nNote: {row['note']}" + \
                 f"\n\nInput Format: {row['input_format']}" + \
                 f"\n\nOutput Format: {row['output_format']}"
-        solution = "" # no solution
         if not prompt:
             continue
         create_sandboxed_task(out_root, num_produced, prompt, "")

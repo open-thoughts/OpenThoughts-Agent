@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import html
 import re
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence
 
 # Matches an explicit byte-fallback token like "<0x0A>".
 _BYTE_TOKEN_RE = re.compile(r"^<0x([0-9A-Fa-f]{2})>$")

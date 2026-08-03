@@ -4,7 +4,6 @@ Logic for authoring and injecting functional Python verifiers for Self-Instruct 
 
 import os
 import re
-import json
 from pathlib import Path
 from typing import List, Tuple
 

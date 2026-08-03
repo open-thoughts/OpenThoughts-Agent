@@ -3,7 +3,6 @@
 Generate verified Self-Instruct dataset by adding LLM-authored functional verifiers.
 """
 
-import tempfile
 import sys
 import argparse
 from pathlib import Path
@@ -14,12 +13,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # Import from parent package
-from data.commons import (
+from data.commons import (  # noqa: E402
     upload_tasks_to_hf, 
     download_hf_dataset
 )
-from scripts.harbor import tasks_parquet_converter as tpc
-from data.self_instruct.self_instruct_verifier import inject_self_instruct_verifier
+from scripts.harbor import tasks_parquet_converter as tpc  # noqa: E402
+from data.self_instruct.self_instruct_verifier import inject_self_instruct_verifier  # noqa: E402
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate Verified Self-Instruct dataset")

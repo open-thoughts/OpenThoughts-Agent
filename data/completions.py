@@ -5,9 +5,8 @@ Based on dcft_private completions operator pattern using curator
 """
 
 import logging
-import os
 import tempfile
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional
 from datasets import Dataset
 from bespokelabs.curator import LLM
 import re

@@ -26,7 +26,6 @@ Usage:
 
 import argparse
 import json
-import os
 import re
 import sys
 from collections import defaultdict
@@ -486,7 +485,7 @@ def parse_result_files(trace_jobs_dir: Path) -> list[dict[str, Any]]:
         try:
             with open(result_path, 'r') as f:
                 data = json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
+        except (json.JSONDecodeError, OSError):
             n_skipped += 1
             continue
 
@@ -999,13 +998,13 @@ def generate_markdown_report(
                 # Utilization assessment
                 if avg_waiting == 0 and avg_running < 5:
                     f.write(f"- ⚠️ **Underutilized**: Engines starved for requests (0 waiting, avg {avg_running:.1f} running)\n")
-                    f.write(f"  - Bottleneck is likely upstream (environment execution, not inference)\n")
+                    f.write("  - Bottleneck is likely upstream (environment execution, not inference)\n")
                 elif avg_waiting > 0:
-                    f.write(f"- ✅ **Well-utilized**: Engines saturated (waiting > 0)\n")
+                    f.write("- ✅ **Well-utilized**: Engines saturated (waiting > 0)\n")
                 elif avg_gen_tp < 300:
                     f.write(f"- ⚠️ **Low throughput**: {avg_gen_tp:.0f} tok/s << expected 1000+ tok/s for saturated 8B model\n")
                 else:
-                    f.write(f"- ℹ️ **Moderate utilization**\n")
+                    f.write("- ℹ️ **Moderate utilization**\n")
 
                 f.write("\n")
 
@@ -1643,7 +1642,7 @@ def main():
         if log_name in all_vllm_data:
             summary = all_vllm_data[log_name].get('summary', {})
             if summary:
-                print(f"  vLLM (per-engine):")
+                print("  vLLM (per-engine):")
                 print(f"    Avg Running Reqs: {summary.get('avg_running_per_engine', 0):.1f}")
                 print(f"    Avg Waiting Reqs: {summary.get('avg_total_waiting_requests', 0):.1f}")
                 print(f"    Avg Gen Throughput: {summary.get('avg_generation_throughput_per_engine', 0):.1f} tok/s")
@@ -1657,7 +1656,7 @@ def main():
         summary = data.get('summary', {})
         if summary:
             print(f"\n{log_name} (vLLM metrics only):")
-            print(f"  vLLM (per-engine):")
+            print("  vLLM (per-engine):")
             print(f"    Avg Running Reqs: {summary.get('avg_running_per_engine', 0):.1f}")
             print(f"    Avg Waiting Reqs: {summary.get('avg_total_waiting_requests', 0):.1f}")
             print(f"    Avg Gen Throughput: {summary.get('avg_generation_throughput_per_engine', 0):.1f} tok/s")

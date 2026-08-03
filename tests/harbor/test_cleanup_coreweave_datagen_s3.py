@@ -154,8 +154,13 @@ def test_merge_trial_directories_keeps_all_retry_trials_and_run_metadata(
     assert realness_summary(merged) == (2, 3.0, 0)
     merged_runs = sorted(merged.iterdir())
     assert len(merged_runs) == 2
-    assert [json.loads(run.joinpath("config.json").read_text())["run"] for run in merged_runs] == [
+    assert [
+        json.loads(run.joinpath("config.json").read_text())["run"]
+        for run in merged_runs
+    ] == [
         "first",
         "second",
     ]
-    assert all((run / "same-task__attempt" / "result.json").is_file() for run in merged_runs)
+    assert all(
+        (run / "same-task__attempt" / "result.json").is_file() for run in merged_runs
+    )

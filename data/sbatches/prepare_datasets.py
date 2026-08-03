@@ -24,8 +24,8 @@ os.environ["TMPDIR"] = PLAYGROUND_TMP
 os.environ["HF_HOME"] = os.path.join(PLAYGROUND_TMP, "hf_cache")
 os.environ["HF_DATASETS_CACHE"] = os.path.join(PLAYGROUND_TMP, "hf_cache", "datasets")
 
-from tasks_parquet_converter import from_hf_dataset
-from commons import upsample_tasks_directory, upload_tasks_to_hf
+from tasks_parquet_converter import from_hf_dataset  # noqa: E402
+from commons import upsample_tasks_directory, upload_tasks_to_hf  # noqa: E402
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPORT_PATH = SCRIPT_DIR / "dataset_analysis_report.jsonl"

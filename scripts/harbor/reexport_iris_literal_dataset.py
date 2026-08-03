@@ -40,7 +40,7 @@ def safe_destination(root: Path, relative_key: str) -> Path:
 def download_prefix(source_prefix: str, destination: Path) -> int:
     """Download one durable GCS prefix with bounded concurrency."""
     bucket_name, prefix = parse_gs_uri(source_prefix)
-    bucket = storage.Client().bucket(bucket_name)
+    storage.Client().bucket(bucket_name)
     blobs = [
         blob
         for blob in storage.Client().list_blobs(bucket_name, prefix=prefix)

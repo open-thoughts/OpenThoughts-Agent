@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 
-import os
 import shutil
 import hashlib
 from pathlib import Path
-from typing import Dict, Set
 
 def get_instruction_content(task_path: Path) -> str:
     """Read the instruction.md file from a task directory."""
@@ -79,7 +77,7 @@ def remove_duplicates(dry_run=True):
                 else:
                     unique_tasks.append(task_dir.name)
     
-    print(f"\nAnalysis Results:")
+    print("\nAnalysis Results:")
     print(f"  - Tasks to remove (same ID, same content): {len(to_remove_by_id)}")
     print(f"  - Tasks to remove (different ID, same content): {len(to_remove_by_content)}")
     print(f"  - Unique tasks to keep: {len(unique_tasks)}")
@@ -121,7 +119,7 @@ def remove_duplicates(dry_run=True):
                     failed_count += 1
                     print(f"✗ Failed to remove {task_id}: {e}")
             
-            print(f"\nRemoval complete:")
+            print("\nRemoval complete:")
             print(f"  - Successfully removed: {removed_count}")
             print(f"  - Failed: {failed_count}")
         else:

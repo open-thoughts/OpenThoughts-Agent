@@ -21,17 +21,17 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from datasets import Dataset, load_dataset
-from huggingface_hub import snapshot_download
+from datasets import Dataset, load_dataset  # noqa: E402
+from huggingface_hub import snapshot_download  # noqa: E402
 
-from data.ta_rl_tasks.utils import (
+from data.ta_rl_tasks.utils import (  # noqa: E402
     commands_from_trace,
     create_engine,
     generate_tests,
     read_text,
     write_metadata,
 )
-from scripts.sandboxes.tasks_parquet_converter import from_parquet
+from scripts.sandboxes.tasks_parquet_converter import from_parquet  # noqa: E402
 
 LOGGER = logging.getLogger(__name__)
 

@@ -752,7 +752,6 @@ class TaskgenJobRunner:
             RayCluster,
             RayClusterConfig,
             compute_ray_memory_from_slurm,
-            DEFAULT_OBJECT_STORE_MEMORY_BYTES,
         )
         from hpc.vllm_utils import VLLMServer, VLLMConfig
         from hpc.model_utils import is_gpt_oss_model, setup_gpt_oss_tiktoken
@@ -1191,7 +1190,7 @@ class TracegenJobRunner:
                 if result.stderr:
                     print(result.stderr, file=sys.stderr)
             else:
-                print(f"[upload] Subprocess upload completed successfully", flush=True)
+                print("[upload] Subprocess upload completed successfully", flush=True)
         except subprocess.TimeoutExpired:
             print("[upload] Subprocess upload timed out after 600s", file=sys.stderr)
         except Exception as e:
@@ -1219,7 +1218,6 @@ class TracegenJobRunner:
             RayCluster,
             RayClusterConfig,
             compute_ray_memory_from_slurm,
-            DEFAULT_OBJECT_STORE_MEMORY_BYTES,
         )
         from hpc.vllm_utils import VLLMServer, VLLMConfig
         from hpc.model_utils import is_gpt_oss_model, setup_gpt_oss_tiktoken

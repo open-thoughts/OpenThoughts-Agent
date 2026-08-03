@@ -41,7 +41,6 @@ Design (mirrors resolve_parity_harness.py discipline):
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import os
 import sys
@@ -241,8 +240,8 @@ def build_snapshot() -> dict:
             # per preset below; reuse the EvalListener for the per-model resolvers
             # (its methods don't depend on preset once configs are loaded).
             # NOTE: build_config sets _CLUSTER_CONFIG + CONDA_ENV_PATHS as side effects.
-            listener = uel.EvalListener(config)
-            configs = _load_model_configs(config)
+            uel.EvalListener(config)
+            _load_model_configs(config)
 
             # Capture the ListenerConfig once per cluster (preset-independent for
             # the cluster-derived fields Stage 4 risks; we still capture per-preset

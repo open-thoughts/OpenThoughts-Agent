@@ -20,7 +20,13 @@ Downstream (``build_v3.py --match_map``) writes the matched clean I/O into
 ``tests/inputs``/``tests/outputs`` and the reference ``code`` into ``solution/solve.sh``.
 """
 from __future__ import annotations
-import argparse, gzip, io, tarfile, re, html, sys
+import argparse
+import gzip
+import io
+import tarfile
+import re
+import html
+import sys
 import numpy as np
 import pandas as pd
 from openai import OpenAI

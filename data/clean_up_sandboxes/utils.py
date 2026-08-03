@@ -385,7 +385,7 @@ Examples:
         results = asyncio.run(tester.run_tests())
         
         if results['summary']['failed_tasks'] > 0:
-            logger.warning(f"Some tasks failed. Check the log and results file for details.")
+            logger.warning("Some tasks failed. Check the log and results file for details.")
             sys.exit(1)
         else:
             logger.info("All tasks succeeded!")

@@ -5,7 +5,6 @@ from __future__ import annotations
 from ..adapter import (
     HarborTask,
     STANDARD_TEST_SH,
-    SanitizationError,
     render_dockerfile,
     render_metadata,
     sanitize_text,

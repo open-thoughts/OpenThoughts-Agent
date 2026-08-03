@@ -2,12 +2,9 @@
 Generate controlled perturbations for Dockerfiles to increase difficulty
 """
 
-import tempfile
-from pathlib import Path
 from data.commons import (
     create_task_from_dockerfiles_and_questions,
     filter_tasks_by_docker_start_working,
-    upload_traces_to_hf,
     upload_tasks_to_hf,
     upsample_tasks_directory,
 )
@@ -15,12 +12,6 @@ from data.perturbed_docker.utils import generate_dockerfiles_with_perturbations
 from data.taskmaster2.generate import (
     download_taskmaster2_data,
     extract_questions_from_conversations,
-)
-from scripts.harbor.run_and_export_traces import run_dataset_to_traces
-from scripts.daytona.validate_and_upload_from_hf import (
-    _run_daytona_validation,
-    _discover_tasks,
-    _copy_successes,
 )
 
 

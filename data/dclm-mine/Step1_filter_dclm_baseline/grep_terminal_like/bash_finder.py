@@ -11,7 +11,7 @@ import json
 import random
 import zstandard as zstd
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
 from collections import defaultdict, Counter
 from urllib.parse import urlparse
@@ -335,7 +335,7 @@ class ParallelShardProcessor:
         elapsed = end_time - start_time
 
         print(f"\n{'='*80}")
-        print(f"Processing complete!")
+        print("Processing complete!")
         print(f"Time elapsed: {elapsed/3600:.2f} hours ({elapsed/60:.1f} minutes)")
         print(f"Files processed: {self.stats['files_processed']}")
         print(f"Files failed: {self.stats['files_failed']}")
@@ -369,7 +369,7 @@ class ParallelShardProcessor:
         with open(stats_file, 'w') as f:
             json.dump(stats_output, f, indent=2)
 
-        print(f"\nFinal Statistics:")
+        print("\nFinal Statistics:")
         print(f"  Total sequences processed: {self.stats['total_sequences']:,}")
         print(f"  Bash sequences found: {self.stats['bash_sequences']:,}")
         print(f"  Proportion: {stats_output['proportion_bash']:.4%}")
@@ -386,7 +386,7 @@ class ParallelShardProcessor:
 
     def _save_domain_analysis(self) -> None:
         """Save top 100 domains with their frequencies"""
-        print(f"\nAnalyzing domain frequencies...")
+        print("\nAnalyzing domain frequencies...")
 
         total_bash = self.stats['bash_sequences']
         if total_bash == 0:

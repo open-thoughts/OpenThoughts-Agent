@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import gzip
 import io
-import json
 import os
 import tarfile
 from pathlib import Path

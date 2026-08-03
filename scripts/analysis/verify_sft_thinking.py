@@ -54,7 +54,7 @@ def encode_and_report(template, tokenizer, messages, label):
         decoded_full = tokenizer.decode(response_ids, skip_special_tokens=False)
         think_count = decoded_full.count("<think>")
         close_count = decoded_full.count("</think>")
-        starts_with_think = decoded_full.lstrip().startswith("<think>")
+        decoded_full.lstrip().startswith("<think>")
 
         status = "OK" if think_count == 1 and close_count == 1 else "DOUBLE-THINK BUG"
         print(f"    Pair {pair_idx}: [{status}] prompt={len(prompt_ids)} tok, response={len(response_ids)} tok")
@@ -149,7 +149,7 @@ def main():
                 continue
 
             print(f"\n  Row {row_idx}: {len(messages)} messages")
-            print(f"\n  Preprocessing with reformat_assistant_content():")
+            print("\n  Preprocessing with reformat_assistant_content():")
             preprocessed = preprocess_messages(messages)
 
             # Verify guard check will pass

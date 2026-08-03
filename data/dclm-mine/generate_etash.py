@@ -18,7 +18,7 @@ from openai import AsyncOpenAI
 
 from data.commons import create_task_from_dockerfiles_and_questions, create_standard_dockerfile
 from Step1_filter_dclm_baseline.download_dclm.make_dclm_urls import DCLMShardDownloader
-from Step1_filter_dclm_baseline.grep_terminal_like.bash_finder import BashDetector, process_single_shard
+from Step1_filter_dclm_baseline.grep_terminal_like.bash_finder import process_single_shard
 from Step2_classify.classify_tasks import TaskExtraction as ClassifySchema, SYSTEM_PROMPT as CLASSIFY_PROMPT
 
 # =============================================================================
@@ -64,7 +64,7 @@ def main() -> None:
 
 def filter_bash_sequences(urls, threshold, limit, max_concurrent=32):
     import requests
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from concurrent.futures import ThreadPoolExecutor
 
     cache_dir = Path(tempfile.mkdtemp(prefix="dclm_cache_"))
     results = []
@@ -80,13 +80,13 @@ def filter_bash_sequences(urls, threshold, limit, max_concurrent=32):
                 with open(local_path, 'wb') as f:
                     for chunk in resp.iter_content(chunk_size=8192):
                         f.write(chunk)
-            except:
+            except:  # noqa: E722
                 return []
 
         try:
             result = process_single_shard(local_path, threshold)
             return result.bash_results
-        except:
+        except:  # noqa: E722
             return []
 
     # Process in batches to allow early stopping
@@ -151,7 +151,7 @@ async def classify_all(sequences, prompt, schema):
                 r = resp.choices[0].message.parsed
                 if r.has_shell_task and r.task_description:
                     return {**seq, "task_description": r.task_description}
-            except:
+            except:  # noqa: E722
                 pass
             return None
 

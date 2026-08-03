@@ -57,7 +57,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import os
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -68,7 +67,6 @@ sys.path.insert(0, str(_REPO_ROOT))
 
 # Import strictly the things we need; the listener's top-level is mostly defs/constants
 from eval.unified_eval_listener import (  # noqa: E402
-    INFRA_ERROR_TYPES,
     PRESETS,
     _parse_job_dir,
     get_active_model_dataset_pairs,

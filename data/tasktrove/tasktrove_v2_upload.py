@@ -48,7 +48,7 @@ def main():
     if missing:
         print(f"MISSING v2 dirs ({len(missing)}): {sorted(missing)}")
         sys.exit(1)
-    print(f"All 96 v2 dirs present in staging.")
+    print("All 96 v2 dirs present in staging.")
 
     # 4. delete_patterns for every depth
     delete_patterns = []

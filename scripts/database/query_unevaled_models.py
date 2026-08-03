@@ -35,7 +35,7 @@ Requires: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.
 import argparse
 import os
 import sys
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, Optional, Set, Tuple
 
 
 def get_client():

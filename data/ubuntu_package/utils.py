@@ -9,7 +9,6 @@ from typing import List, Dict, Set
 from dataclasses import dataclass
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import time
 from bs4 import BeautifulSoup
 import logging
 from data.gcs_cache import gcs_cache
@@ -18,7 +17,7 @@ logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 # Import keyword extraction from github_dockerfiles
-from data.github_dockerfiles.utils import extract_keywords as extract_keywords_github
+from data.github_dockerfiles.utils import extract_keywords as extract_keywords_github  # noqa: E402
 
 @dataclass
 class AptPackage:

@@ -2,7 +2,6 @@ import os
 import sys
 import argparse
 import fcntl
-import time
 from huggingface_hub import snapshot_download
 
 def is_valid_task_dir(path):

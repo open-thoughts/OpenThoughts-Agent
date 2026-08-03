@@ -31,7 +31,6 @@ import argparse
 import json
 import os
 import random
-import shutil
 from pathlib import Path
 
 from huggingface_hub import HfApi

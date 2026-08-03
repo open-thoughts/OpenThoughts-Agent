@@ -26,8 +26,8 @@ class JobType(str, Enum):
         return cls.SFT.value
 
 
-from hpc.cli_utils import parse_bool_flag, coerce_str_bool_none, coerce_numeric_cli_values
-from hpc.arg_groups import add_harbor_env_arg
+from hpc.cli_utils import parse_bool_flag, coerce_str_bool_none, coerce_numeric_cli_values  # noqa: E402
+from hpc.arg_groups import add_harbor_env_arg  # noqa: E402
 
 @dataclass
 class LlamaFactoryArgs:
@@ -912,7 +912,7 @@ def _add_dataclass_arguments(arg_group, dataclass_type, exclude_fields=None, *, 
     """
     exclude_fields = exclude_fields or []
 
-    for field in dataclasses.fields(dataclass_type):
+    for field in dataclasses.fields(dataclass_type):  # noqa: F402
         if field.name in exclude_fields:
             continue
 
@@ -1056,7 +1056,7 @@ def parse_args():
         "gpu_type",
     ]
     str_hpc_fields = {"name", "account", "partition", "gpus_type", "qos", "gpu_type"}
-    for field in hpc_fields:
+    for field in hpc_fields:  # noqa: F402
         hpc_group.add_argument(
             f"--{field}",
             type=str if field in str_hpc_fields else int,

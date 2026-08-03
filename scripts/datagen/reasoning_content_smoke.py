@@ -195,7 +195,8 @@ def _print_harbor_projection(response: dict) -> None:
         format_fn = harbor_format_reasoning_block
         source_label = "Harbor utilities"
     else:
-        extract_fn = lambda _agent, resp: _fallback_extract_reasoning_content(resp)
+        def extract_fn(_agent, resp):
+            return _fallback_extract_reasoning_content(resp)
         format_fn = _fallback_format_reasoning_block
         source_label = "fallback (Harbor utilities unavailable)"
 

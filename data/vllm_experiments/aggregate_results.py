@@ -360,12 +360,12 @@ def main():
     print(f"\nTotal experiments: {len(df)}")
     print(f"Successful experiments: {(df['success_rate'] > 0.95).sum()}")
 
-    print(f"\nThroughput (tokens/sec):")
+    print("\nThroughput (tokens/sec):")
     print(f"  Best: {df['throughput_tokens_per_sec'].max():.2f}")
     print(f"  Worst: {df['throughput_tokens_per_sec'].min():.2f}")
     print(f"  Mean: {df['throughput_tokens_per_sec'].mean():.2f}")
 
-    print(f"\nTTFT P95 (ms):")
+    print("\nTTFT P95 (ms):")
     print(f"  Best: {df['ttft_p95'].min() * 1000:.2f}")
     print(f"  Worst: {df['ttft_p95'].max() * 1000:.2f}")
     print(f"  Mean: {df['ttft_p95'].mean() * 1000:.2f}")

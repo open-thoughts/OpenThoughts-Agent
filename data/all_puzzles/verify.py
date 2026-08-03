@@ -1,15 +1,7 @@
-import tempfile
-import sys
-import os
-from pathlib import Path
-from typing import List, Dict, Any
+from typing import Dict
 from datasets import load_dataset
 
 from data.commons import (
-    upload_tasks_to_hf,
-    generate_tasks_from_questions,
-    subsample_tasks_directory,
-    create_question_from_data,
     upload_traces_to_hf
 )
 
@@ -17,7 +9,7 @@ import re
 from tqdm import tqdm
 
 from bespokelabs import curator
-from datasets import Dataset, load_dataset
+from datasets import Dataset
 from pydantic import BaseModel, Field
 
 PROMPT = """You are provided with a multi-turn conversation between a user and an assistant on puzzles problems. We will show the conversation and ground-truth answer from the original dataset. 

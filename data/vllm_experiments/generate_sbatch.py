@@ -342,7 +342,7 @@ ray stop
             launch_script += f"# Experiment {i}\n"
             launch_script += f"echo 'Submitting experiment {i}...'\n"
             launch_script += f"sbatch {head_script}\n"
-            launch_script += f"sleep 2\n\n"
+            launch_script += "sleep 2\n\n"
 
         launch_path = self.output_dir / "launch_all_experiments.sh"
         with open(launch_path, 'w') as f:
@@ -379,7 +379,7 @@ def main():
             request_rate=args.request_rate,
         )
 
-        print(f"Generated sbatch script:")
+        print("Generated sbatch script:")
         print(f"  Head: {scripts['head']}")
 
     else:
@@ -417,7 +417,7 @@ def main():
         # Generate launch script
         launch_script = generator.generate_launch_script(all_scripts)
         print(f"Generated launch script: {launch_script}")
-        print(f"\nTo launch all experiments:")
+        print("\nTo launch all experiments:")
         print(f"  ./{launch_script}")
 
 

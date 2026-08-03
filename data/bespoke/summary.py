@@ -3,7 +3,6 @@
 
 from pathlib import Path
 import toml
-import yaml
 
 def analyze_tasks():
     dataset_path = Path("/Users/etash/Downloads/sandboxes_tasks_terminal_bench")
@@ -47,17 +46,17 @@ def analyze_tasks():
                 # Track difficulties  
                 difficulty = metadata.get("difficulty", "unknown")
                 difficulties[difficulty] = difficulties.get(difficulty, 0) + 1
-            except:
+            except:  # noqa: E722
                 pass
     
     print(f"\nTasks with solutions: {with_solution}")
     print(f"Tasks without solutions: {without_solution}")
     
-    print(f"\nCategories:")
+    print("\nCategories:")
     for category, count in sorted(categories.items(), key=lambda x: -x[1]):
         print(f"  {category}: {count}")
     
-    print(f"\nDifficulties:")
+    print("\nDifficulties:")
     for difficulty, count in sorted(difficulties.items()):
         print(f"  {difficulty}: {count}")
     

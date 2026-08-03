@@ -6,9 +6,7 @@ Generate InferredBugs dataset in sandboxes style
 import os
 import json
 import tempfile
-import shutil
 import subprocess
-import sys
 from pathlib import Path
 from typing import List, Dict, Any
 

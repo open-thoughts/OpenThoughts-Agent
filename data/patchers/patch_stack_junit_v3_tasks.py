@@ -41,7 +41,6 @@ import argparse
 import re
 import sys
 from pathlib import Path
-from typing import Iterable
 
 # --------------------------------------------------------------------------- #
 # Java parsing helpers (regex-based; the test files are simple enough that a
@@ -358,7 +357,7 @@ def _format_test_contract(parsed: dict) -> str:
         "If the original task description above conflicts with this section, prefer this section."
     )
     lines.append("")
-    lines.append(f"**Language**: Java")
+    lines.append("**Language**: Java")
     if parsed["package"]:
         lines.append(f"**Test package**: `{parsed['package']}`")
     else:

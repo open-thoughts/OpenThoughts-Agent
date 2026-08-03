@@ -255,10 +255,10 @@ def get_specs(repo: str, version: str) -> dict:
     elif "moto" in repo:
         try:
             v_float = float(version)
-            if v_float >= 5.0: py_v = "3.12"
-            elif v_float >= 4.0: py_v = "3.10"
-            else: py_v = "3.7"
-        except:
+            if v_float >= 5.0: py_v = "3.12"  # noqa: E701
+            elif v_float >= 4.0: py_v = "3.10"  # noqa: E701
+            else: py_v = "3.7"  # noqa: E701
+        except:  # noqa: E722
             py_v = "3.10"
         install_cmd = "make init"
     elif "conan" in repo:
@@ -272,9 +272,9 @@ def get_specs(repo: str, version: str) -> dict:
         repo_pins_pytest = True
         try:
             v_float = float(version)
-            if v_float >= 1.0: py_v = "3.9"
-            else: py_v = "3.8"
-        except: py_v = "3.9"
+            if v_float >= 1.0: py_v = "3.9"  # noqa: E701
+            else: py_v = "3.8"  # noqa: E701
+        except: py_v = "3.9"  # noqa: E701, E722
         # Authors' exact multi-stage install logic for DVC
         # Use escaped quotes to prevent syntax errors in the generated bash script
         install_cmd = 'python -m pip install --upgrade pip wheel GitPython; python -m pip install \"cython<3.0.0\" && python -m pip install --no-build-isolation pyyaml==5.4.1; python -m pip install git+https://github.com/iterative/mock-ssh-server.git || true; python -m pip install -r tests/requirements.txt || true; python -m pip install -r test-requirements.txt || true; python -m pip install -e \".[tests,dev,all_remotes,all,testing]\";'
@@ -332,28 +332,28 @@ def get_specs(repo: str, version: str) -> dict:
     elif "django" in repo:
         try:
             v = float(version)
-            if v >= 4.1: py_v = "3.9"
-            elif v >= 4.0: py_v = "3.8"
-            elif v >= 3.0: py_v = "3.6"
-            else: py_v = "3.5"
+            if v >= 4.1: py_v = "3.9"  # noqa: E701
+            elif v >= 4.0: py_v = "3.8"  # noqa: E701
+            elif v >= 3.0: py_v = "3.6"  # noqa: E701
+            else: py_v = "3.5"  # noqa: E701
             install_cmd = "python setup.py install" if v < 3.0 else "pip install --prefer-binary -e ."
-        except: py_v = "3.6"
+        except: py_v = "3.6"  # noqa: E701, E722
     elif "scikit-learn" in repo:
         install_cmd = "pip install -v --no-use-pep517 --no-build-isolation -e ."
         try:
             v = float(version)
             py_v = "3.9" if v >= 0.23 else "3.6"
-        except: py_v = "3.6"
+        except: py_v = "3.6"  # noqa: E701, E722
     elif "flask" in repo:
         try:
             v = float(version)
-            if v >= 3.0: py_v = "3.11"
-            elif v >= 2.1: py_v = "3.10"
-            else: py_v = "3.9"
-        except: py_v = "3.9"
-    elif "astropy" in repo: py_v = "3.10"
-    elif "pytest" in repo: py_v = "3.10"
-    elif "matplotlib" in repo: py_v = "3.8"
+            if v >= 3.0: py_v = "3.11"  # noqa: E701
+            elif v >= 2.1: py_v = "3.10"  # noqa: E701
+            else: py_v = "3.9"  # noqa: E701
+        except: py_v = "3.9"  # noqa: E701, E722
+    elif "astropy" in repo: py_v = "3.10"  # noqa: E701
+    elif "pytest" in repo: py_v = "3.10"  # noqa: E701
+    elif "matplotlib" in repo: py_v = "3.8"  # noqa: E701
 
     # 2. Assign Unionized System Dependencies (Apt Packages)
     apt_map = {

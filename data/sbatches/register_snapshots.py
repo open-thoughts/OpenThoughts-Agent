@@ -31,10 +31,9 @@ os.environ["TMPDIR"] = PLAYGROUND_TMP
 os.environ["HF_HOME"] = os.path.join(PLAYGROUND_TMP, "hf_cache")
 
 # --- Harbor imports (use harbor's own code as much as possible) ---
-from harbor.utils.container_cache import environment_dir_hash_truncated
-from harbor.models.task.paths import TaskPaths
-from harbor.environments.daytona_utils import (
-    is_transient_daytona_error,
+from harbor.utils.container_cache import environment_dir_hash_truncated  # noqa: E402
+from harbor.models.task.paths import TaskPaths  # noqa: E402
+from harbor.environments.daytona_utils import (  # noqa: E402
     create_snapshot_retry_callback,
     create_snapshot_wait_callback,
     get_snapshot_retry_callback,
@@ -42,14 +41,14 @@ from harbor.environments.daytona_utils import (
 )
 
 # --- Daytona SDK ---
-from daytona import AsyncDaytona, DaytonaConfig, CreateSnapshotParams, Image, Resources
-from daytona._async.snapshot import SnapshotState
+from daytona import AsyncDaytona, DaytonaConfig, CreateSnapshotParams, Image, Resources  # noqa: E402
+from daytona._async.snapshot import SnapshotState  # noqa: E402
 
 # --- HF dataset helpers ---
-from tasks_parquet_converter import from_hf_dataset, find_tasks
+from tasks_parquet_converter import from_hf_dataset, find_tasks  # noqa: E402
 
 # --- tenacity for retry ---
-from tenacity import retry
+from tenacity import retry  # noqa: E402
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPORT_PATH = SCRIPT_DIR / "dataset_analysis_report.jsonl"
@@ -246,7 +245,7 @@ def discover_unique_envs(records: list[dict]) -> dict[str, str]:
             continue
 
         repo_id = rec["repo_id"]
-        remaining = len(missing) - (len(hash_to_env_dir) - (len(all_needed) - len(missing)))
+        len(missing) - (len(hash_to_env_dir) - (len(all_needed) - len(missing)))
         print(f"  [{i}/{len(actionable)}] {repo_id} (need {len(needed_from_this)} hashes) ...")
 
         task_base = None

@@ -1,6 +1,6 @@
 from typing import Optional
 
-from data.stackexchange.generate_unix import main as generate_unix_tasks, download_and_extract_dataset, parse_posts_xml, extract_questions_from_data
+from data.stackexchange.generate_unix import download_and_extract_dataset, parse_posts_xml, extract_questions_from_data
 from data.commons import (
     create_task_from_dockerfiles_and_questions,
     finalize_dataset_output,

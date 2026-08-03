@@ -588,7 +588,7 @@ def main() -> None:
     print("\n[patch_openswe] Done.")
     print(f"  Status counts: {stats}")
     print(f"  Python version distribution: {dict(sorted(py_version_counts.items()))}")
-    print(f"\nNext: verify snapshot count with:")
+    print("\nNext: verify snapshot count with:")
     print(f"  python -m scripts.harbor.count_snapshots_from_tasks --local-dataset {output_dir}")
 
 

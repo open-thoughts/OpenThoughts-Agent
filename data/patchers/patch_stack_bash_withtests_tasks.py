@@ -199,16 +199,16 @@ def parse_usage_args(usage_rest: str) -> list[str] | None:
     def _strip_trailing_redir(s: str) -> str:
         depth_a = depth_c = depth_s = 0
         for i, ch in enumerate(s):
-            if ch == "<": depth_a += 1
+            if ch == "<": depth_a += 1  # noqa: E701
             elif ch == ">":
                 if depth_a > 0:
                     depth_a -= 1
                 else:
                     return s[:i].rstrip()
-            elif ch == "{": depth_c += 1
-            elif ch == "}": depth_c -= 1
-            elif ch == "[": depth_s += 1
-            elif ch == "]": depth_s -= 1
+            elif ch == "{": depth_c += 1  # noqa: E701
+            elif ch == "}": depth_c -= 1  # noqa: E701
+            elif ch == "[": depth_s += 1  # noqa: E701
+            elif ch == "]": depth_s -= 1  # noqa: E701
             elif ch in "&;" and depth_a == 0 and depth_c == 0 and depth_s == 0:
                 return s[:i].rstrip()
         return s

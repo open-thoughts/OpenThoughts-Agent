@@ -5,24 +5,17 @@ Implements atomic functions following the pattern from YAML config and completio
 """
 
 import copy
-import io
-import logging
-import os
-import re
-import tempfile
 from io import BytesIO
-from typing import Dict, List, Optional
-from pathlib import Path
+from typing import List
 
 import fitz
 import requests
-from datasets import Dataset, Features, Sequence, Value
+from datasets import Dataset
 from tqdm import tqdm
 
-from data.commons import generate_tasks_from_questions, create_task_from_dockerfiles_and_questions, subsample_tasks_directory, upload_tasks_to_hf, upload_traces_to_hf
-from data.completions import generate_questions_from_text, improve_questions, validate_questions, classify_domain
+from data.commons import generate_tasks_from_questions, subsample_tasks_directory, upload_tasks_to_hf
+from data.completions import generate_questions_from_text
 from data.gcs_cache import gcs_cache
-from data.commons import upload_tasks_to_hf, generate_tasks_from_questions, subsample_tasks_directory
 # from scripts.harbor.run_and_export_traces import run_dataset_to_traces
 # from scripts.harbor.run_and_export_traces import run_dataset_to_traces  # Skip for initial test
 

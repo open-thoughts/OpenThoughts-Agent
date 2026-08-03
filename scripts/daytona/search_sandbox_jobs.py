@@ -325,7 +325,7 @@ def display_model_results_by_eval(jobs: List[dict]):
             if accuracy is not None:
                 print(f"  Accuracy: {accuracy:.6f}" + (f" ± {std:.6f}" if std is not None else ""))
             else:
-                print(f"  Accuracy: N/A")
+                print("  Accuracy: N/A")
             print(f"  Job ID: {job_id}")
             print(f"  Full name: {job_name[:80]}..." if len(job_name) > 80 else f"  Full name: {job_name}")
             print()
@@ -863,12 +863,12 @@ def generate_comprehensive_csv(jobs: List[dict], eval_type: str, output_dir: str
             writer.writerow(row)
     
     # Print summary statistics
-    print(f"\n" + "=" * 80)
+    print("\n" + "=" * 80)
     print(f"COMPREHENSIVE RESULTS FOR {eval_type.upper()}")
     print("=" * 80)
     print(f"Total jobs: {len(detailed_data)}")
     print(f"Unique models: {len(summary_data)}")
-    print(f"\nTop 5 models by average accuracy:")
+    print("\nTop 5 models by average accuracy:")
     for i, row in enumerate(summary_data[:5], 1):
         if row['avg_accuracy'] is not None:
             print(f"{i}. {row['model_name']}")
@@ -896,7 +896,7 @@ def display_formatted_results(csv_data: List[dict]):
     highest_row = max(valid_rows, key=lambda x: x['accuracy'])
     highest_uuid = highest_row['uuid']
     
-    print(f"\nFormatted Results:")
+    print("\nFormatted Results:")
     print("=" * 100)
     print(f"{'UUID':<38} {'Job Name':<40} {'Accuracy':<15} {'Std Error':<15}")
     print("-" * 100)

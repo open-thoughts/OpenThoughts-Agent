@@ -4,7 +4,6 @@ Logic for authoring and injecting structural Python verifiers for InferredBugs.
 
 import os
 import re
-import json
 from pathlib import Path
 from typing import List, Tuple
 
@@ -177,7 +176,6 @@ def inject_inferredbugs_verifier(dataset_dir: str, questions: List[str], model_n
 
     print(f"Authoring verifier harnesses for {len(task_dirs)} tasks using {model_name} (workers={max_workers})...")
     """Orchestrates the authoring and injection of verifiers into tasks."""
-    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     tasks_root = Path(dataset_dir)
     task_dirs = sorted([d for d in tasks_root.iterdir() if d.is_dir()], key=lambda x: x.name)

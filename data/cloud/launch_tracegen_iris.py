@@ -20,12 +20,12 @@ _repo_root = Path(__file__).resolve().parents[2]
 if str(_repo_root) not in sys.path:
     sys.path.append(str(_repo_root))
 
-import yaml
+import yaml  # noqa: E402
 
-from hpc.iris_launch_utils import IrisLauncher
-from hpc.iris.outputs import IrisOutputPaths
-from hpc.cloud_launch_utils import repo_relative, infer_harbor_env_from_config
-from hpc.arg_groups import (
+from hpc.iris_launch_utils import IrisLauncher  # noqa: E402
+from hpc.iris.outputs import IrisOutputPaths  # noqa: E402
+from hpc.cloud_launch_utils import repo_relative, infer_harbor_env_from_config  # noqa: E402
+from hpc.arg_groups import (  # noqa: E402
     add_harbor_args,
     add_harbor_env_arg,
     add_ingress_literal_args,
@@ -33,7 +33,7 @@ from hpc.arg_groups import (
     add_hf_upload_args,
     add_tasks_input_arg,
 )
-from hpc.launch_utils import PROJECT_ROOT
+from hpc.launch_utils import PROJECT_ROOT  # noqa: E402
 
 
 def _env_vars_from_datagen_yaml(path: Path) -> dict:

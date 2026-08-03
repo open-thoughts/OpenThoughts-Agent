@@ -79,10 +79,10 @@ def main():
                           text=True)
 
     if result.returncode == 0:
-        print(f"Job submitted successfully!")
+        print("Job submitted successfully!")
         print(result.stdout.strip())
     else:
-        print(f"Error submitting job:")
+        print("Error submitting job:")
         print(result.stderr.strip())
         sys.exit(1)
 

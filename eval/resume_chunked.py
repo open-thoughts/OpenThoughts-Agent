@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import os
 import shlex
 import subprocess
 import sys
@@ -339,7 +338,7 @@ def main() -> int:
         print("(no resume candidates — nothing to fire)")
         return 0
 
-    print(f"Resume orchestrator")
+    print("Resume orchestrator")
     print(f"  preset             {args.preset}")
     print(f"  org                {args.org}  ({dotenv_rel})")
     print(f"  jobs-dir           {args.jobs_dir}")

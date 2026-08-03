@@ -8,14 +8,12 @@ import tempfile
 import sys
 import os
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Tuple
 from datasets import load_dataset
 
 # Import from parent package
 sys.path.append(str(Path(__file__).parent.parent.parent))
-from data.commons import upload_tasks_to_hf, generate_tasks_from_questions, subsample_tasks_directory, create_standard_dockerfile
-from scripts.harbor.run_and_export_traces import run_dataset_to_traces
-from data.commons import upload_traces_to_hf
+from data.commons import upload_tasks_to_hf, create_standard_dockerfile
 from data.gcs_cache import gcs_cache
 
 def create_standard_task_toml() -> str:
@@ -307,7 +305,7 @@ def main() -> None:
     # upload_traces_to_hf(hf_dataset, "mlfoundations-dev/code-contests-sandboxes-traces-terminus-2", "SFT")
     
     print(f"\nGeneration complete! Tasks with tests are in: {final_dataset_dir}")
-    print(f"Each task directory contains:")
+    print("Each task directory contains:")
     print("  - instruction.md: The problem description")
     print("  - task.toml: Task configuration")
     print("  - environment/Dockerfile: Docker configuration")

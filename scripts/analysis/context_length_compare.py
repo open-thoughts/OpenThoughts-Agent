@@ -17,7 +17,7 @@ from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 
-from scripts.analysis.trace_metrics import load_and_filter, parse_filter, tokenize_dataset
+from scripts.analysis.trace_metrics import load_and_filter, tokenize_dataset
 from scripts.analysis.utils import TOKEN_REPRESENTATIONS
 
 

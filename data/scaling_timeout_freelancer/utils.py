@@ -1,7 +1,6 @@
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Optional
 import toml
 from data.gcs_cache import gcs_cache
 

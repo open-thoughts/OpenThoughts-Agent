@@ -8,9 +8,8 @@ import tempfile
 from pathlib import Path
 
 from datasets import load_dataset
-from data.commons import upload_tasks_to_hf, subsample_tasks_directory, upload_traces_to_hf
+from data.commons import upload_tasks_to_hf
 from data.swesmith.generate_with_plain_docker import create_sandboxed_task
-from scripts.harbor.run_and_export_traces import run_dataset_to_traces
 
 
 def main() -> None:

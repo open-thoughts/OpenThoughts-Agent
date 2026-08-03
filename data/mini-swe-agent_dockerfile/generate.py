@@ -32,7 +32,7 @@ def generate_dockerfile_with_agent(instruction: str, model_name: str = DEFAULT_M
         dockerfile_path = temp_path / "Dockerfile"
         dockerfile_path.write_text(standard_dockerfile)
 
-        prompt = f"""Generate a Dockerfile for the task described in instruction.md.
+        prompt = """Generate a Dockerfile for the task described in instruction.md.
 
 Starting from the minimal standard template in Dockerfile, your task is to:
 1. Read instruction.md to understand what the task requires

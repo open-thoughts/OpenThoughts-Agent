@@ -6,7 +6,6 @@ from datasets import load_dataset
 from transformers import AutoTokenizer
 import matplotlib.pyplot as plt
 import numpy as np
-from collections import defaultdict
 from tqdm import tqdm
 
 print("Loading dataset...")
@@ -65,26 +64,26 @@ for entry in tqdm(dataset, desc="Tokenizing"):
     tokens_per_conversation.append(conversation_tokens)
     episodes_per_trace.append(episode_count)
 
-print(f"\nStatistics:")
+print("\nStatistics:")
 print(f"Total conversations: {len(tokens_per_conversation)}")
 print(f"Total episodes: {len(tokens_per_episode)}")
 print(f"Total messages: {len(tokens_per_message)}")
 
-print(f"\nTokens per conversation:")
+print("\nTokens per conversation:")
 print(f"  Mean: {np.mean(tokens_per_conversation):.2f}")
 print(f"  Median: {np.median(tokens_per_conversation):.2f}")
 print(f"  Min: {np.min(tokens_per_conversation)}")
 print(f"  Max: {np.max(tokens_per_conversation)}")
 print(f"  Std: {np.std(tokens_per_conversation):.2f}")
 
-print(f"\nTokens per episode:")
+print("\nTokens per episode:")
 print(f"  Mean: {np.mean(tokens_per_episode):.2f}")
 print(f"  Median: {np.median(tokens_per_episode):.2f}")
 print(f"  Min: {np.min(tokens_per_episode)}")
 print(f"  Max: {np.max(tokens_per_episode)}")
 print(f"  Std: {np.std(tokens_per_episode):.2f}")
 
-print(f"\nEpisodes per trace:")
+print("\nEpisodes per trace:")
 print(f"  Mean: {np.mean(episodes_per_trace):.2f}")
 print(f"  Median: {np.median(episodes_per_trace):.2f}")
 print(f"  Min: {np.min(episodes_per_trace)}")

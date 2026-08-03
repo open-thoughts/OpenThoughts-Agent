@@ -222,7 +222,7 @@ async def async_discover_job_urls_from_pages(session: aiohttp.ClientSession, cat
                     try:
                         content_preview = await response.text()
                         print(f"[{category}] Response content preview (first 200 chars): {content_preview[:200]}")
-                    except:
+                    except:  # noqa: E722
                         print(f"[{category}] Could not read response content")
 
                     break
@@ -325,7 +325,7 @@ async def async_discover_job_urls_from_all_categories(session: aiohttp.ClientSes
 
         # Pause between batches to be respectful
         if i + batch_size < len(categories):
-            print(f"Waiting 3 seconds before next batch...")
+            print("Waiting 3 seconds before next batch...")
             await asyncio.sleep(3)
 
     print(f"\nCompleted batched discovery: {len(all_job_urls)} total job URLs from {len(categories)} categories")
@@ -593,7 +593,7 @@ def discover_job_urls_from_all_categories(max_categories: int = 50, max_per_cate
                 # Brief pause between categories
                 time.sleep(1)
 
-            except Exception as e:
+            except Exception:
                 pbar.set_postfix_str(f"ERROR: {category}")
                 pbar.update(1)
                 continue
@@ -622,7 +622,7 @@ def scrape_freelancer_projects(use_discovery: bool = False, max_projects: int = 
                     questions.append(description)
                     pbar.set_postfix_str(f"✓ {url.split('/')[-1][:30]}...")
                     pbar.update(1)
-                except Exception as e:
+                except Exception:
                     # Add fallback description
                     url_desc = url.split('/')[-1].replace('-', ' ').title()
                     desc = f"Freelancer project: {url_desc}. Analyze this project and provide a comprehensive proposal."

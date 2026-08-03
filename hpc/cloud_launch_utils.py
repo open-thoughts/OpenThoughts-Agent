@@ -593,7 +593,7 @@ def prepare_hf_dataset_for_sync(
         # symlinks break when SkyPilot rsyncs only the snapshot directory to
         # the VM.  Copy with dereferencing so the VM gets real files.
         if verbose:
-            print(f"[hf-prep] Detected raw task directories (format has instruction.md files)")
+            print("[hf-prep] Detected raw task directories (format has instruction.md files)")
 
         import shutil
 

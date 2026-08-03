@@ -28,7 +28,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Mapping, Optional
+from typing import Iterable, List, Optional
 
 
 # Root for every persistent local write the launcher controls. A single

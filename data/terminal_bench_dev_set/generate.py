@@ -12,17 +12,14 @@ This script creates tasks following the Terminal Bench task.yaml schema:
 """
 
 import argparse
-import json
-import os
-import shutil
 import tempfile
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any
 import yaml
 
 # Optional imports for HuggingFace upload
 try:
-    from data.commons import upload_tasks_to_hf, finalize_dataset_output
+    from data.commons import upload_tasks_to_hf, finalize_dataset_output  # noqa: F401
     HF_UPLOAD_AVAILABLE = True
 except ImportError:
     HF_UPLOAD_AVAILABLE = False

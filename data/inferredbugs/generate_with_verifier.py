@@ -13,12 +13,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # Import from parent package
-from data.commons import (
+from data.commons import (  # noqa: E402
     upload_tasks_to_hf, 
     download_hf_dataset
 )
-from scripts.harbor import tasks_parquet_converter as tpc
-from data.inferredbugs.structural_verifier import inject_inferredbugs_verifier
+from scripts.harbor import tasks_parquet_converter as tpc  # noqa: E402
+from data.inferredbugs.structural_verifier import inject_inferredbugs_verifier  # noqa: E402
 
 def update_instructions_with_requirement(dataset_dir: str):
     """

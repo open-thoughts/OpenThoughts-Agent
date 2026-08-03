@@ -110,7 +110,7 @@ def main():
     print(f"Enable EPLB: {enable_eplb}")
     if enable_eplb:
         print(f"EPLB Redundant Experts: {eplb_num_redundant_experts}")
-    print(f"Enable Auto Tool Choice: True")
+    print("Enable Auto Tool Choice: True")
     print(f"Tool Call Parser: {tool_call_parser}")
     print(f"Reasoning Parser: {reasoning_parser}")
 

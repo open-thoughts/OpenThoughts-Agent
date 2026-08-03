@@ -147,11 +147,44 @@ module load gcc/13.2.0 cuda/12.8 2>/dev/null || true
 
 # --- Conda activation: otagent (harbor + fork vLLM + DB client + uploader) ---
 # OTAGENT_CONDA_PREFIX (full path to the env) lets a borrowing operator point at a shared read-only
-# env instead of building their own $SCRATCH/miniconda3. Defaults to the operator's own
-# $SCRATCH/miniconda3/envs/otagent — byte-identical for penfever, and picks up an operator's own env
-# automatically once built. Activate by full prefix path (not by bare name, which needs the env
-# registered in the active conda root). The conda root is derived from the prefix.
-OTAGENT_CONDA_PREFIX="${OTAGENT_CONDA_PREFIX:-${SCRATCH}/miniconda3/envs/otagent}"
+# env instead of building their own $SCRATCH/miniconda3. Activate by full prefix path (not by bare
+# name, which needs the env registered in the active conda root). The conda root is derived from
+# the prefix.
+#
+# Resolution order, first EXISTING env wins:
+#   1. OTAGENT_CONDA_PREFIX  — explicit operator override
+#   2. OTAGENT_DIR           — sent by the listener from the cluster view's conda_envs
+#                              (hpc.py vista eval_cluster_view pins the shared read-only env)
+#   3. $SCRATCH/miniconda3/envs/otagent — the operator's own env, once built
+#
+# Falling back on EXISTENCE (not just on the var being unset) is the load-bearing part: a borrowing
+# operator can have a bare $SCRATCH/miniconda3 with no otagent env in it, and the old
+# unset-only default picked that non-existent path over the perfectly good shared env the listener
+# had already passed in OTAGENT_DIR. That failed job 886379 nine seconds in with
+# "EnvironmentLocationNotFound: Not a conda environment: $SCRATCH/miniconda3/envs/otagent".
+# Same defect class as the evalchemy sbatch fix: validate the ENV, not just its root.
+_pick_conda_prefix() {
+    for _c in "$@"; do
+        [ -n "$_c" ] && [ -x "${_c}/bin/python" ] && { printf '%s' "$_c"; return 0; }
+    done
+    # Nothing exists — echo the first non-empty candidate so the error names what we wanted.
+    for _c in "$@"; do [ -n "$_c" ] && { printf '%s' "$_c"; return 1; }; done
+    return 1
+}
+# Snapshot the configured values first: the assignment below overwrites
+# OTAGENT_CONDA_PREFIX even on failure, so the error message must not read it back.
+_want_prefix="${OTAGENT_CONDA_PREFIX:-<unset>}"
+_want_dir="${OTAGENT_DIR:-<unset>}"
+OTAGENT_CONDA_PREFIX="$(_pick_conda_prefix \
+    "${OTAGENT_CONDA_PREFIX:-}" \
+    "${OTAGENT_DIR:-}" \
+    "${SCRATCH}/miniconda3/envs/otagent")" || {
+    echo "ERROR: no usable otagent conda env found (no <prefix>/bin/python). Tried, in order:" >&2
+    echo "  1. OTAGENT_CONDA_PREFIX = ${_want_prefix}" >&2
+    echo "  2. OTAGENT_DIR          = ${_want_dir}  (from the cluster view's conda_envs)" >&2
+    echo "  3. \$SCRATCH default     = ${SCRATCH}/miniconda3/envs/otagent" >&2
+    exit 1
+}
 _OTAGENT_CONDA_ROOT="${OTAGENT_CONDA_PREFIX%/envs/*}"
 source "${_OTAGENT_CONDA_ROOT}/etc/profile.d/conda.sh"
 conda activate "${OTAGENT_CONDA_PREFIX}"

@@ -22,7 +22,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -109,11 +109,16 @@ EVAL_TRIAL_EVENT_PATTERN = re.compile(
 )
 EVAL_TRIAL_FAILURE_PATTERN = re.compile(r"^failed \((?P<error>[^)]+)\)$")
 EVAL_TRIAL_SUCCESS_PATTERN = re.compile(r"^(?:completed|succeeded|passed)\b")
+EVAL_HARBOR_IDENTITY_PATTERN = re.compile(
+    r"starting Harbor job (?P<job_name>[A-Za-z0-9._-]+).*?"
+    r"jobs_dir=(?P<jobs_dir>(?:s3|gs)://[^\s)]+)"
+)
 AGENT_TIMEOUT_ERROR = "AgentTimeoutError"
 AGENT_TIMEOUT_PATTERN = re.compile(r"\bAgentTimeoutError\b")
 RETRYABLE_TERMINAL_STATES = {"worker_failed", "unschedulable"}
 CALLABLE_RUNNER = "_callable_runner.py"
 EVAL_JOB_ID_PATTERN = re.compile(r"^/[^/]+/eval(?:-|$)")
+DEFAULT_S3_CREDENTIAL_CLUSTER = "cw-rno2a"
 
 
 @dataclass(frozen=True)
@@ -609,7 +614,12 @@ def read_gcs_progress(
 
 
 def coreweave_client(cluster: Cluster) -> Any:
-    config = COREWEAVE_CLUSTERS[cluster.name]
+    """Return an S3 client, including for Marin jobs writing to the CW store."""
+    config = COREWEAVE_CLUSTERS[
+        cluster.name
+        if cluster.name in COREWEAVE_CLUSTERS
+        else DEFAULT_S3_CREDENTIAL_CLUSTER
+    ]
     base = kubectl_base(config, SimpleNamespace(kubeconfig=None, kube_context=None))
     return object_store_client(base, config)
 
@@ -808,6 +818,35 @@ def finelog_activity(local_log: Path | None) -> str:
     if active_trials:
         return f"finelog ({len(active_trials)} recent trial ID{'s' if len(active_trials) != 1 else ''})"
     return "finelog (no current trial line)"
+
+
+def eval_job_with_finelog_harbor_identity(
+    job: HarborJob, local_log: Path | None
+) -> HarborJob:
+    """Recover a callable eval's exact Harbor output directory from Finelog."""
+    if (
+        job.kind != "eval"
+        or (job.jobs_dir is not None and job.harbor_job_name is not None)
+        or local_log is None
+    ):
+        return job
+
+    log_text = local_log.read_text(errors="replace")
+    matches = list(EVAL_HARBOR_IDENTITY_PATTERN.finditer(log_text))
+    if not matches:
+        return job
+
+    match = matches[-1]
+    job_name = match.group("job_name")
+    full_jobs_dir = match.group("jobs_dir").rstrip("/")
+    job_suffix = f"/{job_name}"
+    if not full_jobs_dir.endswith(job_suffix):
+        return job
+    return replace(
+        job,
+        jobs_dir=full_jobs_dir.removesuffix(job_suffix),
+        harbor_job_name=job_name,
+    )
 
 
 def progress_from_eval_finelog(
@@ -1312,6 +1351,8 @@ def main() -> int:
     current_jobs: dict[str, Any] = {}
     for job in sorted(jobs, key=lambda item: (item.cluster.name, item.job_id)):
         key = (job.cluster.name, job.job_id)
+        local_log, _log_error, _synced_at = local_logs[key]
+        job = eval_job_with_finelog_harbor_identity(job, local_log)
         state = effective_state(job)
         try:
             artifact_dir = (
@@ -1344,9 +1385,10 @@ def main() -> int:
                     local_log, _log_error, _synced_at = local_logs[key]
                     progress = Progress(None, None, finelog_activity(local_log))
             elif job.jobs_dir.startswith("s3://"):
-                client = s3_clients.setdefault(
-                    job.cluster.name, coreweave_client(job.cluster)
-                )
+                client = s3_clients.get(job.cluster.name)
+                if client is None:
+                    client = coreweave_client(job.cluster)
+                    s3_clients[job.cluster.name] = client
                 progress = read_s3_progress(job, client, artifact_dir, trace_cutoff)
             else:
                 if gcs_client is None:

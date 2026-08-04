@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -183,6 +184,72 @@ def test_progress_from_eval_finelog_recovers_terminal_trials_and_errors(tmp_path
     assert progress.recent_benign_timeouts == 1
 
 
+def test_resumed_eval_reads_cumulative_harbor_progress_from_finelog_identity(
+    monkeypatch, tmp_path
+):
+    log = tmp_path / "finelog.log"
+    log.write_text(
+        "\n".join(
+            [
+                "starting Harbor job old-run (dataset=old jobs_dir=s3://bucket/results/old-run)",
+                "starting Harbor job resumed-run "
+                "(dataset=current jobs_dir=s3://bucket/results/resumed-run)",
+            ]
+        )
+        + "\n"
+    )
+    job = _job(
+        kind="eval",
+        jobs_dir=None,
+        harbor_job_name=None,
+    )
+
+    resolved = watcher.eval_job_with_finelog_harbor_identity(job, log)
+
+    assert resolved.jobs_dir == "s3://bucket/results"
+    assert resolved.harbor_job_name == "resumed-run"
+
+    monkeypatch.setattr(
+        watcher,
+        "iter_objects",
+        lambda *_args: [
+            {
+                "Key": "results/resumed-run/old-trial/result.json",
+                "LastModified": NOW - timedelta(days=1),
+            },
+            {
+                "Key": "results/resumed-run/new-trial/result.json",
+                "LastModified": NOW - timedelta(minutes=10),
+            },
+        ],
+    )
+    aggregate = {
+        "n_total_trials": 300,
+        "stats": {
+            "n_completed_trials": 2,
+            "n_errored_trials": 0,
+            "evals": {
+                "reward": {
+                    "n_trials": 2,
+                    "metrics": [{"mean": 0.625}],
+                }
+            },
+        },
+    }
+
+    class Client:
+        def get_object(self, *, Bucket, Key):  # noqa: N803
+            assert Bucket == "bucket"
+            assert Key == "results/resumed-run/result.json"
+            return {"Body": io.BytesIO(json.dumps(aggregate).encode())}
+
+    progress = watcher.read_s3_progress(resolved, Client(), tmp_path, CUTOFF)
+
+    assert progress.completed == 2
+    assert progress.total == 300
+    assert progress.mean_reward == 0.625
+
+
 def _job(
     *,
     state: str = "running",
@@ -191,6 +258,9 @@ def _job(
     job_id: str = "/owner/job",
     n_concurrent: int | None = None,
     gpu_count: int | None = None,
+    kind: str = "datagen",
+    jobs_dir: str | None = "s3://bucket/jobs",
+    harbor_job_name: str | None = "run",
 ) -> watcher.HarborJob:
     return watcher.HarborJob(
         cluster=watcher.Cluster("test", Path("/tmp/iris"), {}),
@@ -198,9 +268,9 @@ def _job(
         state=state,
         task_state=task_state,
         submitted_at_ms=int((NOW - timedelta(hours=age_hours)).timestamp() * 1000),
-        kind="datagen",
-        jobs_dir="s3://bucket/jobs",
-        harbor_job_name="run",
+        kind=kind,
+        jobs_dir=jobs_dir,
+        harbor_job_name=harbor_job_name,
         dataset="dataset",
         n_concurrent=n_concurrent,
         gpu_count=gpu_count,

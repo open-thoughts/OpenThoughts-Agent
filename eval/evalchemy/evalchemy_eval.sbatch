@@ -7,6 +7,13 @@
 #SBATCH --job-name=evalchemy-eval
 #SBATCH --output=/leonardo_work/AIFAC_5C0_290/%u/experiments/delphi-eval/%x-%j.log
 #
+# PREREQUISITE (multi-operator): the --output directory above must EXIST BEFORE SUBMIT.
+# SLURM opens the log file before the job script runs and does NOT create intermediate
+# directories -- a missing dir fails the job instantly with "Unable to open file", which
+# looks like a launch bug rather than a missing mkdir. It already exists for the original
+# operator; a NEW operator runs this once:
+#   mkdir -p /leonardo_work/AIFAC_5C0_290/$USER/experiments/delphi-eval
+#
 # ==============================================================================
 # evalchemy_eval.sbatch — GENERIC evalchemy downstream-eval runner (MATH500 + gsm8k + AIME24)
 #

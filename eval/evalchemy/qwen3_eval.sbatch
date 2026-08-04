@@ -7,6 +7,13 @@
 #SBATCH --job-name=qwen3-baseline
 #SBATCH --output=/leonardo_work/AIFAC_5C0_290/%u/experiments/delphi-eval/qwen3-baseline/%x-%j.log
 #
+# PREREQUISITE (multi-operator): the --output directory above must EXIST BEFORE SUBMIT.
+# SLURM opens the log file before the job script runs and does NOT create intermediate
+# directories -- a missing dir fails the job instantly with "Unable to open file", which
+# looks like a launch bug rather than a missing mkdir. It already exists for the original
+# operator; a NEW operator runs this once:
+#   mkdir -p /leonardo_work/AIFAC_5C0_290/$USER/experiments/delphi-eval/qwen3-baseline
+#
 # Qwen3 dense POST-TRAINED baseline — ONE downstream-eval job (MATH500 + gsm8k + AIME24).
 # SAME fixed protocol as delphi_eval.sbatch (EVAL_CONVENTION.md §2.2-§2.5, §3.3), with the Qwen3
 # adaptations documented in baseline_evals/grid.md. This is a FORK of delphi_eval.sbatch; the deltas

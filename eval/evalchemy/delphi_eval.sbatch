@@ -41,15 +41,54 @@ set -euo pipefail
 # that produced a 4-sec ExitCode-127 "No such file or directory". Pin to the repo clone instead,
 # falling back to the BASH_SOURCE dir only for interactive/non-SLURM invocation.
 # $USER-scoped so a second operator runs THEIR checkout, not another user's. Resolves to the
-# original bfeuer00 paths byte-identically when USER=bfeuer00. Override with OTAGENT_REPO_DIR.
+# original bfeuer00 paths byte-identically when USER=bfeuer00.
+#
+# Resolution is by PROBE, not by assumption: try each candidate and take the first that actually
+# contains the marker file. A bare "$WORK/$USER/code/OpenThoughts-Agent" default only works for
+# operators who cloned at exactly that path; anyone else fell through to the BASH_SOURCE branch,
+# which under SLURM is the /var/spool/slurmd/jobNNN/ copy — i.e. it re-created the very
+# ExitCode-127 "No such file or directory" this block was written to prevent. It also silently
+# mis-pointed CHAT_TEMPLATE_OVERRIDE below (and THINK_TEMPLATE in delphi_rl_think_eval.sbatch).
 _OTA_WORK="/leonardo_work/AIFAC_5C0_290/${USER:-$(id -un)}"
-_OTA_REPO="${OTAGENT_REPO_DIR:-${_OTA_WORK}/code/OpenThoughts-Agent}"
-REPO_EVAL_DIR="${_OTA_REPO}/eval/evalchemy"
-if [[ -f "${REPO_EVAL_DIR}/evalchemy_eval.sbatch" ]]; then
-  SELF_DIR="${REPO_EVAL_DIR}"
-else
-  SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_OTA_SHARED="/leonardo_work/AIFAC_5C0_290/bfeuer00"
+_OTA_MARKER="eval/evalchemy/evalchemy_eval.sbatch"
+# Walk up from a directory looking for the marker: SLURM_SUBMIT_DIR is wherever the operator ran
+# sbatch, which is often a subdirectory of the repo rather than its root.
+_ota_up() {
+  local d="${1:-}"
+  [ -n "$d" ] || return 1
+  while [ -n "$d" ] && [ "$d" != "/" ]; do
+    [ -f "$d/${_OTA_MARKER}" ] && { printf '%s' "$d"; return 0; }
+    d="$(dirname "$d")"
+  done
+  return 1
+}
+_ota_first_repo() {
+  local c
+  for c in "$@"; do
+    [ -n "$c" ] && [ -f "$c/${_OTA_MARKER}" ] && { printf '%s' "$c"; return 0; }
+  done
+  return 1
+}
+_OTA_REPO="$(_ota_first_repo \
+  "${OTAGENT_REPO_DIR:-}" \
+  "${_OTA_WORK}/code/OpenThoughts-Agent" \
+  "$(_ota_up "${SLURM_SUBMIT_DIR:-}" || true)" \
+  "${_OTA_SHARED}/code/OpenThoughts-Agent" \
+  "$(_ota_up "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)" || true)" \
+  || true)"
+if [ -z "${_OTA_REPO}" ]; then
+  echo "ERROR: cannot locate an OpenThoughts-Agent checkout containing ${_OTA_MARKER}." >&2
+  echo "  tried, in order:" >&2
+  echo "    OTAGENT_REPO_DIR   = ${OTAGENT_REPO_DIR:-<unset>}" >&2
+  echo "    \$USER checkout     = ${_OTA_WORK}/code/OpenThoughts-Agent" >&2
+  echo "    SLURM_SUBMIT_DIR   = ${SLURM_SUBMIT_DIR:-<unset>} (and parents)" >&2
+  echo "    shared checkout    = ${_OTA_SHARED}/code/OpenThoughts-Agent" >&2
+  echo "    script dir         = $(dirname "${BASH_SOURCE[0]}") (and parents)" >&2
+  echo "  Set OTAGENT_REPO_DIR=/path/to/OpenThoughts-Agent and resubmit." >&2
+  exit 1
 fi
+SELF_DIR="${_OTA_REPO}/eval/evalchemy"
 
 # Delphi-specific defaults (overridable from the environment).
 export CHAT_TEMPLATE_OVERRIDE="${CHAT_TEMPLATE_OVERRIDE:-${_OTA_REPO}/chat_templates/delphi_v0.jinja2}"

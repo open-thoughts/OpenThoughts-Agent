@@ -39,7 +39,41 @@ _pick() { [ -e "$1" ] && echo "$1" || echo "$2"; }
 # "EnvironmentNameNotFound: evalchemy-marin" instead of falling back to the shared root.
 _pick_conda() { [ -d "${_OTA_WORK}/miniforge3/envs/$1" ] && echo "${_OTA_WORK}/miniforge3" || echo "${_OTA_SHARED}/miniforge3"; }
 _OTA_CONDA_ROOT="${OTAGENT_CONDA_ROOT:-$(_pick_conda evalchemy-marin)}"
-_OTA_REPO="${OTAGENT_REPO_DIR:-${_OTA_WORK}/code/OpenThoughts-Agent}"
+# Repo root by PROBE, not assumption — see the long note in delphi_eval.sbatch. A bare
+# "$WORK/$USER/code/OpenThoughts-Agent" default silently mis-points THINK_TEMPLATE below for any
+# operator who cloned elsewhere, and lm-eval then fails on a missing chat template rather than
+# saying the repo was not found.
+_OTA_MARKER="eval/evalchemy/evalchemy_eval.sbatch"
+_ota_up() {
+  local d="${1:-}"
+  [ -n "$d" ] || return 1
+  while [ -n "$d" ] && [ "$d" != "/" ]; do
+    [ -f "$d/${_OTA_MARKER}" ] && { printf '%s' "$d"; return 0; }
+    d="$(dirname "$d")"
+  done
+  return 1
+}
+_ota_first_repo() {
+  local c
+  for c in "$@"; do
+    [ -n "$c" ] && [ -f "$c/${_OTA_MARKER}" ] && { printf '%s' "$c"; return 0; }
+  done
+  return 1
+}
+_OTA_REPO="$(_ota_first_repo \
+  "${OTAGENT_REPO_DIR:-}" \
+  "${_OTA_WORK}/code/OpenThoughts-Agent" \
+  "$(_ota_up "${SLURM_SUBMIT_DIR:-}" || true)" \
+  "${_OTA_SHARED}/code/OpenThoughts-Agent" \
+  "$(_ota_up "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)" || true)" \
+  || true)"
+if [ -z "${_OTA_REPO}" ]; then
+  echo "ERROR: cannot locate an OpenThoughts-Agent checkout containing ${_OTA_MARKER}." >&2
+  echo "  Set OTAGENT_REPO_DIR=/path/to/OpenThoughts-Agent and resubmit." >&2
+  echo "  tried: OTAGENT_REPO_DIR=${OTAGENT_REPO_DIR:-<unset>}, ${_OTA_WORK}/code/OpenThoughts-Agent," >&2
+  echo "         SLURM_SUBMIT_DIR=${SLURM_SUBMIT_DIR:-<unset>} (and parents), ${_OTA_SHARED}/code/OpenThoughts-Agent" >&2
+  exit 1
+fi
 
 
 # Clean any propagated python env that can shadow conda's base-python stdlib

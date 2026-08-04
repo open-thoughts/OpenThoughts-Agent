@@ -78,6 +78,37 @@ def test_discover_harbor_jobs_queries_only_root_jobs(monkeypatch):
     assert "AS task_state" in captured["args"][1]
 
 
+def test_discover_harbor_jobs_rolls_up_preemption_across_job_tree(monkeypatch):
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_iris(_cluster, args):
+        captured["args"] = args
+        return SimpleNamespace(
+            returncode=0,
+            stdout=(
+                "job_id,state,submitted_at_ms,entrypoint_json,task_state\n"
+                "/owner/eval-20260729-model,3,1780000000000,"
+                "exec $IRIS_PYTHON -u $IRIS_WORKDIR/_callable_runner.py,10\n"
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(watcher, "run_iris", fake_run_iris)
+
+    jobs, errors = watcher.discover_harbor_jobs(
+        watcher.Cluster("test", Path("/tmp/iris"), {})
+    )
+
+    assert errors == []
+    assert len(jobs) == 1
+    assert jobs[0].task_state == "preempted"
+    assert watcher.effective_state(jobs[0]) == "preempted"
+    query = captured["args"][1]
+    assert "tree_job.root_job_id = j.job_id" in query
+    assert "task_attempts" in query
+    assert "state=10" in query
+
+
 def test_harbor_job_uses_task_state_while_root_job_waits_for_placement():
     row = _controller_row(
         "/owner/tracegen-queued",
@@ -200,6 +231,53 @@ def test_queued_harbor_job_health_is_not_an_output_failure():
     )
 
     assert health == "awaiting placement"
+
+
+def test_preempted_job_tree_is_stalled_when_trace_progress_stops():
+    progress = watcher.Progress(
+        10,
+        20,
+        "test",
+        recent_completed=0,
+        recent_errored=0,
+    )
+
+    health, _ = watcher.health_label(
+        _job(task_state="preempted"), progress, {}, NOW, 120
+    )
+
+    assert health == "stalled / preempted"
+
+
+def test_recently_preempted_job_tree_is_not_prematurely_stalled():
+    progress = watcher.Progress(
+        10,
+        20,
+        "test",
+        recent_completed=0,
+        recent_errored=0,
+    )
+
+    health, _ = watcher.health_label(
+        _job(task_state="preempted", age_hours=1), progress, {}, NOW, 120
+    )
+
+    assert health == "preempted"
+
+
+def test_preempted_job_tree_does_not_require_a_running_worker_pod(
+    monkeypatch, tmp_path
+):
+    job = _job(task_state="preempted")
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError(
+            "preempted jobs must not be probed for running worker logs"
+        )
+
+    monkeypatch.setattr(watcher, "find_pod", fail_if_called)
+
+    assert watcher.fetch_ray_vllm_logs(job, tmp_path) == ("preempted", None)
 
 
 def test_trial_artifacts_counts_recent_completed_traces_and_their_errors():

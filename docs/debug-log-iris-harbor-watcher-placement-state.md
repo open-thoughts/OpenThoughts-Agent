@@ -25,3 +25,18 @@ The focused watcher suites pass 28 tests, the analysis suite passes 37 tests, an
 ## Future work
 
 - [x] Record the regression test result and final watcher behavior.
+
+## 2026-08-04 nested job-tree state
+
+The placement query originally inspected tasks owned directly by the root job.
+Callable evals can own an inference child, and other nested launch shapes can
+place the retrying task in either the root or a descendant. A running sibling
+then masked the waiting or preempted task.
+
+Discovery now aggregates current tasks across every job sharing the root ID.
+A pending, assigned, or building task is classified as preempted when its
+preceding attempt has Iris task state 10. That state takes precedence over a
+running sibling. Fresh tasks with no preempted attempt remain awaiting
+placement. A preempted tree with no advancement beyond the configured stall
+threshold reports `stalled / preempted`; a recent preemption reports
+`preempted`.

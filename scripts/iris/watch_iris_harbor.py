@@ -68,7 +68,7 @@ DEFAULT_STALL_MINUTES = 120
 TRACE_TREND_HOURS = 2
 STARTUP_OUTPUT_GRACE = timedelta(hours=2)
 MEAN_PARSE_TAIL_BYTES = 8 * 1024 * 1024
-STATE_NAMES = {
+JOB_STATE_NAMES = {
     1: "pending",
     2: "building",
     3: "running",
@@ -77,6 +77,13 @@ STATE_NAMES = {
     6: "killed",
     7: "worker_failed",
     8: "unschedulable",
+}
+TASK_STATE_NAMES = {
+    **JOB_STATE_NAMES,
+    9: "assigned",
+    10: "preempted",
+    11: "cosched_failed",
+    12: "missing",
 }
 TERMINAL_STATES = {"succeeded", "failed", "killed", "worker_failed", "unschedulable"}
 JOBS_DIR_PATTERN = re.compile(
@@ -295,9 +302,9 @@ def harbor_job_from_row(cluster: Cluster, row: dict[str, str]) -> HarborJob | No
     return HarborJob(
         cluster=cluster,
         job_id=job_id,
-        state=STATE_NAMES.get(int(row["state"]), f"state-{row['state']}"),
+        state=JOB_STATE_NAMES.get(int(row["state"]), f"state-{row['state']}"),
         task_state=(
-            STATE_NAMES.get(int(task_state_value), f"state-{task_state_value}")
+            TASK_STATE_NAMES.get(int(task_state_value), f"state-{task_state_value}")
             if task_state_value
             else None
         ),
@@ -323,9 +330,23 @@ def discover_harbor_jobs(
     sql = (
         "SELECT j.job_id, j.state, j.submitted_at_ms, jc.entrypoint_json, "
         "CASE "
-        "WHEN EXISTS (SELECT 1 FROM tasks t WHERE t.job_id=j.job_id AND t.state=3) THEN 3 "
-        "WHEN EXISTS (SELECT 1 FROM tasks t WHERE t.job_id=j.job_id AND t.state=2) THEN 2 "
-        "WHEN EXISTS (SELECT 1 FROM tasks t WHERE t.job_id=j.job_id AND t.state=1) THEN 1 "
+        "WHEN EXISTS ("
+        "SELECT 1 FROM jobs tree_job JOIN tasks tree_task ON tree_task.job_id=tree_job.job_id "
+        "WHERE tree_job.root_job_id = j.job_id AND (tree_task.state=10 OR ("
+        "tree_task.state IN (1,2,9) AND EXISTS ("
+        "SELECT 1 FROM task_attempts prior_attempt "
+        "WHERE prior_attempt.task_id=tree_task.task_id "
+        "AND prior_attempt.attempt_id=tree_task.current_attempt_id-1 "
+        "AND prior_attempt.state=10)))) THEN 10 "
+        "WHEN EXISTS ("
+        "SELECT 1 FROM jobs tree_job JOIN tasks tree_task ON tree_task.job_id=tree_job.job_id "
+        "WHERE tree_job.root_job_id = j.job_id AND tree_task.state IN (2,9)) THEN 2 "
+        "WHEN EXISTS ("
+        "SELECT 1 FROM jobs tree_job JOIN tasks tree_task ON tree_task.job_id=tree_job.job_id "
+        "WHERE tree_job.root_job_id = j.job_id AND tree_task.state=1) THEN 1 "
+        "WHEN EXISTS ("
+        "SELECT 1 FROM jobs tree_job JOIN tasks tree_task ON tree_task.job_id=tree_job.job_id "
+        "WHERE tree_job.root_job_id = j.job_id AND tree_task.state=3) THEN 3 "
         "ELSE NULL END AS task_state "
         "FROM jobs j JOIN job_config jc ON j.job_id=jc.job_id "
         f"WHERE j.state IN (1,2,3) AND j.root_job_id = j.job_id "
@@ -390,8 +411,9 @@ def fetch_ray_vllm_logs(job: HarborJob, bundle_root: Path) -> tuple[str, str | N
     # worker pod as an error signal.
     if job.kind == "eval":
         return "not applicable (eval)", None
-    if effective_state(job) == "awaiting placement":
-        return "awaiting placement", None
+    state = effective_state(job)
+    if state in {"awaiting placement", "preempted"}:
+        return state, None
     if job.cluster.name not in COREWEAVE_CLUSTERS:
         return "not applicable", None
     cluster_config = COREWEAVE_CLUSTERS[job.cluster.name]
@@ -513,7 +535,11 @@ def gcs_trial_artifacts(client: Any, root: str, cutoff: datetime) -> TrialArtifa
         for blob in blobs:
             modified_at = _object_time(blob.time_created)
             objects.append((blob.name, modified_at))
-            if filename == "exception.txt" and modified_at is not None and modified_at >= cutoff:
+            if (
+                filename == "exception.txt"
+                and modified_at is not None
+                and modified_at >= cutoff
+            ):
                 try:
                     is_timeout = _is_agent_timeout_exception(blob.download_as_text())
                 except Exception:
@@ -606,8 +632,10 @@ def s3_trial_artifacts(
         ):
             continue
         try:
-            text = client.get_object(Bucket=bucket, Key=key)["Body"].read().decode(
-                errors="replace"
+            text = (
+                client.get_object(Bucket=bucket, Key=key)["Body"]
+                .read()
+                .decode(errors="replace")
             )
         except Exception:
             continue
@@ -615,9 +643,7 @@ def s3_trial_artifacts(
             trial_name = _trial_name_for_artifact(key, prefix.rstrip("/"))
             if trial_name is not None:
                 benign_timeout_trials.add(trial_name)
-    return _trial_artifacts(
-        objects, prefix.rstrip("/"), cutoff, benign_timeout_trials
-    )
+    return _trial_artifacts(objects, prefix.rstrip("/"), cutoff, benign_timeout_trials)
 
 
 def progress_from_harbor_aggregate(aggregate: dict[str, Any], source: str) -> Progress:
@@ -819,7 +845,12 @@ def progress_from_eval_finelog(
             states[trial] = ("failed", event_at, failure.group("error"))
         elif EVAL_TRIAL_SUCCESS_PATTERN.match(event):
             states[trial] = ("succeeded", event_at, None)
-        elif event in {"started", "environment started", "agent started", "verification started"}:
+        elif event in {
+            "started",
+            "environment started",
+            "agent started",
+            "verification started",
+        }:
             states[trial] = ("running", event_at, None)
 
     terminal = [state for state in states.values() if state[0] != "running"]
@@ -836,12 +867,20 @@ def progress_from_eval_finelog(
         recent = [state for state in terminal if state[1] >= cutoff]
     recent_completed = len(recent) if recent is not None else None
     recent_errored = (
-        sum(1 for state, _event_at, error in recent if state == "failed" and error != AGENT_TIMEOUT_ERROR)
+        sum(
+            1
+            for state, _event_at, error in recent
+            if state == "failed" and error != AGENT_TIMEOUT_ERROR
+        )
         if recent is not None
         else None
     )
     recent_benign_timeouts = (
-        sum(1 for state, _event_at, error in recent if state == "failed" and error == AGENT_TIMEOUT_ERROR)
+        sum(
+            1
+            for state, _event_at, error in recent
+            if state == "failed" and error == AGENT_TIMEOUT_ERROR
+        )
         if recent is not None
         else None
     )
@@ -957,10 +996,22 @@ def health_label(
     stalled_after_minutes: int,
 ) -> tuple[str, str]:
     prior = previous.get("jobs", {}).get(job.job_id, {})
-    if effective_state(job) == "awaiting placement":
+    state = effective_state(job)
+    if state == "awaiting placement":
         return "awaiting placement", prior.get(
             "last_advanced_at", checked_at.isoformat()
         )
+    if state == "preempted":
+        last_advanced_at = prior.get(
+            "last_advanced_at",
+            datetime.fromtimestamp(job.submitted_at_ms / 1000, UTC).isoformat(),
+        )
+        idle_minutes = (
+            checked_at - datetime.fromisoformat(last_advanced_at)
+        ).total_seconds() / 60
+        if progress.recent_completed == 0 and idle_minutes >= stalled_after_minutes:
+            return "stalled / preempted", last_advanced_at
+        return "preempted", last_advanced_at
     if progress.error:
         return "output-unavailable", checked_at.isoformat()
     if job.state in TERMINAL_STATES:
@@ -1051,9 +1102,11 @@ def display_state(state: str) -> str:
 
 
 def effective_state(job: HarborJob) -> str:
-    """Return placement state when the root task has not started running."""
+    """Return the lifecycle state shared by the root and its descendant jobs."""
     if job.state in {"pending", "building"}:
         return "awaiting placement"
+    if job.state == "running" and job.task_state == "preempted":
+        return "preempted"
     if job.state == "running" and job.task_state in {"pending", "building"}:
         return "awaiting placement"
     return display_state(job.state)
@@ -1062,7 +1115,13 @@ def effective_state(job: HarborJob) -> str:
 def _state_cell(state: str) -> StyledCell:
     if state in {"running", "succeeded"}:
         tone = "success"
-    elif state in {"pending", "building", "unspecified", "awaiting placement"}:
+    elif state in {
+        "pending",
+        "building",
+        "unspecified",
+        "awaiting placement",
+        "preempted",
+    }:
         tone = "warning"
     else:
         tone = "error"
@@ -1299,13 +1358,16 @@ def main() -> int:
             progress = Progress(
                 None, None, "unavailable", f"progress read failed: {error}"
             )
-        if progress.error and state != "awaiting placement":
+        if progress.error and state not in {"awaiting placement", "preempted"}:
             errors.append(
                 _monitor_error(
                     f"{job.cluster.name}/{job.job_id}", "progress read", progress.error
                 )
             )
-        if progress.recent_window_error and state != "awaiting placement":
+        if progress.recent_window_error and state not in {
+            "awaiting placement",
+            "preempted",
+        }:
             errors.append(
                 _monitor_error(
                     f"{job.cluster.name}/{job.job_id}",

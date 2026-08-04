@@ -250,6 +250,122 @@ def test_resumed_eval_reads_cumulative_harbor_progress_from_finelog_identity(
     assert progress.mean_reward == 0.625
 
 
+def test_finelog_sync_repairs_late_eval_identity_and_deduplicates(
+    monkeypatch, tmp_path
+):
+    job = _job(kind="eval", jobs_dir=None, harbor_job_name=None)
+    prior_sync = job.submitted_at_ms + watcher.FINELOG_OVERLAP_MS * 2
+    lifecycle = "[10:00:00] task=/owner/eval/0 | Trial alpha__a1: completed\n"
+    identity = (
+        "starting Harbor job resumed-run "
+        "(dataset=current jobs_dir=s3://bucket/results/resumed-run)\n"
+    )
+    calls: list[list[str]] = []
+
+    def fake_run_iris(_cluster, args, timeout):
+        assert timeout == 600
+        calls.append(args)
+        stdout = lifecycle if len(calls) == 1 else identity + lifecycle
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(watcher, "run_iris", fake_run_iris)
+
+    log, error, _cursor = watcher.sync_finelog(job, tmp_path, prior_sync)
+
+    assert error is None
+    assert log is not None
+    assert calls[0][calls[0].index("--since-ms") + 1] == str(
+        prior_sync - watcher.FINELOG_OVERLAP_MS
+    )
+    assert calls[1][calls[1].index("--since-ms") + 1] == str(job.submitted_at_ms)
+    assert log.read_text().count(lifecycle) == 1
+    resolved = watcher.eval_job_with_finelog_harbor_identity(job, log)
+    assert resolved.jobs_dir == "s3://bucket/results"
+    assert resolved.harbor_job_name == "resumed-run"
+    monkeypatch.setattr(
+        watcher,
+        "iter_objects",
+        lambda *_args: [
+            {
+                "Key": f"results/resumed-run/trial-{index}/result.json",
+                "LastModified": NOW,
+            }
+            for index in range(76)
+        ],
+    )
+
+    class Client:
+        def get_object(self, *, Bucket, Key):  # noqa: N803
+            assert Bucket == "bucket"
+            assert Key == "results/resumed-run/result.json"
+            aggregate = {
+                "n_total_trials": 300,
+                "stats": {
+                    "n_completed_trials": 76,
+                    "n_errored_trials": 0,
+                    "evals": {
+                        "reward": {
+                            "n_trials": 76,
+                            "metrics": [{"mean": 0.671}],
+                        }
+                    },
+                },
+            }
+            return {"Body": io.BytesIO(json.dumps(aggregate).encode())}
+
+    progress = watcher.read_s3_progress(resolved, Client(), tmp_path, CUTOFF)
+    assert progress.completion_source == "direct result.json"
+    assert progress.completed == 76
+    assert progress.total == 300
+    assert progress.mean_reward == 0.671
+
+
+def test_eval_identity_is_reused_from_bundle_manifest(monkeypatch, tmp_path):
+    job = _job(kind="eval", jobs_dir=None, harbor_job_name=None)
+    watcher.write_bundle_manifest(
+        watcher.job_bundle(tmp_path, job.cluster.name, job.job_id),
+        {
+            "jobs_dir": "s3://bucket/results",
+            "harbor_job_name": "resumed-run",
+        },
+    )
+
+    resolved = watcher.eval_job_with_manifest_harbor_identity(job, tmp_path)
+
+    assert resolved.jobs_dir == "s3://bucket/results"
+    assert resolved.harbor_job_name == "resumed-run"
+
+    calls = 0
+
+    def fake_run_iris(_cluster, _args, timeout):
+        nonlocal calls
+        assert timeout == 600
+        calls += 1
+        return SimpleNamespace(returncode=0, stdout="lifecycle only\n", stderr="")
+
+    monkeypatch.setattr(watcher, "run_iris", fake_run_iris)
+    _log, error, _cursor = watcher.sync_finelog(job, tmp_path, job.submitted_at_ms)
+    assert error is None
+    assert calls == 1
+
+
+def test_lifecycle_fallback_is_explicit_in_trials_and_health():
+    job = _job(kind="eval", jobs_dir=None, harbor_job_name=None)
+    progress = watcher.Progress(
+        5,
+        None,
+        "finelog lifecycle fallback",
+        recent_completed=2,
+        recent_errored=0,
+    )
+
+    health, _ = watcher.health_label(job, progress, {}, NOW, 120)
+    row = watcher.report_row(job, progress, health, None, "not applicable (eval)")
+
+    assert health == "lifecycle-only (+2/2h; 0 errors)"
+    assert row[4] == "5/? (lifecycle only)"
+
+
 def _job(
     *,
     state: str = "running",

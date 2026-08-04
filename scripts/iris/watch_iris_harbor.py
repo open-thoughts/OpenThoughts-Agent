@@ -56,6 +56,7 @@ from scripts.iris.iris_ops import (  # noqa: E402
     format_duration,
     job_bundle,
     job_id_parts,
+    load_bundle_manifest,
     parse_regex_filters,
     run_iris_command,
     write_error_report,
@@ -66,6 +67,7 @@ from scripts.iris.iris_ops import (  # noqa: E402
 USER = "benjaminfeuer"
 DEFAULT_STALL_MINUTES = 120
 TRACE_TREND_HOURS = 2
+FINELOG_OVERLAP_MS = 5 * 60 * 1000
 STARTUP_OUTPUT_GRACE = timedelta(hours=2)
 MEAN_PARSE_TAIL_BYTES = 8 * 1024 * 1024
 JOB_STATE_NAMES = {
@@ -383,9 +385,11 @@ def fetch_finelog(
     bundle_root: Path,
     since_ms: int,
 ) -> tuple[Path | None, str | None, int | None]:
-    """Synchronize Finelog history, appending only the interval since the prior tick."""
+    """Synchronize Finelog with an overlap and exact-line deduplication."""
     destination = finelog_path(job, bundle_root)
     destination.parent.mkdir(parents=True, exist_ok=True)
+    sync_started_at_ms = int(datetime.now(UTC).timestamp() * 1000)
+    query_since_ms = max(job.submitted_at_ms, since_ms - FINELOG_OVERLAP_MS)
     result = run_iris(
         job.cluster,
         [
@@ -393,7 +397,7 @@ def fetch_finelog(
             "logs",
             job.job_id,
             "--since-ms",
-            str(since_ms),
+            str(query_since_ms),
             "--max-lines",
             "500000",
             "--no-tail",
@@ -403,10 +407,50 @@ def fetch_finelog(
     if result.returncode:
         message = (result.stderr or result.stdout).strip().replace("\n", " ")
         return None, f"Finelog sync failed: {message[-180:]}", None
-    write_mode = "a" if destination.exists() and since_ms > job.submitted_at_ms else "w"
-    with destination.open(write_mode) as output:
-        output.write(result.stdout)
-    return destination, None, int(datetime.now(UTC).timestamp() * 1000)
+    existing_lines = (
+        destination.read_text(errors="replace").splitlines()
+        if destination.exists()
+        else []
+    )
+    seen = set(existing_lines)
+    merged_lines = list(existing_lines)
+    for line in result.stdout.splitlines():
+        if line not in seen:
+            merged_lines.append(line)
+            seen.add(line)
+    destination.write_text("\n".join(merged_lines) + ("\n" if merged_lines else ""))
+    return destination, None, sync_started_at_ms
+
+
+def sync_finelog(
+    job: HarborJob,
+    bundle_root: Path,
+    since_ms: int,
+) -> tuple[Path | None, str | None, int | None]:
+    """Sync logs and repair a callable eval whose early identity was missed."""
+    result = fetch_finelog(job, bundle_root, since_ms)
+    local_log, error, _synced_at_ms = result
+    if (
+        error
+        or job.kind != "eval"
+        or (job.jobs_dir is not None and job.harbor_job_name is not None)
+    ):
+        return result
+    if eval_job_with_finelog_harbor_identity(job, local_log).jobs_dir is not None:
+        return result
+    try:
+        if (
+            eval_job_with_manifest_harbor_identity(job, bundle_root).jobs_dir
+            is not None
+        ):
+            return result
+    except (OSError, ValueError):
+        pass
+
+    # Finelog's tree stream can deliver an early parent record after a local
+    # wall-clock cursor has passed it. Iris has no parent-task-only log query,
+    # so reread the job tree earliest-first when the required identity is absent.
+    return fetch_finelog(job, bundle_root, job.submitted_at_ms)
 
 
 def fetch_ray_vllm_logs(job: HarborJob, bundle_root: Path) -> tuple[str, str | None]:
@@ -849,6 +893,30 @@ def eval_job_with_finelog_harbor_identity(
     )
 
 
+def eval_job_with_manifest_harbor_identity(
+    job: HarborJob, bundle_root: Path
+) -> HarborJob:
+    """Reuse a previously recovered callable eval identity from its bundle."""
+    if job.kind != "eval" or (
+        job.jobs_dir is not None and job.harbor_job_name is not None
+    ):
+        return job
+    manifest = load_bundle_manifest(
+        job_bundle(bundle_root, job.cluster.name, job.job_id)
+    )
+    jobs_dir = manifest.get("jobs_dir")
+    harbor_job_name = manifest.get("harbor_job_name")
+    if not isinstance(jobs_dir, str) or not isinstance(harbor_job_name, str):
+        return job
+    if not jobs_dir or not harbor_job_name:
+        return job
+    return replace(job, jobs_dir=jobs_dir, harbor_job_name=harbor_job_name)
+
+
+def is_lifecycle_fallback(progress: Progress) -> bool:
+    return progress.completion_source == "finelog lifecycle fallback"
+
+
 def progress_from_eval_finelog(
     job: HarborJob, local_log: Path | None, checked_at: datetime
 ) -> Progress:
@@ -1057,6 +1125,29 @@ def health_label(
         return f"terminal ({terminal_status(job.state)})", prior.get(
             "last_advanced_at", checked_at.isoformat()
         )
+    if is_lifecycle_fallback(progress):
+        if (
+            progress.recent_completed is not None
+            and progress.recent_errored is not None
+        ):
+            if progress.recent_completed:
+                return (
+                    f"lifecycle-only ({recent_detail(progress)})",
+                    checked_at.isoformat(),
+                )
+            job_age = checked_at - datetime.fromtimestamp(
+                job.submitted_at_ms / 1000, UTC
+            )
+            prefix = (
+                "stalled; lifecycle-only"
+                if job.state == "running"
+                and job_age >= timedelta(hours=TRACE_TREND_HOURS)
+                else "warming up; lifecycle-only"
+            )
+            return f"{prefix} (+0 traces/2h)", prior.get(
+                "last_advanced_at", checked_at.isoformat()
+            )
+        return "lifecycle-only", prior.get("last_advanced_at", checked_at.isoformat())
     if progress.completed is None:
         return "awaiting output", prior.get("last_advanced_at", checked_at.isoformat())
     if progress.recent_completed is not None and progress.recent_errored is not None:
@@ -1227,12 +1318,15 @@ def report_row(
         mean = "—"
     trial_errors = format_error_counts(progress)
     evidence = f"Finelog {'synced' if local_log is not None else 'unavailable'}; Ray/vLLM {ray_vllm_status}"
+    trials = f"{completed}/{total}"
+    if is_lifecycle_fallback(progress):
+        trials += " (lifecycle only)"
     return [
         f"{job.cluster.name}/{job.kind}",
         job.job_id.rsplit("/", 1)[-1],
         job.dataset,
         _state_cell(effective_state(job)),
-        f"{completed}/{total}",
+        trials,
         mean,
         StyledCell(
             trial_errors,
@@ -1302,6 +1396,11 @@ def main() -> int:
         try:
             prior = previous.get("jobs", {}).get(job.job_id, {})
             prior_sync = prior.get("finelog_synced_at_ms")
+            if prior_sync is None:
+                manifest = load_bundle_manifest(
+                    job_bundle(args.bundle_root, job.cluster.name, job.job_id)
+                )
+                prior_sync = manifest.get("finelog_synced_at_ms")
             destination = finelog_path(job, args.bundle_root)
             if (
                 prior_sync is None
@@ -1311,7 +1410,7 @@ def main() -> int:
                 prior_sync = int(
                     datetime.fromisoformat(previous["checked_at"]).timestamp() * 1000
                 )
-            result = fetch_finelog(
+            result = sync_finelog(
                 job,
                 args.bundle_root,
                 int(prior_sync) if prior_sync is not None else job.submitted_at_ms,
@@ -1353,6 +1452,16 @@ def main() -> int:
         key = (job.cluster.name, job.job_id)
         local_log, _log_error, _synced_at = local_logs[key]
         job = eval_job_with_finelog_harbor_identity(job, local_log)
+        try:
+            job = eval_job_with_manifest_harbor_identity(job, args.bundle_root)
+        except Exception as error:
+            errors.append(
+                _monitor_error(
+                    f"{job.cluster.name}/{job.job_id}",
+                    "bundle manifest identity",
+                    error,
+                )
+            )
         state = effective_state(job)
         try:
             artifact_dir = (
@@ -1463,6 +1572,7 @@ def main() -> int:
             "completed": progress.completed,
             "total": progress.total,
             "mean_reward": progress.mean_reward,
+            "completion_source": progress.completion_source,
             "error_counts": progress.error_counts,
             "exception_file_count": progress.exception_file_count,
             "recent_completed_2h": progress.recent_completed,
@@ -1492,11 +1602,13 @@ def main() -> int:
                     "controller_state": job.state,
                     "task_state": job.task_state,
                     "submitted_at_ms": job.submitted_at_ms,
+                    "finelog_synced_at_ms": finelog_synced_at_ms,
                     "last_synced_at": checked_at.isoformat(),
                     "progress": {
                         "completed": progress.completed,
                         "total": progress.total,
                         "mean_reward": progress.mean_reward,
+                        "completion_source": progress.completion_source,
                         "error_counts": progress.error_counts,
                         "exception_file_count": progress.exception_file_count,
                         "recent_completed_2h": progress.recent_completed,

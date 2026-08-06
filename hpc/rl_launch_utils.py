@@ -183,22 +183,15 @@ def build_apptainer_prefix(
     # later. Defaults to offline but honors an explicit host override.
     wandb_mode = os.environ.get("WANDB_MODE", "offline")
     prefix.extend(["--env", f"WANDB_MODE={wandb_mode}"])
-    # Raise Ray's raylet-startup grace window. On busy 6-node GH200 allocations
-    # the raylet (head AND worker) intermittently fails to finish registering
-    # with the local GCS inside Ray's default 30s (`RAY_raylet_start_wait_time_s`),
-    # so `ray start` aborts with "The current node timed out during startup ...
-    # the GCS has become overloaded" → the driver then loops on
-    # "Failed to connect to GCS ... within 5 seconds" until the 600s wait window
-    # expires (job 930367, #232 cp2). This is slow-to-form, NOT unreachable — the
-    # driver runs ON the head node and still can't reach its own 6379. Ray's own
-    # error message recommends raising this config. apptainer passes it via --env
-    # so it reaches the in-SIF `ray start`; host `env KEY=val` prefixes do NOT
-    # cross the container boundary (and the proxychains path drops ray_env_vars
-    # entirely), making this --env injection the only point that reaches every
-    # ray invocation (head, worker, wait/poll scripts) uniformly. Honors an
-    # explicit host override.
+    # Ray has independent startup deadlines for GCS registration and for the
+    # local plasma-store socket. A large object-store mmap can exceed the
+    # plasma client's default ten one-second connection attempts even while GCS
+    # is healthy. Pass both controls through Apptainer so every head, worker,
+    # and wait process observes them; each still honors an explicit override.
     raylet_wait = os.environ.get("RAY_raylet_start_wait_time_s", "120")
     prefix.extend(["--env", f"RAY_raylet_start_wait_time_s={raylet_wait}"])
+    raylet_connect_attempts = os.environ.get("RAY_raylet_client_num_connect_attempts", "120")
+    prefix.extend(["--env", f"RAY_raylet_client_num_connect_attempts={raylet_connect_attempts}"])
     prefix.append(sif)
     return prefix
 

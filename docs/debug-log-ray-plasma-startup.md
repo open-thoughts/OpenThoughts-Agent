@@ -38,7 +38,10 @@ plasma-socket startup phase without weakening the existing GCS-registration dead
 The focused regression test failed before the change because the plasma-socket control was absent and passes
 after both independent controls are emitted.
 
+Jupiter job 1264144 validated the runtime contract against Ray 2.51.1 in the production r5 SIF. It enabled
+plasma page preallocation, created a 40 GiB object store, connected a driver, observed all four GH200 GPUs, and
+shut Ray down cleanly. Slurm completed the job with exit code 0 in 42 seconds.
+
 ## Future work
 
-- [ ] Re-run a six-node Jupiter startup with the production 40 GiB object store and verify the head raylet remains
-  alive after a deliberately slow plasma mapping.
+- [ ] Confirm the next six-node TaskTrove resume forms the complete Ray cluster before trainer initialization.

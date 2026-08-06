@@ -871,7 +871,14 @@ def sanitize_hf_repo_id(repo_id: str, max_length: int = 96) -> str:
 run_dir = os.environ["RUN_DIR"]; run_tag = os.environ["RUN_TAG"]
 username = os.environ.get("UPLOAD_USERNAME", os.environ.get("USER", "tacc"))
 error_mode = os.environ.get("UPLOAD_MODE", "skip_on_error")
-hf_repo_id = sanitize_hf_repo_id(f"DCAgent2/{run_tag}")
+# Trace-upload HF org. Default DCAgent2 (byte-identical to before), overridable via
+# EVAL_UPLOAD_HF_ORG so an operator without DCAgent2 write can land traces in an org they
+# CAN write (e.g. laion). Without this the upload dies with a 403 "Make sure your token has
+# the correct permissions", the leg logs "HF upload failed but DB records uploaded", and the
+# hf_traces_link is never set — so the leaderboard row has no traces. Ported from
+# eval/leonardo/eval_harbor.sbatch, which has had this since 06ef8f9; TACC was missed.
+hf_upload_org = os.environ.get("EVAL_UPLOAD_HF_ORG", "DCAgent2")
+hf_repo_id = sanitize_hf_repo_id(f"{hf_upload_org}/{run_tag}")
 hf_token = os.environ["HF_TOKEN"]
 dataset_hf = os.environ.get("REPO_ID", "")
 benchmark_name = os.environ.get("BENCHMARK_NAME", "") or (dataset_hf.split("/")[-1] if "/" in dataset_hf else dataset_hf)

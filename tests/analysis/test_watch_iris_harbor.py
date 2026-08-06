@@ -662,7 +662,7 @@ def test_glm52_capacity_floor_keeps_normal_single_node_progress_healthy():
 def test_harbor_job_kind_classifies_evalchemy_and_keeps_existing_kinds():
     assert (
         watcher.harbor_job_kind(
-            'bash -c \'exec /opt/eval/evalchemy/.venv/bin/python '
+            "bash -c 'exec /opt/eval/evalchemy/.venv/bin/python "
             '"$IRIS_WORKDIR/experiments/evals/evalchemy/run_evalchemy_client.py"\'',
             "/owner/eval-eval-abcd1234",
         )
@@ -702,7 +702,9 @@ def test_read_gcs_progress_falls_back_to_per_trial_when_aggregate_missing(
     monkeypatch, tmp_path
 ):
     # A running datagen job whose Harbor aggregate result.json is not on GCS yet.
-    job = _job(jobs_dir="gs://marin-us-central1/ot-agent/run-xyz", harbor_job_name="run-xyz")
+    job = _job(
+        jobs_dir="gs://marin-us-central1/ot-agent/run-xyz", harbor_job_name="run-xyz"
+    )
 
     def fake_cat(*_args, **_kwargs):
         return SimpleNamespace(
@@ -770,10 +772,18 @@ def test_read_evalchemy_progress_counts_non_empty_results(monkeypatch, tmp_path)
         watcher,
         "iter_objects",
         lambda *_a, **_k: [
-            {"Key": "iris/marinbase-eval/qwen-qwen3-30b-a3b/tier2-run1/MATH500_0shot/qwen/results_1.json"},
-            {"Key": "iris/marinbase-eval/qwen-qwen3-30b-a3b/tier2-run1/HumanEvalPlus_0shot/qwen/results_2.json"},
-            {"Key": "iris/marinbase-eval/qwen-qwen3-30b-a3b/tier2-run1/MBPPPlus_0shot/qwen/empty_results.json"},
-            {"Key": "iris/marinbase-eval/qwen-qwen3-30b-a3b/tier2-run1/MATH500_0shot/qwen/samples_MATH500.jsonl"},
+            {
+                "Key": "iris/marinbase-eval/qwen-qwen3-30b-a3b/tier2-run1/MATH500_0shot/qwen/results_1.json"
+            },
+            {
+                "Key": "iris/marinbase-eval/qwen-qwen3-30b-a3b/tier2-run1/HumanEvalPlus_0shot/qwen/results_2.json"
+            },
+            {
+                "Key": "iris/marinbase-eval/qwen-qwen3-30b-a3b/tier2-run1/MBPPPlus_0shot/qwen/empty_results.json"
+            },
+            {
+                "Key": "iris/marinbase-eval/qwen-qwen3-30b-a3b/tier2-run1/MATH500_0shot/qwen/samples_MATH500.jsonl"
+            },
         ],
     )
 

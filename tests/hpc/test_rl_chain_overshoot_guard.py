@@ -63,7 +63,13 @@ def test_hydra_override_values_normalize_and_use_last_value(arguments, key, expe
 def _runner_with(args):
     """Bare RLJobRunner carrying only skyrl_hydra_args (no heavy __init__)."""
     runner = RLJobRunner.__new__(RLJobRunner)
-    runner.config = types.SimpleNamespace(skyrl_hydra_args=list(args))
+    runner.config = types.SimpleNamespace(
+        job_name="chain-arm",
+        experiments_dir="/unused",
+        trials_dir="/unused/trials",
+        resume_policy="fixed",
+        skyrl_hydra_args=list(args),
+    )
     return runner
 
 
@@ -174,3 +180,35 @@ def test_run_proceeds_for_incomplete_link(tmp_path):
     assert calls["setup"] == 1 and calls["ray"] == 1, (
         "incomplete link must train normally"
     )
+
+
+def test_auto_resume_is_re_evaluated_for_each_chain_link(tmp_path):
+    ckpt = tmp_path / "checkpoints"
+    runner = _runner_with(
+        [
+            f"trainer.ckpt_path={ckpt}",
+            f"trainer.export_path={tmp_path / 'exports'}",
+            "trainer.resume_mode=none",
+            "trainer.resume_path=null",
+            "trainer.max_steps=80",
+        ]
+    )
+    runner.config.resume_policy = "at_link_start"
+    runner.config.trials_dir = str(tmp_path / "trials")
+    runner._setup_environment = lambda: None
+    runner._run_with_ray = lambda: 0
+    runner._launch_trace_upload = lambda *args, **kwargs: None
+
+    assert runner.run() == 0
+    first_link = hydra_override_values(runner.config.skyrl_hydra_args)
+    assert first_link["trainer.resume_mode"] == "none"
+    assert first_link["trainer.resume_path"] == "null"
+
+    checkpoint = ckpt / "global_step_6"
+    checkpoint.mkdir(parents=True)
+    _write_marker(ckpt, 6)
+
+    assert runner.run() == 0
+    second_link = hydra_override_values(runner.config.skyrl_hydra_args)
+    assert second_link["trainer.resume_mode"] == "latest"
+    assert second_link["trainer.resume_path"] == str(checkpoint)

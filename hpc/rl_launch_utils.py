@@ -936,6 +936,24 @@ def _build_rl_container_env(container: Mapping[str, Any], exp_args: dict) -> str
     return "\n".join(lines)
 
 
+def validate_trace_upload_environment(
+    terminal_bench: Mapping[str, Any], container: Mapping[str, Any]
+) -> None:
+    """Reject trace uploads from a runtime configured for offline Hub access."""
+    trace_upload = terminal_bench.get("trace_upload") or {}
+    if not trace_upload.get("enabled"):
+        return
+
+    extra_env = container.get("extra_env") or {}
+    offline_keys = ("HF_HUB_OFFLINE", "APPTAINERENV_HF_HUB_OFFLINE")
+    enabled = [key for key in offline_keys if str(extra_env.get(key, "")).lower() in {"1", "true", "yes"}]
+    if enabled:
+        raise ValueError(
+            "terminal_bench.trace_upload.enabled=true conflicts with "
+            f"container.extra_env {', '.join(enabled)}; disable trace upload or remove offline Hub mode"
+        )
+
+
 def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
     """Construct RL sbatch script using the universal template system.
 
@@ -970,6 +988,8 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
 
     parsed = parse_rl_config(rl_config_path, model_override=exp_args.get("model_path"))
     print(f"Loaded RL config from: {parsed.config_path}")
+    container = parsed.raw.get("container") or {}
+    validate_trace_upload_environment(parsed.terminal_bench or {}, container)
 
     # --- RL container section (Apptainer SIF + overlays + pydeps + extra env) ---
     # Optional top-level `container:` block in the RL yaml. When present it lets a
@@ -988,9 +1008,7 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
     #
     # An explicit --rl_container_sif CLI flag still wins (only fills if unset), so
     # nothing changes for configs without a `container:` section.
-    rl_container_env_block = _build_rl_container_env(
-        parsed.raw.get("container") or {}, exp_args
-    )
+    rl_container_env_block = _build_rl_container_env(container, exp_args)
 
     # Extract agent name and harbor_env from terminal_bench config
     yaml_agent_name, yaml_harbor_env = extract_terminal_bench_agent_env(parsed)

@@ -77,7 +77,9 @@ terminal_bench:
     enabled: false
 
   trace_upload:
-    enabled: true
+    # Jupiter model loading is deliberately offline. Traces remain in trials_dir
+    # for archive-based collection instead of a post-run Hub upload.
+    enabled: false
     repo_org: DCAgent
     episodes: last
     dataset_type: SFT

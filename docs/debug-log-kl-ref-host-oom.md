@@ -36,8 +36,10 @@ add a regression test for that campaign invariant.
 
 ## Results
 
-The regression test passes. It loads the shipped Jupiter configuration and verifies that policy/reference
-colocation cannot silently reintroduce reference CPU offload. Repository lint validation is recorded in the PR.
+The regression and adjacent RL path/chain tests pass (32 tests). The regression loads the shipped Jupiter
+configuration and verifies that policy/reference colocation cannot silently reintroduce reference CPU offload.
+Ruff passes over the complete `tests/` tree. The complete local pytest suite cannot collect three Iris watcher
+modules because the local Marin checkout lacks `rigging.telemetry`; GitHub CI installs the locked environment.
 
 ## Future work
 

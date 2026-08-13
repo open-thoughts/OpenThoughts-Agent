@@ -32,6 +32,7 @@ from hpc.rl_paths import (
     LATEST_CHECKPOINT_FILE,
     RLLaunchIntent,
     RLPathManager,
+    RLResumePolicy,
     RLRunPaths,
     hydra_override_values,
 )
@@ -784,6 +785,7 @@ class RLJobConfig:
     skyrl_entrypoint: str
     trials_dir: str
     skyrl_hydra_args: List[str] = field(default_factory=list)
+    resume_policy: str = RLResumePolicy.FIXED.value
 
     # Model and data
     model_path: str = ""
@@ -1140,6 +1142,7 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
         cluster_name=hpc.name,
         skyrl_entrypoint=parsed.entrypoint,
         skyrl_hydra_args=hydra_args,
+        resume_policy=run_paths.resume_policy.value,
         model_path=exp_args.get("model_path", ""),
         train_data=exp_args.get("train_data", []),
         val_data=exp_args.get("val_data", []),
@@ -1466,6 +1469,7 @@ class RLJobRunner:
         # short-circuits the whole remaining chain at ~zero cost. afterany fires
         # the successor regardless of the predecessor's exit status, so the marker
         # check — not the exit code — is what actually terminates the chain.
+        self._resolve_resume_for_link()
         if self._already_complete_on_disk():
             print(
                 "[RLJobRunner] Canonical checkpoint already at/past max_steps — "
@@ -1512,6 +1516,35 @@ class RLJobRunner:
                 print(f"[RLJobRunner] Trace upload failed with exit code {upload_exit_code}.", flush=True)
 
         return training_exit_code
+
+    def _resolve_resume_for_link(self) -> None:
+        """Re-evaluate automatic resume after a dependency-chain link starts."""
+        if self.config.resume_policy != RLResumePolicy.AT_LINK_START.value:
+            return
+
+        values = hydra_override_values(self.config.skyrl_hydra_args)
+        checkpoint_dir = Path(values["trainer.ckpt_path"])
+        state_root = checkpoint_dir.parent.parent
+        resolved = RLPathManager(self.config.job_name, state_root, state_root).resolve(
+            trainer_config={
+                "ckpt_path": str(checkpoint_dir),
+                "export_path": values["trainer.export_path"],
+            },
+            terminal_bench_config={"trials_dir": self.config.trials_dir},
+        )
+        replacements = {
+            "trainer.resume_mode": resolved.resume_mode.value,
+            "trainer.resume_path": str(resolved.resume_path) if resolved.resume_path is not None else "null",
+        }
+        retained = [
+            argument
+            for argument in self.config.skyrl_hydra_args
+            if argument.lstrip("+").partition("=")[0] not in replacements
+        ]
+        self.config.skyrl_hydra_args = [
+            *retained,
+            *(f"{key}={value}" for key, value in replacements.items()),
+        ]
 
     def _preserve_ray_logs_on_crash(self) -> None:
         """Best-effort: preserve Ray logs immediately after a training crash,

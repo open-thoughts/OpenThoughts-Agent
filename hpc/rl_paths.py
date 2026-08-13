@@ -39,6 +39,11 @@ class RLResumeMode(StrEnum):
     FROM_PATH = "from_path"
 
 
+class RLResumePolicy(StrEnum):
+    FIXED = "fixed"
+    AT_LINK_START = "at_link_start"
+
+
 class RLLaunchIntent(StrEnum):
     AUTO = "auto"
     FRESH = "fresh"
@@ -61,6 +66,7 @@ class RLRunPaths:
     trials_dir: Path
     resume_mode: RLResumeMode
     resume_path: Path | None
+    resume_policy: RLResumePolicy
 
     def describe(self) -> str:
         if self.resume_path is not None:
@@ -134,6 +140,11 @@ class RLPathManager:
         overrides = _configured_path_values(trainer_config or {}, terminal_bench_config or {})
         overrides.update(cli_values)
         requested_mode, requested_resume_path = self._requested_resume(overrides, launch_intent)
+        resume_policy = (
+            RLResumePolicy.AT_LINK_START
+            if launch_intent is RLLaunchIntent.AUTO and requested_mode is None
+            else RLResumePolicy.FIXED
+        )
 
         state_root = self.launch_root if launch_intent is RLLaunchIntent.FRESH else self.canonical_root
         checkpoint_dir = self._configured_checkpoint_dir(overrides, state_root)
@@ -146,6 +157,7 @@ class RLPathManager:
             state_root,
             checkpoint_dir,
             overrides,
+            resume_policy,
         )
         if explicit is not None:
             return explicit
@@ -163,6 +175,7 @@ class RLPathManager:
                 overrides,
                 resume_mode=RLResumeMode.NONE,
                 resume_path=None,
+                resume_policy=resume_policy,
             )
 
         highest_step = max(candidate.step for candidate in candidates)
@@ -181,6 +194,7 @@ class RLPathManager:
             overrides,
             resume_mode=RLResumeMode.LATEST,
             resume_path=selected.checkpoint_path,
+            resume_policy=resume_policy,
         )
 
     @staticmethod
@@ -210,6 +224,7 @@ class RLPathManager:
         state_root: Path,
         checkpoint_dir: Path,
         overrides: dict[str, str],
+        resume_policy: RLResumePolicy,
     ) -> RLRunPaths | None:
         """Resolve a user-selected mode, or return None for automatic discovery."""
 
@@ -220,6 +235,7 @@ class RLPathManager:
                 overrides,
                 resume_mode=RLResumeMode.NONE,
                 resume_path=None,
+                resume_policy=resume_policy,
             )
         if requested_mode == RLResumeMode.LATEST.value:
             candidate = self._required_checkpoint_candidate(state_root, checkpoint_dir)
@@ -229,6 +245,7 @@ class RLPathManager:
                 overrides,
                 resume_mode=RLResumeMode.LATEST,
                 resume_path=candidate.checkpoint_path,
+                resume_policy=resume_policy,
             )
         if requested_mode != RLResumeMode.FROM_PATH.value:
             return None
@@ -248,6 +265,7 @@ class RLPathManager:
             overrides,
             resume_mode=RLResumeMode.FROM_PATH,
             resume_path=resume_path,
+            resume_policy=resume_policy,
         )
 
     def _configured_checkpoint_dir(self, overrides: dict[str, str], state_root: Path) -> Path:
@@ -355,6 +373,7 @@ class RLPathManager:
         *,
         resume_mode: RLResumeMode,
         resume_path: Path | None,
+        resume_policy: RLResumePolicy,
     ) -> RLRunPaths:
         trainer_root = state_root / self.job_name
         export_dir = (
@@ -374,4 +393,5 @@ class RLPathManager:
             trials_dir=trials_dir,
             resume_mode=resume_mode,
             resume_path=resume_path,
+            resume_policy=resume_policy,
         )

@@ -149,7 +149,10 @@ trainer:
     model:
       path: Qwen/Qwen3-30B-A3B-Thinking-2507
     fsdp_config:
-      cpu_offload: true
+      # The reference shares policy GPUs in the six-node Jupiter geometry. Keep
+      # its parameters on GPU so it does not consume the host-RAM headroom that
+      # the policy optimizer and checkpoint loader need for their transient peaks.
+      cpu_offload: false
       reshard_after_forward: true
       fsdp_size: 4
       expert_model_parallel_size: 4
@@ -159,6 +162,7 @@ trainer:
 
   placement:
     colocate_all: false
+    colocate_policy_ref: true
     policy_num_nodes: 4
     ref_num_nodes: 4
     policy_num_gpus_per_node: 4

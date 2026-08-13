@@ -7,6 +7,7 @@ from hpc.rl_paths import (
     CheckpointLayoutError,
     RLLaunchIntent,
     RLPathManager,
+    RLResumePolicy,
     RLResumeMode,
     hydra_override_values,
 )
@@ -67,6 +68,7 @@ def test_new_run_uses_canonical_state_root_after_artifact_collision(
     resolved = RLPathManager(JOB_NAME, canonical_root, launch_root).resolve()
 
     assert resolved.resume_mode is RLResumeMode.NONE
+    assert resolved.resume_policy is RLResumePolicy.AT_LINK_START
     assert resolved.resume_path is None
     assert resolved.checkpoint_dir == canonical_root / JOB_NAME / "checkpoints"
 
@@ -81,6 +83,7 @@ def test_explicit_fresh_launch_uses_the_launch_root(tmp_path: Path) -> None:
     )
 
     assert resolved.resume_mode is RLResumeMode.NONE
+    assert resolved.resume_policy is RLResumePolicy.FIXED
     assert resolved.resume_path is None
     assert resolved.checkpoint_dir == launch_root / JOB_NAME / "checkpoints"
 

@@ -685,7 +685,9 @@ def build_skyrl_hydra_args(
     trainer["export_path"] = str(run_paths.export_dir)
     trainer["ckpt_path"] = str(run_paths.checkpoint_dir)
     trainer["resume_mode"] = run_paths.resume_mode.value
-    trainer["resume_path"] = str(run_paths.resume_path) if run_paths.resume_path is not None else None
+    trainer["resume_path"] = (
+        str(run_paths.resume_path) if run_paths.resume_path is not None else None
+    )
 
     # Derive placement from num_nodes
     num_nodes = int(exp_args.get("num_nodes", 1))
@@ -772,17 +774,12 @@ def build_skyrl_hydra_args(
             served_model_name
         )
 
-    # HuggingFace Hub upload settings (for automatic checkpoint uploads)
-    # Default to laion/<job_name> if not explicitly provided
+    # HuggingFace Hub upload settings (for automatic checkpoint uploads).
+    # Publication is opt-in: a job name must never imply a public repository.
     hf_hub_repo_id = exp_args.get("hf_hub_repo_id")
-    if not hf_hub_repo_id and job_name:
-        hf_hub_repo_id = f"laion/{job_name}"
-        print(f"HF Hub upload auto-defaulted to: {hf_hub_repo_id}")
     if hf_hub_repo_id:
         trainer["hf_hub_repo_id"] = hf_hub_repo_id
-        if exp_args.get("hf_hub_repo_id"):
-            # Only print "enabled" if user explicitly provided the repo ID
-            print(f"HF Hub upload enabled: {hf_hub_repo_id}")
+        print(f"HF Hub upload enabled: {hf_hub_repo_id}")
     hf_hub_private = exp_args.get("hf_hub_private", False)
     if hf_hub_private:
         trainer["hf_hub_private"] = True

@@ -223,6 +223,53 @@ def test_hydra_builder_consumes_the_resolved_path_contract(tmp_path: Path) -> No
     )
 
 
+def test_hydra_builder_does_not_enable_hf_export_without_a_repository(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / JOB_NAME
+    run_paths = RLPathManager(JOB_NAME, root, root).resolve()
+    parsed = ParsedRLConfig(
+        config_path=tmp_path / "config.yaml",
+        raw={},
+        entrypoint="skyrl_train.entrypoints.main_base",
+        trainer={"hf_save_interval": 6},
+    )
+    hpc = type("HPC", (), {"gpus_per_node": 4})()
+
+    arguments = build_skyrl_hydra_args(
+        parsed, {"job_name": JOB_NAME}, hpc, run_paths=run_paths
+    )
+
+    assert _hydra_value(arguments, "trainer.hf_save_interval") == "6"
+    assert _hydra_value(arguments, "trainer.hf_hub_repo_id") is None
+
+
+def test_hydra_builder_enables_hf_export_for_an_explicit_repository(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / JOB_NAME
+    run_paths = RLPathManager(JOB_NAME, root, root).resolve()
+    parsed = ParsedRLConfig(
+        config_path=tmp_path / "config.yaml",
+        raw={},
+        entrypoint="skyrl_train.entrypoints.main_base",
+        trainer={"hf_save_interval": 6},
+    )
+    hpc = type("HPC", (), {"gpus_per_node": 4})()
+
+    arguments = build_skyrl_hydra_args(
+        parsed,
+        {"job_name": JOB_NAME, "hf_hub_repo_id": "open-thoughts/explicit-run"},
+        hpc,
+        run_paths=run_paths,
+    )
+
+    assert (
+        _hydra_value(arguments, "trainer.hf_hub_repo_id")
+        == "open-thoughts/explicit-run"
+    )
+
+
 def test_yaml_latest_without_a_checkpoint_is_rejected(tmp_path: Path) -> None:
     root = tmp_path / JOB_NAME
 

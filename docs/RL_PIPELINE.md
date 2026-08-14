@@ -524,7 +524,7 @@ trainer.max_steps=80
 data.train_data=["/path/to/tasks"]
 data.val_data=["open-thoughts/OpenThoughts-TB-dev"]
 generator.num_inference_engines=16
-++trainer.hf_hub_repo_id=laion/{job_name}
+++trainer.hf_hub_repo_id=open-thoughts/explicit-repository
 ```
 
 ---
@@ -825,7 +825,7 @@ SkyRL has two automatic callbacks that handle model upload:
 Config (in YAML or via `--skyrl_override`):
 ```yaml
 trainer:
-  hf_hub_repo_id: laion/{job_name}  # Auto-derived from job_name if null
+  hf_hub_repo_id: open-thoughts/explicit-repository  # Required to enable export
   hf_hub_private: false
   hf_hub_revision: main
   hf_save_interval: 10              # Export every 10 steps (deployed value)
@@ -835,6 +835,8 @@ trainer:
 Upload goes to: `{repo_id}/checkpoints/step_{N}/` on HuggingFace Hub.
 
 **Requires**: `HF_TOKEN` env var or `huggingface-cli login`.
+
+Checkpoint export is disabled when `hf_hub_repo_id` is null or omitted. A job name never enables publication implicitly; set the repository ID explicitly only on clusters where the model source can be materialized by the export job.
 
 ### 8.2 Manual Model Upload
 

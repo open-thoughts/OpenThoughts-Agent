@@ -158,13 +158,6 @@ export TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=1800
 # real failure point (often a peer-node HSN socket close on Perlmutter)
 # instead of a downstream SIGABRT in a NCCL destructor.
 export NCCL_BLOCKING_WAIT=1
-# TORCH_NCCL_TRACE_BUFFER_SIZE > 0 enables PyTorch's NCCL FlightRecorder,
-# which captures rank-by-rank stack traces of the most recent N collective
-# operations. On crash, ProcessGroupNCCL.cpp emits these traces — the
-# "Stack trace of the failed collective not found, potentially because
-# FlightRecorder is disabled" line in prior Perlmutter crashes goes away
-# and we get the actual offending collective + stack frames.
-export TORCH_NCCL_TRACE_BUFFER_SIZE=2000
 export OMP_NUM_THREADS=1
 export PYTHONPATH="$WORKDIR:${PYTHONPATH:-}"
 
@@ -208,6 +201,11 @@ mkdir -p "{experiments_dir}"
 mkdir -p "{experiments_dir}/logs"
 mkdir -p "{experiments_dir}/exports"
 mkdir -p "{experiments_dir}/ray_logs"
+
+# Preserve rank-by-rank collective history on the shared experiment filesystem.
+# PyTorch appends the global rank to this prefix when its NCCL watchdog fires.
+source "$WORKDIR/hpc/shell_utils/nccl_flight_recorder.sh"
+setup_nccl_flight_recorder "{experiments_dir}" || exit $?
 
 # --- Cleanup trap to preserve Ray logs ---
 # Ray uses /tmp by default for logs/sockets. This trap copies them to the

@@ -862,7 +862,9 @@ def test_read_evalchemy_progress_counts_marin_evals_benchmarks(monkeypatch, tmp_
     class Client:
         def get_object(self, *, Bucket, Key):  # noqa: N803
             return {
-                "Body": io.BytesIO(json.dumps({"results": {"x": {"acc": 0.5}}}).encode())
+                "Body": io.BytesIO(
+                    json.dumps({"results": {"x": {"acc": 0.5}}}).encode()
+                )
             }
 
     progress = watcher.read_evalchemy_progress(job, log, {"test": Client()}, tmp_path)

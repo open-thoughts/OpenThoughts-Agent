@@ -987,7 +987,12 @@ def validate_trace_upload_environment(
 
 
 def prefetch_rl_model(model_path: str) -> str:
-    """Populate the model cache while preserving a replayable SkyRL reference."""
+    """Populate the model cache while preserving a replayable SkyRL reference.
+
+    Returns:
+        The input model reference. Hub repository IDs are never replaced with
+        the cache snapshot path produced by ``pre_download_model``.
+    """
     if not is_huggingface_repo(model_path):
         return model_path
 

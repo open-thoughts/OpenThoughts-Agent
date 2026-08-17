@@ -4,7 +4,9 @@ from hpc import rl_launch_utils
 
 
 def test_hub_model_prefetch_keeps_replayable_repository_reference(monkeypatch) -> None:
-    download = Mock(return_value=Mock(local_path="/cache/hub/models--Qwen--Model/snapshots/abc123"))
+    download = Mock(
+        return_value=Mock(local_path="/cache/hub/models--Qwen--Model/snapshots/abc123")
+    )
     monkeypatch.setattr(rl_launch_utils, "pre_download_model", download)
 
     model_path = rl_launch_utils.prefetch_rl_model("Qwen/Model")

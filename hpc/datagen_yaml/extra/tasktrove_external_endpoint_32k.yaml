@@ -1,0 +1,11 @@
+# External OA-federated endpoint used by installed-agent TaskTrove evaluations.
+engine:
+  type: openai
+  model: vllm/placeholder
+  max_output_tokens: 16384
+  healthcheck_interval: 300
+  openai:
+    api_key_env: EXTERNAL_AGENT_API_KEY
+backend:
+  type: none
+vllm_server: null

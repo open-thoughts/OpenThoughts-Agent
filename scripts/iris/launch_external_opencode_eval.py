@@ -273,6 +273,11 @@ def build_worker_command(
         args.dataset_path,
     ]
     after_api_base = [
+        *(
+            argument
+            for value in getattr(args, "agent_kwarg", [])
+            for argument in ("--agent_kwarg", value)
+        ),
         "--n_concurrent",
         str(args.n_concurrent),
         "--n_attempts",
@@ -282,9 +287,13 @@ def build_worker_command(
         "--experiments_dir",
         work_dir,
         f"--harbor_extra_arg=--jobs-dir={durable_jobs_dir}",
-        "--upload_hf_repo",
-        args.upload_hf_repo,
+        *(
+            f"--harbor_extra_arg={value}"
+            for value in getattr(args, "harbor_extra_arg", [])
+        ),
     ]
+    if not getattr(args, "skip_hf_upload", False):
+        after_api_base.extend(["--upload_hf_repo", args.upload_hf_repo])
     return (
         "set -eu\n"
         'test -n "${EXTERNAL_AGENT_API_BASE:?missing minted endpoint URL}"\n'
@@ -303,6 +312,7 @@ def build_submit_command(
         "HF_TOKEN": require_secret(env, "HF_TOKEN"),
         "OPENAI_API_KEY": require_secret(env, "OPENAI_API_KEY"),
         "OPENCODE_DUMMY_KEY": DUMMY_API_KEY,
+        "EXTERNAL_AGENT_API_KEY": DUMMY_API_KEY,
         "EXTERNAL_AGENT_API_BASE": api_base,
     }
     task_env["OT_AGENT_CAPABILITY_TOKEN_DURATION_POLICY"] = (
@@ -349,6 +359,11 @@ def build_submit_command(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--job-name", default=default_job_name())
+    parser.add_argument(
+        "--agent",
+        default="opencode",
+        help="Installed Harbor agent used by the eval and token-duration policy.",
+    )
     parser.add_argument(
         "--existing-endpoint",
         help="Use an already-running federated endpoint instead of submitting a new serve.",
@@ -422,6 +437,18 @@ def main() -> int:
     parser.add_argument("--n-concurrent", type=int, default=256)
     parser.add_argument("--n-attempts", type=int, default=3)
     parser.add_argument(
+        "--agent-kwarg",
+        action="append",
+        default=[],
+        help="Additional key=value argument forwarded to the Harbor agent.",
+    )
+    parser.add_argument(
+        "--harbor-extra-arg",
+        action="append",
+        default=[],
+        help="Additional raw Harbor CLI argument. Repeat as needed.",
+    )
+    parser.add_argument(
         "--s3-output-dir",
         default=DEFAULT_S3_OUTPUT_ROOT,
         help=(
@@ -430,6 +457,11 @@ def main() -> int:
         ),
     )
     parser.add_argument("--upload-hf-repo", default=DEFAULT_HF_TRACE_REPO)
+    parser.add_argument(
+        "--skip-hf-upload",
+        action="store_true",
+        help="Keep durable Harbor artifacts in object storage without publishing to Hugging Face.",
+    )
     parser.add_argument("--cpu", type=float, default=32)
     parser.add_argument("--memory", default="128GB")
     parser.add_argument("--disk", default="128GB")
@@ -449,7 +481,7 @@ def main() -> int:
     )
     try:
         token_policy = resolve_token_duration_policy(
-            agent="opencode",
+            agent=args.agent,
             timeout_seconds=args.timeout,
             requested_token_ttl_seconds=requested_ttl_seconds,
         )

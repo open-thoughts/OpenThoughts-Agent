@@ -90,9 +90,9 @@ DEFAULT_CLOUD_OUTPUT_PREFIX = (
     "trace_runs"  # Default output subdir prefix for cloud jobs
 )
 
-# Harbor git URL for cloud reinstalls (always fetch latest from branch)
+# Harbor git URL for cloud reinstalls.
 HARBOR_GIT_URL = (
-    "git+https://github.com/laude-institute/harbor.git@penfever/temp-override"
+    "git+https://github.com/marin-community/harbor.git@629b0c781426b9337f21e5aa3c2bbb246cb3336c"
 )
 
 

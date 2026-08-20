@@ -297,6 +297,7 @@ def build_worker_command(
     return (
         "set -eu\n"
         'test -n "${EXTERNAL_AGENT_API_BASE:?missing minted endpoint URL}"\n'
+        "uv pip install --python /app/.venv/bin/python s3fs==2026.2.0\n"
         f"exec {shlex.join(before_api_base)} "
         '--agent_kwarg "api_base=${EXTERNAL_AGENT_API_BASE}" '
         f"{shlex.join(after_api_base)}"

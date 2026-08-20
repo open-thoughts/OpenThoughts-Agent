@@ -88,6 +88,7 @@ def test_submit_uses_env_for_url_and_fails_fast_when_missing():
     shell = command[-1]
     assert "set -eu" in shell
     assert "${EXTERNAL_AGENT_API_BASE:?missing minted endpoint URL}" in shell
+    assert "uv pip install --python /app/.venv/bin/python s3fs==2026.2.0" in shell
     assert "api_base=${EXTERNAL_AGENT_API_BASE}" in shell
     assert "https://iris.oa.dev" not in shell
     assert "thinking_format=chat-template" in shell

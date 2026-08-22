@@ -105,6 +105,29 @@ def test_submit_uses_env_for_url_and_fails_fast_when_missing():
     assert command[command.index("EXTERNAL_AGENT_API_KEY") + 1] == _MODULE.DUMMY_API_KEY
 
 
+def test_submit_uses_harbor_config_concurrency_when_not_overridden():
+    args = argparse.Namespace(
+        harbor_config="config.yaml",
+        datagen_config="external.yaml",
+        model="vllm/model",
+        dataset_path="DCAgent/dev_set_v2",
+        n_concurrent=None,
+        n_attempts=1,
+        job_name="eval-v2",
+        agent_kwarg=[],
+        harbor_extra_arg=[],
+        skip_hf_upload=True,
+    )
+
+    command = _MODULE.build_worker_command(
+        args,
+        "s3://marin-us-east-02a/iris/eval-v2/trace_jobs",
+        "/tmp/ot-agent-runs/eval-v2",
+    )
+
+    assert "--n_concurrent" not in command
+
+
 def test_s3_harbor_jobs_dir_isolated_per_iris_job():
     assert (
         _MODULE.s3_harbor_jobs_dir("s3://marin-us-east-02a/iris/", "eval-v2")

@@ -278,8 +278,11 @@ def build_worker_command(
             for value in getattr(args, "agent_kwarg", [])
             for argument in ("--agent_kwarg", value)
         ),
-        "--n_concurrent",
-        str(args.n_concurrent),
+        *(
+            ("--n_concurrent", str(args.n_concurrent))
+            if args.n_concurrent is not None
+            else ()
+        ),
         "--n_attempts",
         str(args.n_attempts),
         "--job_name",
@@ -432,10 +435,12 @@ def main() -> int:
     )
     parser.add_argument("--model", help="Eval model id (default: vllm/<serve-model>).")
     parser.add_argument("--dataset-path", default=DEFAULT_DATASET_PATH)
-    # One coordinator is intentionally task-sharded; Iris GPU eval replicas are
-    # not.  A high Harbor concurrency feeds the separately served DP=8 model
-    # without launching duplicate full-dataset evaluations.
-    parser.add_argument("--n-concurrent", type=int, default=256)
+    parser.add_argument(
+        "--n-concurrent",
+        type=int,
+        default=None,
+        help="Override Harbor concurrency. Omit this option to use the Harbor YAML.",
+    )
     parser.add_argument("--n-attempts", type=int, default=3)
     parser.add_argument(
         "--agent-kwarg",

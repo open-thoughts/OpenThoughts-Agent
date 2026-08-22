@@ -51,13 +51,14 @@ from database.unified_db.infra_errors import INFRA_ERROR_TYPES  # noqa: E402
 # instead of keeping their errored trial dirs — the campaign no-op bug). This is
 # the shared INFRA_ERROR_TYPES set (the single source of truth the Jupiter/
 # Leonardo sbatches' `harbor jobs resume --filter-error-type` derives from) UNION
-# two POLICY.md non-benign types not (yet) in that set. BENIGN types
+# three non-benign infrastructure types not (yet) in that set. BENIGN types
 # (AgentTimeoutError, ContextLengthExceededError, SummarizationTimeoutError/Error,
 # BadRequestError, NonZeroAgentExitCodeError, VerifierRuntimeError) are
 # deliberately EXCLUDED — they are valid "not-solved" results, not infra flakes,
 # and must NOT be re-run.
 DEFAULT_REFIRE_ERROR_TYPES = sorted(
-    set(INFRA_ERROR_TYPES) | {"DaytonaValidationError", "VerifierTimeoutError"}
+    set(INFRA_ERROR_TYPES)
+    | {"APIConnectionError", "DaytonaValidationError", "VerifierTimeoutError"}
 )
 
 # Preset fields with no Iris analog (SLURM orchestrator / vLLM-serve only, or fields

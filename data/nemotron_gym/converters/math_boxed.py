@@ -27,6 +27,161 @@ _INSTRUCTION_HEADER = (
     "---\n\n"
 )
 
+_NUMERIC_SCALAR = re.compile(
+    r"^[+\-]?(?:\d+(?:\.\d*)?|\.\d+)(?:/[+\-]?\d+(?:\.\d*)?)?(?:[eE][+\-]?\d+)?%?$"
+)
+_OUTER_MATH_DELIMITERS = ((r"\(", r"\)"), (r"\[", r"\]"), ("$$", "$$"))
+
+
+def _single_math_span(value: str) -> bool:
+    stripped = value.strip()
+    for left, right in _OUTER_MATH_DELIMITERS:
+        if stripped.startswith(left) and stripped.endswith(right):
+            interior = stripped[len(left) : -len(right)]
+            return left not in interior and right not in interior
+    return (
+        stripped.startswith("$") and stripped.endswith("$") and stripped.count("$") == 2
+    )
+
+
+def _top_level_parts(value: str, separator: str) -> list[str]:
+    closers = {"(": ")", "[": "]", "{": "}"}
+    stack: list[str] = []
+    parts: list[str] = []
+    start = 0
+    for index, char in enumerate(value):
+        if char in closers:
+            stack.append(closers[char])
+        elif stack and char == stack[-1]:
+            stack.pop()
+        elif char == separator and not stack:
+            parts.append(value[start:index].strip())
+            start = index + 1
+    parts.append(value[start:].strip())
+    return parts
+
+
+def _single_container(value: str, left: str, right: str) -> bool:
+    if not value.startswith(left) or not value.endswith(right):
+        return False
+    depth = 0
+    for index, char in enumerate(value):
+        if char == left:
+            depth += 1
+        elif char == right:
+            depth -= 1
+            if depth == 0 and index != len(value) - 1:
+                return False
+        if depth < 0:
+            return False
+    return depth == 0
+
+
+def _interval_expression(value: str) -> bool:
+    normalized = value.replace(r"\left", "").replace(r"\right", "")
+    parts = re.split(r"\s*(?:\\cup|∪)\s*", normalized)
+    if not parts:
+        return False
+    for part in parts:
+        part = part.strip()
+        if len(part) < 5 or part[0] not in "([" or part[-1] not in ")]":
+            return False
+        stack = ["interval"]
+        for index, char in enumerate(part[1:], 1):
+            if char in "([":
+                stack.append(")" if char == "(" else "]")
+            elif char in ")]":
+                if not stack or (stack[-1] != "interval" and char != stack[-1]):
+                    return False
+                stack.pop()
+                if not stack and index != len(part) - 1:
+                    return False
+        if stack:
+            return False
+        if len(_top_level_parts(part[1:-1], ",")) != 2:
+            return False
+    return True
+
+
+def answer_type(expected: str) -> str:
+    """Choose a conservative typed comparator from the packaged gold syntax."""
+    single_math_span = _single_math_span(expected)
+    value = _normalize_v3_gold(expected) if single_math_span else expected.strip()
+    interval_marker = any(marker in value for marker in (r"\cup", "∪", r"\infty", "∞"))
+    half_open = len(value) >= 2 and value[0] + value[-1] in {"(]", "[)"}
+    if _interval_expression(value) and (interval_marker or half_open):
+        return "interval"
+    if (
+        not single_math_span
+        and _single_container(value, "{", "}")
+        and not any(token in value for token in ('"', "'", "...", ":", " or "))
+    ):
+        return "set"
+    equation_parts = _top_level_parts(value, "=")
+    equation_has_container = any(
+        _single_container(part, left, right)
+        and len(_top_level_parts(part[1:-1], ",")) > 1
+        for part in equation_parts
+        for left, right in (("(", ")"), ("[", "]"), ("{", "}"))
+    )
+    if (
+        len(equation_parts) == 2
+        and all(equation_parts)
+        and not equation_has_container
+        and len(_top_level_parts(value, ",")) == 1
+        and not any(token in value for token in ("!=", "<=", ">="))
+        and not any(
+            token in value
+            for token in (
+                r"\begin",
+                r"\text",
+                r"\mid",
+                r"\subset",
+                r"\in ",
+                r"\Bbb",
+                r"\mathbb",
+                ":=",
+            )
+        )
+        and (
+            single_math_span
+            or re.fullmatch(r"[A-Za-z0-9_+\-*/^().= ]+", value) is not None
+        )
+    ):
+        return "equation"
+    if (
+        _single_container(value, "(", ")")
+        and len(_top_level_parts(value[1:-1], ",")) > 1
+    ):
+        return "tuple"
+    if (
+        _single_container(value, "[", "]")
+        and len(_top_level_parts(value[1:-1], ",")) > 1
+    ):
+        return "list"
+    compact = re.sub(r"\s+", "", value)
+    if _NUMERIC_SCALAR.fullmatch(compact):
+        return "scalar"
+    if single_math_span and (
+        len(_top_level_parts(value, ",")) > 1
+        or len(equation_parts) > 2
+        or any(token in value for token in (r"\lor", r"\text", r"\begin"))
+    ):
+        return "text"
+    if single_math_span and not any(
+        token in value for token in (r"\text", r"\begin", r"\end")
+    ):
+        return "scalar"
+    if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", value):
+        return "scalar"
+    if (
+        " " not in value
+        and re.fullmatch(r"[A-Za-z0-9_+\-*/^().]+", value)
+        and any(char.isdigit() or char in "+-*/^()" for char in value)
+    ):
+        return "scalar"
+    return "text"
+
 
 def _convert(row: dict, source_dataset: str, *, row_idx: int) -> HarborTask | None:
     prompt = extract_prompt(row)
@@ -46,7 +201,10 @@ def _convert(row: dict, source_dataset: str, *, row_idx: int) -> HarborTask | No
         dockerfile=dockerfile,
         test_sh=STANDARD_TEST_SH,
         verifier_py=MATH_BOXED_VERIFIER_PY,
-        verifier_data={"expected_answer": expected},
+        verifier_data={
+            "expected_answer": expected,
+            "answer_type": answer_type(expected),
+        },
         metadata=render_metadata(
             source_dataset=source_dataset,
             source_uuid=row.get("uuid") if isinstance(row.get("uuid"), str) else None,
@@ -368,7 +526,10 @@ def convert_math_v3(row: dict, row_idx: int) -> HarborTask | None:
         dockerfile=dockerfile,
         test_sh=STANDARD_TEST_SH,
         verifier_py=MATH_BOXED_VERIFIER_PY,
-        verifier_data={"expected_answer": expected},
+        verifier_data={
+            "expected_answer": expected,
+            "answer_type": answer_type(expected),
+        },
         metadata=render_metadata(
             source_dataset=source_dataset,
             source_uuid=row.get("uuid") if isinstance(row.get("uuid"), str) else None,

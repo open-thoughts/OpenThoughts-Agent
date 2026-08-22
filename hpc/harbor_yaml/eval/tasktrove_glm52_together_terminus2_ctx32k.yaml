@@ -2,7 +2,7 @@ n_attempts: 1
 timeout_multiplier: 1.0
 orchestrator:
   type: local
-  n_concurrent_trials: 32
+  n_concurrent_trials: 48
   quiet: false
   plain_output: true
   retry:
@@ -10,7 +10,6 @@ orchestrator:
     exclude_exceptions:
       - AgentTimeoutError
       - ContextLengthExceededError
-      - ContextManagementInfrastructureError
     wait_multiplier: 2.0
     min_wait_sec: 1.0
     max_wait_sec: 90.0
@@ -21,13 +20,16 @@ environment:
   override_cpus: 2
   override_memory_mb: 4096
   override_storage_mb: 4096
+  env:
+    TOGETHER_API_KEY: ${TOGETHER_API_KEY}
+    TOGETHERAI_API_KEY: ${TOGETHER_API_KEY}
   kwargs:
     auto_snapshot: true
 verifier:
   max_timeout_sec: 14400
 agents:
   - name: terminus-2
-    model_name: placeholder/override-at-runtime
+    model_name: together_ai/zai-org/GLM-5.2
     max_timeout_sec: 7200
     kwargs:
       record_terminal_session: false
@@ -44,7 +46,7 @@ agents:
         input_cost_per_token: 0.0
         output_cost_per_token: 0.0
       max_tokens: 16384
-      enable_summarize: true
+      enable_summarize: false
       proactive_summarization_threshold: 2048
 datasets: []
 tasks: []

@@ -55,14 +55,14 @@ from pathlib import Path
 # parser would be overkill, and we have no ripper/parser gem on the path).
 # --------------------------------------------------------------------------- #
 
-# require 'foo' / require "foo/bar"
+# require 'foo' / require("foo/bar")
 _REQUIRE_RE = re.compile(
-    r"""^\s*require\s+(?:['"])([^'"]+)(?:['"])\s*$""",
+    r"""^\s*require\s*(?:\(\s*)?['"]([^'"]+)['"]\s*\)?\s*$""",
     re.MULTILINE,
 )
-# require_relative 'foo'
+# require_relative 'foo' / require_relative("foo")
 _REQUIRE_REL_RE = re.compile(
-    r"""^\s*require_relative\s+(?:['"])([^'"]+)(?:['"])\s*$""",
+    r"""^\s*require_relative\s*(?:\(\s*)?['"]([^'"]+)['"]\s*\)?\s*$""",
     re.MULTILINE,
 )
 # require File.expand_path(...) / require File.dirname(__FILE__) + '...' / etc.

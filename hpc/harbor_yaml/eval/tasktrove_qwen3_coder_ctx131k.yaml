@@ -10,7 +10,6 @@ orchestrator:
     exclude_exceptions:
       - AgentTimeoutError
       - ContextLengthExceededError
-      - ContextManagementInfrastructureError
     wait_multiplier: 2.0
     min_wait_sec: 1.0
     max_wait_sec: 90.0
@@ -39,12 +38,12 @@ agents:
         raw_content: true
         linear_history: true
       model_info:
-        max_input_tokens: 32768
+        max_input_tokens: 131072
         max_output_tokens: 16384
         input_cost_per_token: 0.0
         output_cost_per_token: 0.0
       max_tokens: 16384
       enable_summarize: true
-      proactive_summarization_threshold: 2048
+      proactive_summarization_threshold: 8192
 datasets: []
 tasks: []

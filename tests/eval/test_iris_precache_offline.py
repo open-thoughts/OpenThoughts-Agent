@@ -275,6 +275,11 @@ def test_gcs_model_credentials_are_scoped_to_vllm(monkeypatch):
     assert args._vllm_env_vars["AWS_ENDPOINT_URL"] == "https://storage.googleapis.com"
     assert args._vllm_env_vars["AWS_ACCESS_KEY_ID"] == "gcs-access"
     assert args._vllm_env_vars["AWS_SECRET_ACCESS_KEY"] == "gcs-secret"
+    assert args._vllm_env_vars["HF_HUB_OFFLINE"] == "1"
+    assert args._vllm_env_vars["TRANSFORMERS_OFFLINE"] == "1"
+    copied = args._vllm_env_vars["VLLM_RAY_EXTRA_ENV_VARS_TO_COPY"]
+    assert "HF_HUB_OFFLINE" in copied
+    assert "TRANSFORMERS_OFFLINE" in copied
     assert args._vllm_env_vars["KEEP"] == "value"
 
 

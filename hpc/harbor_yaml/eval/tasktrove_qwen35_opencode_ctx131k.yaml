@@ -10,7 +10,6 @@ orchestrator:
     exclude_exceptions:
       - AgentTimeoutError
       - ContextLengthExceededError
-      - ContextManagementInfrastructureError
     wait_multiplier: 2.0
     min_wait_sec: 1.0
     max_wait_sec: 90.0
@@ -19,32 +18,30 @@ environment:
   force_build: true
   delete: true
   override_cpus: 2
-  override_memory_mb: 4096
-  override_storage_mb: 4096
+  override_memory_mb: 8192
+  override_storage_mb: 8192
   kwargs:
     auto_snapshot: true
 verifier:
   max_timeout_sec: 14400
 agents:
-  - name: terminus-2
-    model_name: placeholder/override-at-runtime
+  - name: opencode
+    model_name: vllm/override-at-runtime
     max_timeout_sec: 7200
+    override_setup_timeout_sec: 600
     kwargs:
-      record_terminal_session: false
-      enable_episode_logging: false
-      enable_pane_logging: false
+      version: "1.18.2"
       collect_rollout_details: false
-      collect_engine_metrics: false
-      trajectory_config:
-        raw_content: true
-        linear_history: true
       model_info:
-        max_input_tokens: 32768
+        max_input_tokens: 131072
         max_output_tokens: 16384
         input_cost_per_token: 0.0
         output_cost_per_token: 0.0
-      max_tokens: 16384
-      enable_summarize: true
-      proactive_summarization_threshold: 2048
+      trajectory_config:
+        raw_content: false
+        linear_history: true
+      opencode_config:
+        compaction:
+          auto: false
 datasets: []
 tasks: []

@@ -1336,7 +1336,7 @@ class LocalHarborRunner:
 
             # Start vLLM controller
             vllm_proc = start_vllm_controller(
-                model=args.model,
+                model=getattr(args, "vllm_model_uri", None) or args.model,
                 host=args.host,
                 ray_port=args.ray_port,
                 api_port=args.api_port,

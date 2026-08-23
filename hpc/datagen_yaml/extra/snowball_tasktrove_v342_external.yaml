@@ -1,0 +1,13 @@
+engine:
+  type: openai
+  model: vllm/laion/snowball-67b-a2b-sft-s3-nemotron-terminal-step1888
+  max_output_tokens: 8192
+  healthcheck_interval: 300
+  openai:
+    api_key_env: EXTERNAL_AGENT_API_KEY
+backend:
+  type: none
+vllm_server: null
+extra_agent_kwargs:
+  api_base: ${oc.env:EXTERNAL_AGENT_API_BASE}
+  api_key: capability-url-no-auth-header

@@ -90,7 +90,7 @@ jobs:
           fi
           gh pr merge "$PR_NUMBER" --auto --squash --delete-branch
 
-      - name: Retire superseded refresh PRs
+      - name: Retire superseded refresh PRs and branches
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -103,4 +103,9 @@ jobs:
             --jq '.[] | select(.headRefName | startswith("nightly/uv-lock-refresh-")) | .number' |
           while read -r pr_number; do
             [[ -z "$pr_number" ]] || gh pr close "$pr_number" --delete-branch
+          done
+          git ls-remote --heads origin 'refs/heads/nightly/uv-lock-refresh-*' |
+          awk '{sub("refs/heads/", "", $2); print $2}' |
+          while read -r branch; do
+            [[ -z "$branch" ]] || git push origin --delete "$branch"
           done

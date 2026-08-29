@@ -9,8 +9,8 @@ name: Nightly uv-lock fork-pin refresh
 # the opencode baseURL fix (PR #8), so every agentic-eval trial scored 0 because the
 # agent built "undefined/chat/completions" and never contacted the model.
 #
-# This job re-resolves the fork pins to their current branch HEAD each night and opens
-# a PR when the lock changes. Review + merge keeps the pins current and reproducible.
+# This job re-resolves the fork pins to their current branch HEAD each night and keeps
+# one PR current until its required review arrives. The PR auto-merges after approval.
 # Add more packages to the `uv lock --upgrade-package` line to track more forks.
 #
 # NOTE: scheduled workflows run only from the repository's DEFAULT branch, so this file
@@ -26,6 +26,10 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: nightly-uv-lock-refresh
+  cancel-in-progress: true
+
 jobs:
   refresh-fork-pins:
     runs-on: ubuntu-latest
@@ -36,30 +40,67 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Re-resolve the forked git-@main pins
-        run: uv lock --upgrade-package harbor
+      - name: Set up Python 3.12
+        run: uv python install 3.12
 
-      - name: Open a PR when uv.lock changed
+      - name: Re-resolve the forked git-@main pins
+        id: refresh
+        run: |
+          uv lock --upgrade-package harbor
+          if git diff --quiet -- uv.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate the refreshed lock
+        if: steps.refresh.outputs.changed == 'true'
+        run: |
+          uv sync --locked --group dev --python 3.12
+          uv run pytest tests/ -q
+          uvx ruff@0.15.14 check tests/
+          uvx ruff@0.15.14 format --check tests/
+
+      - name: Update the refresh PR and enable auto-merge
+        if: steps.refresh.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if git diff --quiet -- uv.lock; then
-            echo "uv.lock is unchanged — the fork pins are already current. Nothing to do."
-            exit 0
-          fi
-          echo "uv.lock changed. Opening a PR."
-          BRANCH="nightly/uv-lock-refresh-$(date -u +%Y%m%d)"
+          BRANCH="nightly/uv-lock-refresh"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
+          git checkout -B "$BRANCH"
           git add uv.lock
           git commit -m "chore(deps): nightly refresh of forked git pins (harbor @main)"
-          git push -u origin "$BRANCH" --force
-          # Reuse an open PR from a same-day rerun if one exists; otherwise open one.
-          if ! gh pr view "$BRANCH" >/dev/null 2>&1; then
+          git push -u origin "$BRANCH" --force-with-lease
+
+          PR_NUMBER=$(gh pr list --state open --head "$BRANCH" --json number --jq '.[0].number // empty')
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          BODY="Automated re-resolution of the git-\`@main\` Harbor pin in \`uv.lock\`. The generating workflow ran the locked test environment, unit tests, and Ruff checks before updating this PR: $RUN_URL"
+          if [[ -z "$PR_NUMBER" ]]; then
             gh pr create \
               --title "Nightly uv-lock refresh: forked git pins" \
-              --body "Automated nightly re-resolve of the git-\`@main\` fork pins in \`uv.lock\` (harbor). Keeps the pins current with the fork's main and prevents stale-pin drift. Review the diff, run CI, then merge." \
+              --body "$BODY" \
+              --reviewer penfever \
               --head "$BRANCH"
+            PR_NUMBER=$(gh pr list --state open --head "$BRANCH" --json number --jq '.[0].number')
+          else
+            gh pr edit "$PR_NUMBER" --body "$BODY" --add-reviewer penfever
           fi
+          gh pr merge "$PR_NUMBER" --auto --squash --delete-branch
+
+      - name: Retire superseded refresh PRs
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh pr list \
+            --state open \
+            --limit 200 \
+            --json number,headRefName \
+            --jq '.[] | select(.headRefName | startswith("nightly/uv-lock-refresh-")) | .number' |
+          while read -r pr_number; do
+            [[ -z "$pr_number" ]] || gh pr close "$pr_number" --delete-branch
+          done

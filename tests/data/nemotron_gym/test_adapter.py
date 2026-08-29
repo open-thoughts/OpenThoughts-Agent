@@ -194,7 +194,7 @@ def test_math_converter_smoke():
     blob = task.to_tarball()
     with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tar:
         data = json.loads(tar.extractfile("tests/verifier_data.json").read())
-    assert data == {"expected_answer": "2"}
+    assert data == {"answer_type": "scalar", "expected_answer": "2"}
 
 
 def test_competitive_coding_converter_smoke():

@@ -21,17 +21,20 @@ on:
   schedule:
     - cron: "0 4 * * *"
   workflow_dispatch: {}
+  pull_request_target:
+    types: [closed]
 
 permissions:
   contents: write
   pull-requests: write
 
 concurrency:
-  group: nightly-uv-lock-refresh
+  group: nightly-uv-lock-refresh-${{ github.event_name == 'pull_request_target' && 'cleanup' || 'refresh' }}
   cancel-in-progress: true
 
 jobs:
   refresh-fork-pins:
+    if: github.event_name != 'pull_request_target'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -109,3 +112,20 @@ jobs:
           while read -r branch; do
             [[ -z "$branch" ]] || git push origin --delete "$branch"
           done
+
+  retire-stable-refresh-branch:
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'nightly/uv-lock-refresh'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete the resolved refresh branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REF_API="repos/$GITHUB_REPOSITORY/git/ref/heads/nightly/uv-lock-refresh"
+          if gh api "$REF_API" --silent >/dev/null 2>&1; then
+            gh api --method DELETE "$REF_API"
+          fi

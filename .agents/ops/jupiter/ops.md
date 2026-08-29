@@ -25,7 +25,7 @@ source hpc/dotenv/jupiter.env
 ```
 
 **Key paths**:
-- Code (`$DCFT`): `/e/scratch/jureap59/feuer1/OpenThoughts-Agent` — experiments in `experiments/`, eval logs in `eval/logs/` (per `eval/clusters/jupiter.yaml` `eval_logs_dir`), dotenv `hpc/dotenv/jupiter.env`.
+- Code (`$DCFT`): `/e/scratch/jureap59/feuer1/OpenThoughts-Agent` — **tracks `origin/main`** (switched from `penfever/working` 2026-08-29, owner instruction; the preamble's `git pull` keeps it current). If `origin/main` falls behind `origin/penfever/working`, check that these Jupiter launcher fixes are present before launching RL: rollout-section rendering (`569b0d14`), `++` terminal-bench overrides (`274c9a6c`), wandb-offline→console downgrade (`778df5c8`), skyrl-gym container PYTHONPATH (`3e7b3540`) — missing any of them kills RL restart links (6h RPC watchdog / hydra composition / `wandb.init` hang / `skyrl_gym.verification` import). Experiments in `experiments/`, eval logs in `eval/logs/` (per `eval/clusters/jupiter.yaml` `eval_logs_dir`), dotenv `hpc/dotenv/jupiter.env`.
 - Harbor: `/e/scratch/jureap59/feuer1/harbor`
 - Conda env: `/e/scratch/jureap59/feuer1/miniforge3/envs/otagent/`
 - **Personal data root (`$DCFT_DATA`) — USE THIS**: `/e/data1/datasets/playground/ot-baf`

@@ -144,10 +144,6 @@ def _option_value(command, flag):
     return command[command.index(flag) + 1]
 
 
-def _option_values(command, flag):
-    return [command[index + 1] for index, arg in enumerate(command) if arg == flag]
-
-
 def _equals_option_values(command, flag):
     prefix = f"{flag}="
     return [arg[len(prefix) :] for arg in command if arg.startswith(prefix)]
@@ -217,8 +213,6 @@ def test_eval_iris_gpu_auto_dry_run_uses_durable_s3_artifacts():
         "s3://marin-us-east-02a/evals",
         "--job_name",
         "gpu-infra-smoke",
-        "--hf-offline-mode",
-        "off",
         "--dry_run",
     )
     assert launcher.run(args) == 0
@@ -232,9 +226,6 @@ def test_eval_iris_gpu_auto_dry_run_uses_durable_s3_artifacts():
     assert (
         "--jobs-dir=s3://marin-us-east-02a/evals/gpu-infra-smoke/trace_jobs"
         in _equals_option_values(launcher.command, "--harbor_extra_arg")
-    )
-    assert "APIConnectionError" in _option_values(
-        launcher.command, "--refire_filter_error_type"
     )
     assert (args.dataset_path, args.gpus) == (HF_DATASET, 8)
 

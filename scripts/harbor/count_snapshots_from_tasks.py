@@ -29,13 +29,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import hashlib
-import io
 import inspect
 import sys
-import tarfile
-from collections import Counter
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 
@@ -105,62 +101,6 @@ def load_tasks_from_local_dataset(
     # harbor's get_task_configs is a coroutine on recent versions; resolve it.
     task_configs = _run_maybe_async(config.get_task_configs(disable_verification=True))
     return [tc.path for tc in task_configs]
-
-
-def analyze_tasks_parquet(tasks_parquet: Path, truncate: int = 12) -> DockerfileStats:
-    """Count Harbor environment hashes directly from a TaskTrove Parquet."""
-    import pyarrow.parquet as pq
-
-    hash_counts: Counter[str] = Counter()
-    tasks_without_dockerfile = 0
-    total_tasks = 0
-    parquet = pq.ParquetFile(tasks_parquet)
-
-    for batch in parquet.iter_batches(batch_size=8, columns=["task_binary"]):
-        for task_binary in batch.column(0).to_pylist():
-            total_tasks += 1
-            environment_files: dict[str, bytes] = {}
-            with tarfile.open(fileobj=io.BytesIO(task_binary), mode="r:*") as archive:
-                for member in archive.getmembers():
-                    path = PurePosixPath(member.name)
-                    if path.is_absolute() or ".." in path.parts:
-                        raise ValueError(f"unsafe archive path {member.name!r}")
-                    if member.issym() or member.islnk():
-                        raise ValueError(
-                            f"archive link is not permitted: {member.name!r}"
-                        )
-                    if not member.isfile() or not path.parts:
-                        continue
-                    if path.parts[0] != "environment":
-                        continue
-                    relative_path = PurePosixPath(*path.parts[1:])
-                    if not relative_path.parts:
-                        continue
-                    extracted = archive.extractfile(member)
-                    if extracted is None:
-                        raise ValueError(f"could not read {member.name!r}")
-                    environment_files[str(relative_path)] = extracted.read()
-
-            if "Dockerfile" not in environment_files:
-                tasks_without_dockerfile += 1
-                continue
-
-            digest = hashlib.sha256()
-            for relative_path, content in sorted(environment_files.items()):
-                relative_bytes = relative_path.encode()
-                digest.update(len(relative_bytes).to_bytes(4, "big"))
-                digest.update(relative_bytes)
-                digest.update(len(content).to_bytes(4, "big"))
-                digest.update(content)
-            hash_counts[digest.hexdigest()[:truncate]] += 1
-
-    return DockerfileStats(
-        total_tasks=total_tasks,
-        tasks_with_dockerfile=total_tasks - tasks_without_dockerfile,
-        tasks_without_dockerfile=tasks_without_dockerfile,
-        unique_hashes=len(hash_counts),
-        hash_counts=hash_counts,
-    )
 
 
 def load_tasks_from_hf_parquet(
@@ -328,12 +268,6 @@ def main():
         metavar="NAME",
         help="Name of dataset in Harbor registry (e.g., mlfoundations/code_contests)",
     )
-    source_group.add_argument(
-        "--tasks-parquet",
-        type=Path,
-        metavar="PATH",
-        help="Path to a TaskTrove tasks.parquet; streamed without extracting tasks",
-    )
 
     # Filtering options
     parser.add_argument(
@@ -377,62 +311,53 @@ def main():
 
     args = parser.parse_args()
 
-    if args.tasks_parquet:
-        print("Streaming task environments from Parquet...")
-        try:
-            stats = analyze_tasks_parquet(args.tasks_parquet.expanduser().resolve())
-        except Exception as e:
-            print(f"Error loading tasks: {e}", file=sys.stderr)
-            sys.exit(1)
-        print(f"Found {stats.total_tasks} tasks. Analyzing environments...")
-    else:
-        # Load tasks
-        print("Loading tasks...")
-        try:
-            if args.local_dataset:
-                task_dirs = load_tasks_from_local_dataset(
-                    dataset_path=args.local_dataset.expanduser().resolve(),
+    # Load tasks
+    print("Loading tasks...")
+    try:
+        if args.local_dataset:
+            task_dirs = load_tasks_from_local_dataset(
+                dataset_path=args.local_dataset.expanduser().resolve(),
+                task_names=args.task_names,
+                exclude_task_names=args.exclude_task_names,
+                n_tasks=args.n_tasks,
+            )
+        else:
+            try:
+                task_dirs = load_tasks_from_registry_dataset(
+                    dataset_name=args.registry_dataset,
+                    version=args.version,
                     task_names=args.task_names,
                     exclude_task_names=args.exclude_task_names,
                     n_tasks=args.n_tasks,
+                    download_dir=args.download_dir,
                 )
-            else:
-                try:
-                    task_dirs = load_tasks_from_registry_dataset(
-                        dataset_name=args.registry_dataset,
-                        version=args.version,
-                        task_names=args.task_names,
-                        exclude_task_names=args.exclude_task_names,
-                        n_tasks=args.n_tasks,
-                        download_dir=args.download_dir,
-                    )
-                except Exception as reg_err:
-                    # The harbor registry resolves a 'latest' tag that these datasets no longer carry;
-                    # fall back to the TaskTrove HF tasks.parquet, which is where they actually live.
-                    print(
-                        f"[count-snapshots] harbor registry load failed ({reg_err}); "
-                        f"falling back to HF tasks.parquet for {args.registry_dataset}",
-                        file=sys.stderr,
-                    )
-                    task_dirs = load_tasks_from_hf_parquet(
-                        dataset_name=args.registry_dataset,
-                        n_tasks=args.n_tasks,
-                        download_dir=args.download_dir,
-                        task_names=args.task_names,
-                        exclude_task_names=args.exclude_task_names,
-                    )
-        except Exception as e:
-            print(f"Error loading tasks: {e}", file=sys.stderr)
-            sys.exit(1)
+            except Exception as reg_err:
+                # The harbor registry resolves a 'latest' tag that these datasets no longer carry;
+                # fall back to the TaskTrove HF tasks.parquet, which is where they actually live.
+                print(
+                    f"[count-snapshots] harbor registry load failed ({reg_err}); "
+                    f"falling back to HF tasks.parquet for {args.registry_dataset}",
+                    file=sys.stderr,
+                )
+                task_dirs = load_tasks_from_hf_parquet(
+                    dataset_name=args.registry_dataset,
+                    n_tasks=args.n_tasks,
+                    download_dir=args.download_dir,
+                    task_names=args.task_names,
+                    exclude_task_names=args.exclude_task_names,
+                )
+    except Exception as e:
+        print(f"Error loading tasks: {e}", file=sys.stderr)
+        sys.exit(1)
 
-        if not task_dirs:
-            print("No tasks found matching the specified criteria.", file=sys.stderr)
-            sys.exit(1)
+    if not task_dirs:
+        print("No tasks found matching the specified criteria.", file=sys.stderr)
+        sys.exit(1)
 
-        print(f"Found {len(task_dirs)} tasks. Analyzing environments...")
+    print(f"Found {len(task_dirs)} tasks. Analyzing environments...")
 
-        # Analyze Dockerfiles
-        stats = analyze_task_dockerfiles(task_dirs)
+    # Analyze Dockerfiles
+    stats = analyze_task_dockerfiles(task_dirs)
 
     # Print results
     print_stats(stats, verbose=args.verbose)

@@ -303,20 +303,13 @@ def _import_harbor_components():
         from harbor.job import Job
         from harbor.models.agent.name import AgentName
         from harbor.models.environment_type import EnvironmentType
-        from harbor.models.job.config import JobConfig, RetryConfig
-
-        try:
-            from harbor.models.job.config import (
-                AgentConfig,
-                EnvironmentConfig,
-                VerifierConfig,
-            )
-        except ImportError:
-            from harbor.models.trial.config import (
-                AgentConfig,
-                EnvironmentConfig,
-                VerifierConfig,
-            )
+        from harbor.models.job.config import (
+            AgentConfig,
+            EnvironmentConfig,
+            JobConfig,
+            RetryConfig,
+            VerifierConfig,
+        )
         from scripts.harbor._harbor_compat import (
             LocalDatasetConfig,
             OrchestratorEvent,
@@ -609,12 +602,12 @@ def _run_oracle_solution_check(
         override_storage_mb=(disk_gb * 1024) if disk_gb else None,
     )
     job_config.verifier = VerifierConfig(override_timeout_sec=verifier_timeout)
-    dataset_config = LocalDatasetConfig(path=dataset_root)
-    if missing_solution:
-        dataset_config.exclude_task_names = sorted(
-            task.name for task in missing_solution
+    job_config.datasets = [
+        LocalDatasetConfig(
+            path=dataset_root,
+            task_names=sorted(task.name for task in candidates),
         )
-    job_config.datasets = [dataset_config]
+    ]
 
     job = create_job(Job, job_config)
     job_dir = job.job_dir
@@ -705,13 +698,7 @@ def parse_args(argv: Optional[Iterable[str]] = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Validate Daytona builds for HF task dataset and upload successes"
     )
-    source_group = p.add_mutually_exclusive_group(required=True)
-    source_group.add_argument("--repo_id", help="HF dataset repo id (org/name)")
-    source_group.add_argument(
-        "--tasks_parquet",
-        type=Path,
-        help="Local TaskTrove tasks.parquet to extract without a Hub round trip",
-    )
+    p.add_argument("--repo_id", required=True, help="HF dataset repo id (org/name)")
     p.add_argument("--revision", default=None, help="Optional dataset revision/commit")
     p.add_argument(
         "--extract_dir",
@@ -858,27 +845,14 @@ def main(argv: Optional[Iterable[str]] = None) -> None:
         else Path(tempfile.mkdtemp(prefix="tasks_extracted_"))
     )
 
-    source_label = (
-        str(args.tasks_parquet)
-        if args.tasks_parquet is not None
-        else f"{args.repo_id} rev={args.revision or '<latest>'}"
+    CONSOLE.print(
+        f"[bold cyan][extract][/bold cyan] Repo: {args.repo_id} rev={args.revision or '<latest>'}"
     )
-    CONSOLE.print(f"[bold cyan][extract][/bold cyan] Source: {source_label}")
     CONSOLE.print(f"[bold cyan][extract][/bold cyan] Target directory: {extract_dir}")
     CONSOLE.print(
         f"[bold cyan][stages][/bold cyan] Running: {', '.join(stages) if stages else '(none — upload-only)'}"
     )
-    if args.tasks_parquet is not None:
-        extract_dir.mkdir(parents=True, exist_ok=True)
-        tpc.from_parquet(
-            str(args.tasks_parquet),
-            base=str(extract_dir),
-            on_exist="overwrite",
-            max_workers=max(1, min(int(args.processes), 8)),
-            batch_size=32,
-        )
-    else:
-        _extract_hf_dataset(args.repo_id, args.revision, extract_dir)
+    _extract_hf_dataset(args.repo_id, args.revision, extract_dir)
 
     tasks = _discover_tasks(extract_dir)
     CONSOLE.print(f"[cyan][validate][/cyan] Found {len(tasks)} candidate tasks")
@@ -1027,8 +1001,6 @@ def main(argv: Optional[Iterable[str]] = None) -> None:
         )
     else:
         target_repo = args.target_repo or args.repo_id
-        if target_repo is None:
-            raise ValueError("--target_repo is required when uploading a local Parquet")
         token = args.token or os.environ.get("HF_TOKEN")
         CONSOLE.print(
             f"[bold magenta][upload][/bold magenta] Uploading {len(final_tasks)} tasks to {target_repo}"

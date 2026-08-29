@@ -5312,6 +5312,7 @@ dev = [
     { name = "marin-style" },
     { name = "matplotlib" },
     { name = "pytest" },
+    { name = "sympy" },
 ]
 
 [package.metadata]
@@ -5410,6 +5411,7 @@ dev = [
     { name = "marin-style", git = "https://github.com/marin-community/marin-style?rev=ccbf03e7ca58486d61fff7a4e73031673d7fd8a4" },
     { name = "matplotlib" },
     { name = "pytest" },
+    { name = "sympy", specifier = ">=1.13.3,<1.15" },
 ]
 
 [[package]]

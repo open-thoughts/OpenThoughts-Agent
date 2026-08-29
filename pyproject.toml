@@ -189,6 +189,7 @@ dev = [
     "marin-style @ git+https://github.com/marin-community/marin-style@ccbf03e7ca58486d61fff7a4e73031673d7fd8a4",
     "marin-iris @ git+https://github.com/marin-community/marin.git@839e5e9e18299d750e6009b58f4535f77f9edafa#subdirectory=lib/iris",
     "pytest",
+    "sympy>=1.13.3,<1.15",
 ]
 
 [tool.uv]

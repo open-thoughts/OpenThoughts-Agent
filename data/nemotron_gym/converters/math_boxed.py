@@ -31,6 +31,10 @@ _NUMERIC_SCALAR = re.compile(
     r"^[+\-]?(?:\d+(?:\.\d*)?|\.\d+)(?:/[+\-]?\d+(?:\.\d*)?)?(?:[eE][+\-]?\d+)?%?$"
 )
 _OUTER_MATH_DELIMITERS = ((r"\(", r"\)"), (r"\[", r"\]"), ("$$", "$$"))
+_LATEX_SCALAR_COMMAND = re.compile(
+    r"\\(?:frac|sqrt|sin|cos|tan|log|ln|exp|pi|theta|alpha|beta|gamma|"
+    r"delta|lambda|mu|sigma|phi|omega|infty|cdot|times|overline|bar|hat)\b"
+)
 
 
 def _single_math_span(value: str) -> bool:
@@ -170,6 +174,24 @@ def answer_type(expected: str) -> str:
         return "text"
     if single_math_span and not any(
         token in value for token in (r"\text", r"\begin", r"\end")
+    ):
+        return "scalar"
+    if (
+        _LATEX_SCALAR_COMMAND.search(value)
+        and len(_top_level_parts(value, ",")) == 1
+        and len(equation_parts) == 1
+        and not any(
+            token in value
+            for token in (
+                r"\text",
+                r"\begin",
+                r"\end",
+                r"\in ",
+                r"\subset",
+                r"\lor",
+                " or ",
+            )
+        )
     ):
         return "scalar"
     if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", value):

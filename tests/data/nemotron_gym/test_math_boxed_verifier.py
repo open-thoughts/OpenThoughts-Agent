@@ -58,6 +58,7 @@ def test_declared_type_fails_closed(verifier) -> None:
         (r"z = (0, e^{\pi i / 3}, e^{2 \pi i / 3})", "text"),
         (r"2t = \frac{\pi}{4} + k\pi, k \in \mathbb{Z}", "text"),
         ("3/4", "scalar"),
+        (r"\frac{2\sqrt{3}\pi^{3}}{27}", "scalar"),
         ("No solution", "text"),
     ],
 )

@@ -50,6 +50,24 @@ rsync -avz --progress -e "ssh -i ~/.ssh/id_ed25519_jsc -4" \
 - **Never `find` or `du` on Jupiter GPFS** (`/e/scratch`, `/e/data1`) — `stat`-walks stall the SSH session for minutes. Locate logs/dirs via canonical paths + depth-1 `ls -td <dir>/*JOBID*`, `ls | wc -l`, or `squeue -j JOBID -o '%Z'` (the `%Z` workdir). Same caution on Perlmutter/Leonardo parallel FS.
 - **Cleanup subagents must bake these rules into their prompt** (no inherited memory): never `du`/`find` to size or locate; **detach** long `rm -rf` (`nohup … &` or a tmux session logging `RM_DONE <dir> exit=$?`) and EXIT — do NOT poll a multi-hundred-thousand-file GPFS delete (idempotent/resumable).
 
+## Image-backed RL trial artifacts
+
+RL configs can set `container.artifact_store.enabled: true`. The launcher creates a sparse ext4 image under the durable inner run root, and each chain link mounts it on the Ray head before Apptainer and Ray start. The SkyRL entrypoint and Harbor coordinators are pinned to that node. Check `artifact_authority.json` for the active Slurm job, node, mount, and trial paths.
+
+Never mount `artifact_store.img` from a login node while its Slurm link is running. The image has one read-write authority, enforced by `artifact_store.img.lock`; a second mount can observe inconsistent ext4 metadata. Live inspection must run through the recorded node and mount:
+
+```bash
+srun --overlap --jobid <job_id> -w <node> -N1 -n1 ls <mount>/trace_jobs
+```
+
+After the link exits, repository readers mount the image read-only and release it automatically. For an ad-hoc inspection, use the same helper instead of a loop mount:
+
+```bash
+python -m hpc.artifact_store <run>/artifact_store.img
+```
+
+Every link requests `SIGTERM` 180 seconds before walltime. The batch shell forwards it to MarinSkyRL, waits for cooperative shutdown, then syncs and unmounts the image. A successor obtains the same writer lock, runs `e2fsck -p`, and remounts before resume.
+
 ## Inode quota (the binding constraint) — EDQUOT can masquerade as sig53
 `/e/scratch/jureap59` has a **project-shared inode quota** (~8.0M soft / 8.8M hard, shared across all jureap59 members, 2–4h lag). Datagen jobs create thousands of trial subdirs → inodes bind long before bytes.
 - **Inspect:** `jutil project dataquota -p jureap59 | grep exa_scratch` (project), `df -i /e/scratch` (live), `du -s --inodes <subdir>` (mine — avoid on huge trees).

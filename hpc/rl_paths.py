@@ -8,6 +8,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Mapping, Sequence
 
+from hpc.artifact_store import ArtifactStorePaths, paths_for_run
 from hpc.experiment_path_names import numbered_experiment_fork_pattern
 
 
@@ -97,6 +98,7 @@ class RLRunPaths:
     resume_mode: RLResumeMode
     resume_path: Path | None
     resume_policy: RLResumePolicy
+    artifact_store: ArtifactStorePaths | None = None
 
     def describe(self) -> str:
         if self.resume_path is not None:
@@ -181,10 +183,18 @@ def _validate_checkpoint_world_size(
 class RLPathManager:
     """Own checkpoint discovery and all durable RL path resolution."""
 
-    def __init__(self, job_name: str, canonical_root: Path, launch_root: Path):
+    def __init__(
+        self,
+        job_name: str,
+        canonical_root: Path,
+        launch_root: Path,
+        *,
+        artifact_store_enabled: bool = False,
+    ):
         self.job_name = job_name
         self.canonical_root = canonical_root.expanduser().resolve()
         self.launch_root = launch_root.expanduser().resolve()
+        self.artifact_store_enabled = artifact_store_enabled
 
     def resolve(
         self,
@@ -493,11 +503,21 @@ class RLPathManager:
             if EXPORT_PATH_KEY in overrides
             else trainer_root / EXPORTS_SUBDIR
         )
-        trials_dir = (
-            _absolute_path(overrides[TRIALS_DIR_KEY])
-            if TRIALS_DIR_KEY in overrides
-            else trainer_root / TRACE_JOBS_SUBDIR
-        )
+        artifact_store = None
+        if self.artifact_store_enabled:
+            if TRIALS_DIR_KEY in overrides:
+                raise CheckpointLayoutError(
+                    "container.artifact_store.enabled=true owns terminal_bench_config.trials_dir; "
+                    "remove the explicit trials_dir override"
+                )
+            artifact_store = paths_for_run(trainer_root)
+            trials_dir = artifact_store.trials
+        else:
+            trials_dir = (
+                _absolute_path(overrides[TRIALS_DIR_KEY])
+                if TRIALS_DIR_KEY in overrides
+                else trainer_root / TRACE_JOBS_SUBDIR
+            )
         return RLRunPaths(
             job_name=self.job_name,
             checkpoint_dir=checkpoint_dir,
@@ -506,4 +526,5 @@ class RLPathManager:
             resume_mode=resume_mode,
             resume_path=resume_path,
             resume_policy=resume_policy,
+            artifact_store=artifact_store,
         )

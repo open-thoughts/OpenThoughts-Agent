@@ -48,6 +48,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Sequence
 
+from hpc.artifact_store import mounted, resolve_trials_root
+
 
 # ---------------------------------------------------------------------------
 # Harbor monkeypatches (preserved from the previous implementation). These make
@@ -1110,9 +1112,7 @@ def resolve_literal_inclusion(
     return (False, [])
 
 
-def main() -> None:
-    args = _parse_args()
-
+def _run_export(args: argparse.Namespace) -> None:
     job_dir = Path(args.job_dir).expanduser().resolve()
     if not job_dir.exists() or not job_dir.is_dir():
         raise SystemExit(f"job_dir does not exist or is not a directory: {job_dir}")
@@ -1125,7 +1125,7 @@ def main() -> None:
     # BEFORE export. Verify-or-skip: only steps whose token COUNTS match a
     # correlated record are enriched. No-op for non-literal jobs.
     include_literal_tokens, literal_logs = resolve_literal_inclusion(
-        str(job_dir),
+        getattr(args, "literal_discovery_root", str(job_dir)),
         literal_log=args.literal_log,
         include_literal_tokens=bool(args.include_literal_tokens),
         no_literal_tokens=bool(args.no_literal_tokens),
@@ -1245,6 +1245,26 @@ def main() -> None:
         )
         register_trace_dataset_in_supabase(args.repo_id, dataset_type=args.dataset_type)
         print(f"[trace-export] Supabase registration complete for {args.repo_id}.")
+
+
+def main() -> None:
+    """Export a legacy tree directly or mount an inactive image for the read."""
+    args = _parse_args()
+    requested_root = Path(args.job_dir).expanduser().resolve()
+    if not requested_root.is_dir():
+        raise SystemExit(
+            f"job_dir does not exist or is not a directory: {requested_root}"
+        )
+
+    kind, source = resolve_trials_root(requested_root)
+    if kind == "bare":
+        _run_export(args)
+        return
+
+    args.literal_discovery_root = str(requested_root)
+    with mounted(source, mode="ro") as image_root:
+        args.job_dir = str(image_root)
+        _run_export(args)
 
 
 if __name__ == "__main__":

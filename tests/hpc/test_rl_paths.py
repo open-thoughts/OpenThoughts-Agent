@@ -74,6 +74,35 @@ def test_new_run_uses_canonical_state_root_after_artifact_collision(
     assert resolved.checkpoint_dir == canonical_root / JOB_NAME / "checkpoints"
 
 
+def test_artifact_store_moves_only_the_trial_tree_under_the_image_mount(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / JOB_NAME
+
+    resolved = RLPathManager(
+        JOB_NAME, root, root, artifact_store_enabled=True
+    ).resolve()
+
+    run_root = root / JOB_NAME
+    assert resolved.checkpoint_dir == run_root / "checkpoints"
+    assert resolved.export_dir == run_root / "exports"
+    assert resolved.artifact_store is not None
+    assert resolved.artifact_store.image == run_root / "artifact_store.img"
+    assert resolved.artifact_store.mount == run_root / "artifact_mnt"
+    assert resolved.trials_dir == run_root / "artifact_mnt" / "trace_jobs"
+
+
+def test_artifact_store_rejects_an_independent_trials_override(tmp_path: Path) -> None:
+    root = tmp_path / JOB_NAME
+
+    with pytest.raises(
+        CheckpointLayoutError, match="owns terminal_bench_config.trials_dir"
+    ):
+        RLPathManager(JOB_NAME, root, root, artifact_store_enabled=True).resolve(
+            terminal_bench_config={"trials_dir": str(tmp_path / "other")}
+        )
+
+
 def test_explicit_fresh_launch_uses_the_launch_root(tmp_path: Path) -> None:
     canonical_root = tmp_path / JOB_NAME
     launch_root = tmp_path / f"{JOB_NAME}_2"

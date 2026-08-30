@@ -136,6 +136,7 @@ python -m scripts.harbor.make_and_upload_trace_dataset \
   --repo_id penfever/<job_name> --episodes last --skip_register
 ```
 **Never subsample or cap**: upload the full trial set. The script reads the inner `<job>/<job>` `trace_jobs/`.
+For image-backed Jupiter runs, pass the same inner run root. The exporter detects `artifact_store.img`, refuses an unsafe mount while a writer lock is active, mounts it read-only after the link exits, and unmounts it when export finishes. Legacy bare `trace_jobs/` runs keep the existing path.
 
 > `make_and_upload_trace_dataset` buffers the full dataset; `chunk_size` does not bound peak RAM. Large login-node
 > uploads can OOM; do not respond by sampling.
@@ -158,6 +159,7 @@ cp $EXPERIMENTS_DIR/<job_name>/logs/<job_name>_*.out $UPLOAD_DIR/training_logs/
 hf upload laion/<job_name>-<step>-<size> $UPLOAD_DIR . --repo-type=model   # additive
 ```
 Produces `metrics.csv`, `vllm_metrics.csv`, `trial_stats.csv`, `report.md`, `reward_plot.png`.
+The metrics reader also detects a missing `<run>/trace_jobs` beside `artifact_store.img` and mounts the inactive image read-only for trial statistics.
 **WARNING:** never use `huggingface_hub.upload_folder()` without `delete_patterns=[]` — it deletes files absent
 locally and clobbers the weights. `hf upload` is additive (safe).
 

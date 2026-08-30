@@ -39,6 +39,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from hpc.artifact_store import open_trials_path
+
 
 def strip_ansi(text: str) -> str:
     """Remove ANSI escape codes from text."""
@@ -1825,20 +1827,26 @@ def main():
         else:
             trace_jobs_dir = find_trace_jobs_dir(log_folder)
 
-        if trace_jobs_dir and trace_jobs_dir.is_dir():
-            print(f"\nParsing result.json files from: {trace_jobs_dir}")
-            trial_data = parse_result_files(trace_jobs_dir)
-            if trial_data:
-                print(f"  Parsed {len(trial_data)} trial results")
-                trial_stats_result = compute_trial_stats(trial_data)
+        if trace_jobs_dir:
+            with open_trials_path(trace_jobs_dir) as readable_trials_dir:
+                if readable_trials_dir.is_dir():
+                    print(f"\nParsing result.json files from: {readable_trials_dir}")
+                    trial_data = parse_result_files(readable_trials_dir)
+                    if trial_data:
+                        print(f"  Parsed {len(trial_data)} trial results")
+                        trial_stats_result = compute_trial_stats(trial_data)
 
-                # Save trial data CSV
-                trial_df = pd.DataFrame(trial_data)
-                trial_csv_path = output_folder / f"{ts}_trial_results.csv"
-                trial_df.to_csv(trial_csv_path, index=False)
-                print(f"Saved trial results to: {trial_csv_path}")
-            else:
-                print("  No trial results found")
+                        # Save trial data CSV
+                        trial_df = pd.DataFrame(trial_data)
+                        trial_csv_path = output_folder / f"{ts}_trial_results.csv"
+                        trial_df.to_csv(trial_csv_path, index=False)
+                        print(f"Saved trial results to: {trial_csv_path}")
+                    else:
+                        print("  No trial results found")
+                else:
+                    print(
+                        "\nNo trace_jobs directory found; skipping per-trial analysis"
+                    )
         else:
             print("\nNo trace_jobs directory found; skipping per-trial analysis")
 

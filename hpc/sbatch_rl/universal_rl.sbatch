@@ -7,6 +7,7 @@
 #SBATCH --job-name={job_name}
 #SBATCH --mail-type=END,TIME_LIMIT,FAIL
 #SBATCH --mail-user={email_address}
+#SBATCH --signal=B:TERM@180
 {sbatch_extra_directives}
 
 # ==============================================================================
@@ -232,7 +233,81 @@ cleanup_ray_logs() {
 
   echo "Ray log preservation complete"
 }
-trap cleanup_ray_logs EXIT
+
+ARTIFACT_STORE_ENABLED="{artifact_store_enabled}"
+ARTIFACT_STORE_IMAGE="{artifact_store_image}"
+ARTIFACT_STORE_MOUNT="{artifact_store_mount}"
+ARTIFACT_STORE_MOUNTED=0
+RL_RUNNER_PID=""
+
+cleanup_artifact_store() {
+  if [[ "$ARTIFACT_STORE_MOUNTED" != "1" ]]; then
+    return
+  fi
+  echo "Flushing artifact store: $ARTIFACT_STORE_IMAGE"
+  if ! sync; then
+    echo "FATAL: sync failed for artifact store $ARTIFACT_STORE_IMAGE" >&2
+    return 1
+  fi
+  if ! fusermount3 -u "$ARTIFACT_STORE_MOUNT"; then
+    echo "FATAL: could not unmount artifact store $ARTIFACT_STORE_MOUNT" >&2
+    return 1
+  fi
+  ARTIFACT_STORE_MOUNTED=0
+  flock -u 9 || true
+  exec 9>&-
+  echo "Artifact store unmounted"
+}
+
+cleanup_job() {
+  local status=$?
+  local cleanup_status=0
+  trap - EXIT TERM
+  set +e
+  cleanup_ray_logs || cleanup_status=1
+  cleanup_artifact_store || cleanup_status=1
+  if [[ "$status" == "0" ]] && [[ "$cleanup_status" != "0" ]]; then
+    status=$cleanup_status
+  fi
+  exit "$status"
+}
+
+forward_termination() {
+  echo "Received SIGTERM; forwarding it to the RL runner"
+  if [[ -n "$RL_RUNNER_PID" ]] && kill -0 "$RL_RUNNER_PID" 2>/dev/null; then
+    kill -TERM "$RL_RUNNER_PID"
+  else
+    exit 143
+  fi
+}
+
+trap cleanup_job EXIT
+trap forward_termination TERM
+
+if [[ "$ARTIFACT_STORE_ENABLED" == "1" ]]; then
+  if [[ ! -f "$ARTIFACT_STORE_IMAGE" ]]; then
+    echo "FATAL: artifact-store image is missing: $ARTIFACT_STORE_IMAGE" >&2
+    exit 1
+  fi
+  mkdir -p "$ARTIFACT_STORE_MOUNT"
+  exec 9>"${ARTIFACT_STORE_IMAGE}.lock"
+  if ! flock -n 9; then
+    echo "FATAL: artifact store already has an active writer: $ARTIFACT_STORE_IMAGE" >&2
+    exit 1
+  fi
+  set +e
+  e2fsck -p "$ARTIFACT_STORE_IMAGE"
+  E2FSCK_STATUS=$?
+  set -e
+  if [[ "$E2FSCK_STATUS" -gt 1 ]]; then
+    echo "FATAL: e2fsck failed for $ARTIFACT_STORE_IMAGE (status $E2FSCK_STATUS)" >&2
+    exit "$E2FSCK_STATUS"
+  fi
+  fuse2fs -o rw,allow_other "$ARTIFACT_STORE_IMAGE" "$ARTIFACT_STORE_MOUNT"
+  ARTIFACT_STORE_MOUNTED=1
+  mkdir -p "$ARTIFACT_STORE_MOUNT/trace_jobs"
+  echo "Artifact store mounted at $ARTIFACT_STORE_MOUNT"
+fi
 
 # --- SSH Tunneling (JSC clusters only) ---
 {ssh_tunnel_setup}
@@ -268,4 +343,17 @@ else
 fi
 echo "========================================"
 
-python -m hpc.rl_launch_utils --config "{config_path}"
+python -m hpc.rl_launch_utils --config "{config_path}" &
+RL_RUNNER_PID=$!
+set +e
+while true; do
+  wait "$RL_RUNNER_PID"
+  RL_STATUS=$?
+  if ! kill -0 "$RL_RUNNER_PID" 2>/dev/null; then
+    break
+  fi
+  echo "RL runner is still shutting down; continuing to wait"
+done
+set -e
+RL_RUNNER_PID=""
+exit "$RL_STATUS"

@@ -226,6 +226,10 @@ rollout:
     cpus_per_coordinator: 8
 
 container:
+  artifact_store:
+    enabled: true
+    size: 1T
+    inodes: 50000000
   sif: /e/scratch/jureap59/feuer1/containers/skyrl_megatron_vllm0202rc0_r3.sif
   overlays:
     - /e/scratch/jureap59/feuer1/containers/skyrl_titan_overlay.img

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import shlex
 import stat
 import subprocess
@@ -25,6 +26,12 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
+from hpc.artifact_store import (
+    DEFAULT_IMAGE_SIZE,
+    DEFAULT_INODE_COUNT,
+    ensure_image,
+    write_authority_record,
+)
 from hpc.checkpoint_utils import is_huggingface_repo, pre_download_model
 from hpc.hf_utils import is_hf_dataset_path
 from hpc.launch_utils import get_daytona_api_key_override
@@ -878,6 +885,12 @@ class RLJobConfig:
     # Ray object store size in GB (default: 40)
     ray_object_store_gb: float = 40.0
 
+    # Optional image-backed Harbor trial tree. The sbatch shell mounts the image
+    # before Ray/Apptainer starts and holds its writer lock for the whole link.
+    artifact_store_enabled: bool = False
+    artifact_store_image: Optional[str] = None
+    artifact_store_mount: Optional[str] = None
+
     # Post-training trace upload settings
     trace_upload_enabled: bool = False
     trace_upload_repo_org: str = "DCAgent"
@@ -999,6 +1012,29 @@ def validate_trace_upload_environment(
         )
 
 
+def _parse_artifact_store(container: Mapping[str, Any]) -> tuple[bool, str, int]:
+    """Validate the optional ``container.artifact_store`` launcher contract."""
+    raw = container.get("artifact_store") or {}
+    if not isinstance(raw, Mapping):
+        raise ValueError("container.artifact_store must be a mapping")
+    unknown = set(raw) - {"enabled", "size", "inodes"}
+    if unknown:
+        raise ValueError(
+            "unknown container.artifact_store fields: " + ", ".join(sorted(unknown))
+        )
+    enabled_value = raw.get("enabled", False)
+    if not isinstance(enabled_value, bool):
+        raise ValueError("container.artifact_store.enabled must be a boolean")
+    enabled = enabled_value
+    size = str(raw.get("size", DEFAULT_IMAGE_SIZE))
+    inodes = raw.get("inodes", DEFAULT_INODE_COUNT)
+    if isinstance(inodes, bool) or not isinstance(inodes, int) or inodes <= 0:
+        raise ValueError("container.artifact_store.inodes must be a positive integer")
+    if not size:
+        raise ValueError("container.artifact_store.size must be non-empty")
+    return enabled, size, inodes
+
+
 def prefetch_rl_model(model_path: str) -> str:
     """Populate the model cache while preserving a replayable SkyRL reference.
 
@@ -1051,6 +1087,9 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
     print(f"Loaded RL config from: {parsed.config_path}")
     container = parsed.raw.get("container") or {}
     validate_trace_upload_environment(parsed.terminal_bench or {}, container)
+    artifact_store_enabled, artifact_store_size, artifact_store_inodes = (
+        _parse_artifact_store(container)
+    )
 
     # --- RL container section (Apptainer SIF + overlays + pydeps + extra env) ---
     # Optional top-level `container:` block in the RL yaml. When present it lets a
@@ -1179,6 +1218,7 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
         job_name,
         exp_paths.canonical_root or exp_paths.root,
         exp_paths.root,
+        artifact_store_enabled=artifact_store_enabled,
     ).resolve(
         trainer_config=parsed.trainer,
         terminal_bench_config=parsed.terminal_bench or {},
@@ -1191,6 +1231,16 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
         expected_world_sizes=expected_world_sizes,
     )
     print(run_paths.describe())
+    if run_paths.artifact_store is not None:
+        ensure_image(
+            run_paths.artifact_store.image,
+            size=artifact_store_size,
+            inode_count=artifact_store_inodes,
+        )
+        print(
+            f"[artifact_store] image={run_paths.artifact_store.image}; "
+            f"mount={run_paths.artifact_store.mount}; trials={run_paths.trials_dir}"
+        )
 
     hydra_args = build_skyrl_hydra_args(parsed, exp_args, hpc, run_paths=run_paths)
     if passthrough_overrides:
@@ -1238,6 +1288,13 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
         if exp_args.get("rl_container_sif")
         else [],
         ray_object_store_gb=float(exp_args.get("ray_object_store_gb", 40.0)),
+        artifact_store_enabled=run_paths.artifact_store is not None,
+        artifact_store_image=(
+            str(run_paths.artifact_store.image) if run_paths.artifact_store else None
+        ),
+        artifact_store_mount=(
+            str(run_paths.artifact_store.mount) if run_paths.artifact_store else None
+        ),
     )
 
     # Populate trace upload settings from parsed terminal_bench config
@@ -1323,6 +1380,9 @@ fi"""
         "email_address": os.environ.get("EMAIL_ADDRESS", ""),
         "harbor_env": job_config.harbor_env,
         "daytona_api_key_override": get_daytona_api_key_override(exp_args),
+        "artifact_store_enabled": "1" if job_config.artifact_store_enabled else "0",
+        "artifact_store_image": job_config.artifact_store_image or "",
+        "artifact_store_mount": job_config.artifact_store_mount or "",
     }
 
     sbatch_text = substitute_template(template_text, substitutions)
@@ -1459,8 +1519,28 @@ class RLJobRunner:
     """
 
     def __init__(self, config: RLJobConfig):
+        if config.artifact_store_enabled and (
+            not config.artifact_store_image or not config.artifact_store_mount
+        ):
+            raise ValueError(
+                "artifact_store_enabled requires artifact_store_image and artifact_store_mount"
+            )
         self.config = config
         self._hpc = None
+        self._active_process: subprocess.Popen | None = None
+        self._termination_requested = False
+
+    def handle_termination(self, signum: int, _frame: object) -> None:
+        """Forward scheduler termination to the active trainer or uploader."""
+        process = self._active_process
+        if process is None or process.poll() is not None:
+            raise SystemExit(128 + signum)
+        self._termination_requested = True
+        print(
+            f"[RLJobRunner] Forwarding signal {signum} to child pid {process.pid}",
+            flush=True,
+        )
+        process.send_signal(signum)
 
     def _get_hpc(self):
         """Lazy-load HPC configuration."""
@@ -1560,6 +1640,14 @@ class RLJobRunner:
 
             traceback.print_exc()
 
+        if getattr(self, "_termination_requested", False):
+            print(
+                "[RLJobRunner] Trainer stopped for scheduler termination; "
+                "skipping post-run upload so the batch trap can flush artifacts.",
+                flush=True,
+            )
+            return 128 + signal.SIGTERM
+
         # On a crash, preserve Ray logs BEFORE the (potentially slow) trace
         # upload. The sbatch EXIT-trap also preserves them, but it only runs
         # after this Python process returns — and this process then blocks on
@@ -1574,7 +1662,11 @@ class RLJobRunner:
         upload_proc = self._launch_trace_upload(training_exit_code)
         if upload_proc is not None:
             print("[RLJobRunner] Waiting for trace upload to complete...", flush=True)
-            upload_exit_code = upload_proc.wait()
+            self._active_process = upload_proc
+            try:
+                upload_exit_code = upload_proc.wait()
+            finally:
+                self._active_process = None
             if upload_exit_code == 0:
                 print("[RLJobRunner] Trace upload completed successfully.", flush=True)
                 if self.config.trace_upload_cleanup:
@@ -1902,6 +1994,22 @@ class RLJobRunner:
             os.environ["RAY_ADDRESS"] = ray_cluster.address
             print(f"Ray cluster ready at {ray_cluster.address}", flush=True)
             print(f"Total GPUs available: {ray_cluster.total_gpus}", flush=True)
+            if self.config.artifact_store_enabled:
+                self._set_hydra_override(
+                    "trainer.entrypoint_node_ip", ray_cluster.head_ip, optional=True
+                )
+                record = write_authority_record(
+                    Path(self.config.artifact_store_image),
+                    job_id=os.environ.get("SLURM_JOB_ID", ""),
+                    node=ray_cluster.node_list[0],
+                    node_ip=ray_cluster.head_ip,
+                    mount_path=Path(self.config.artifact_store_mount),
+                )
+                print(
+                    "[artifact_store] Pinned the SkyRL entrypoint and Harbor coordinators "
+                    f"to the artifact authority node at {ray_cluster.head_ip}; record={record}",
+                    flush=True,
+                )
 
             # Enable distributed containers for multi-node local backend jobs
             # This allows Harbor to spread container workload across all Ray nodes
@@ -2146,8 +2254,22 @@ class RLJobRunner:
 
         print(f"\nExecuting command with srun: {' '.join(srun_cmd)}", flush=True)
 
-        result = subprocess.run(srun_cmd, cwd=cwd)
-        return result.returncode
+        process = subprocess.Popen(srun_cmd, cwd=cwd)
+        self._active_process = process
+        try:
+            return process.wait()
+        finally:
+            self._active_process = None
+
+    def _set_hydra_override(self, key: str, value: object, *, optional: bool) -> None:
+        """Replace one Hydra value while preserving all unrelated arguments."""
+        retained = [
+            argument
+            for argument in self.config.skyrl_hydra_args
+            if argument.lstrip("+").partition("=")[0] != key
+        ]
+        prefix = "++" if optional else ""
+        self.config.skyrl_hydra_args = [*retained, f"{prefix}{key}={value}"]
 
 
 def run_rl_job_main():
@@ -2167,6 +2289,7 @@ def run_rl_job_main():
 
     config = RLJobConfig(**config_dict)
     runner = RLJobRunner(config)
+    signal.signal(signal.SIGTERM, runner.handle_termination)
     sys.exit(runner.run())
 
 

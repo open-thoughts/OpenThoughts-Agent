@@ -147,9 +147,8 @@ def test_rl_template_mounts_before_container_setup_and_forwards_term() -> None:
     template = Path("hpc/sbatch_rl/universal_rl.sbatch").read_text()
 
     assert "#SBATCH --signal=B:TERM@180" in template
-    assert template.index("fuse2fs -o rw,allow_other") < template.index(
-        "setup_container_runtime"
-    )
+    assert template.index("fuse2fs -o rw") < template.index("setup_container_runtime")
+    assert "allow_other" not in template
     assert 'mountpoint -q "$ARTIFACT_STORE_MOUNT"' in template
     assert 'mkdir "$ARTIFACT_STORE_LEASE"' in template
     assert 'kill -TERM "$RL_RUNNER_PID"' in template

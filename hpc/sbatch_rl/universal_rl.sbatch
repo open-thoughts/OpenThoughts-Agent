@@ -348,7 +348,7 @@ if [[ "$ARTIFACT_STORE_ENABLED" == "1" ]]; then
     echo "FATAL: e2fsck failed for $ARTIFACT_STORE_IMAGE (status $E2FSCK_STATUS)" >&2
     exit "$E2FSCK_STATUS"
   fi
-  fuse2fs -o rw,allow_other "$ARTIFACT_STORE_IMAGE" "$ARTIFACT_STORE_MOUNT"
+  fuse2fs -o rw "$ARTIFACT_STORE_IMAGE" "$ARTIFACT_STORE_MOUNT"
   if ! mountpoint -q "$ARTIFACT_STORE_MOUNT"; then
     echo "FATAL: fuse2fs returned without mounting $ARTIFACT_STORE_MOUNT" >&2
     exit 1

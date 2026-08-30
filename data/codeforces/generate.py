@@ -32,6 +32,9 @@ timeout_sec = 300.0
 
 [agent]
 timeout_sec = 600.0
+
+[environment]
+storage_mb = 4096
 """
 
 DOCKERFILE = """FROM ubuntu:24.04

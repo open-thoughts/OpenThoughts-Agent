@@ -75,6 +75,26 @@ def test_mounted_read_only_unmounts_after_the_reader(
     assert not mount_lease_path(image).exists()
 
 
+def test_mounted_read_write_uses_fakeroot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    image = tmp_path / "artifact_store.img"
+    image.touch()
+    mount_path = tmp_path / "mount"
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], *, check: bool):
+        calls.append(command)
+        return SimpleNamespace(returncode=0, args=command)
+
+    monkeypatch.setattr("hpc.artifact_store.subprocess.run", fake_run)
+
+    with mounted(image, mode="rw", mount_path=mount_path):
+        pass
+
+    assert ["fuse2fs", "-o", "rw,fakeroot", str(image), str(mount_path)] in calls
+
+
 def test_mounted_refuses_an_image_with_an_active_writer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -147,7 +167,9 @@ def test_rl_template_mounts_before_container_setup_and_forwards_term() -> None:
     template = Path("hpc/sbatch_rl/universal_rl.sbatch").read_text()
 
     assert "#SBATCH --signal=B:TERM@180" in template
-    assert template.index("fuse2fs -o rw") < template.index("setup_container_runtime")
+    assert template.index("fuse2fs -o rw,fakeroot") < template.index(
+        "setup_container_runtime"
+    )
     assert "allow_other" not in template
     assert 'mountpoint -q "$ARTIFACT_STORE_MOUNT"' in template
     assert 'mkdir "$ARTIFACT_STORE_LEASE"' in template

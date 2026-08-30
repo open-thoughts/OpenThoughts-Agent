@@ -54,7 +54,7 @@ rsync -avz --progress -e "ssh -i ~/.ssh/id_ed25519_jsc -4" \
 
 RL configs can set `container.artifact_store.enabled: true`. The launcher creates a sparse ext4 image under the durable inner run root, and each chain link mounts it below node-local `/tmp/otagent-artifact-stores` on the Ray head before Apptainer and Ray start. The live mount cannot reside below GPFS: Jupiter's `fusermount` refuses that filesystem even when `fuse2fs` reports success. The SkyRL entrypoint and Harbor coordinators are pinned to the mount node. Check `artifact_authority.json` for the active Slurm job, node, mount, and trial paths.
 
-Do not add `allow_other` to the FUSE options. Jupiter does not enable `user_allow_other` in `/etc/fuse.conf`, and every process that needs the mount already runs as the submitting user.
+Use `rw,fakeroot`, not `allow_other`, for the writer mount. A new ext4 root is owned by UID 0, so `fakeroot` is required for the submitting user to create `trace_jobs`. Jupiter does not enable `user_allow_other` in `/etc/fuse.conf`, and every process that needs the mount already runs as the submitting user.
 
 Never mount `artifact_store.img` from a login node while its Slurm link is running. The image has one read-write authority, enforced across hosts by `artifact_store.img.mount-lease` and on one host by `artifact_store.img.lock`; a second mount can observe inconsistent ext4 metadata. Live inspection must run through the recorded node and mount:
 

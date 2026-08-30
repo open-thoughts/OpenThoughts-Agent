@@ -193,8 +193,15 @@ def mounted(
                         raise subprocess.CalledProcessError(
                             check.returncode, check.args
                         )
+                mount_options = "rw,fakeroot" if mode == "rw" else "ro"
                 subprocess.run(
-                    ["fuse2fs", "-o", mode, str(image_path), str(resolved_mount)],
+                    [
+                        "fuse2fs",
+                        "-o",
+                        mount_options,
+                        str(image_path),
+                        str(resolved_mount),
+                    ],
                     check=True,
                 )
                 mount_check = subprocess.run(

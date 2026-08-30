@@ -364,35 +364,59 @@ def download_hf_dataset(
     """
     logger = setup_logging()
 
-    if not repo_id or not isinstance(repo_id, str):
-        raise ValueError("repo_id must be a non-empty string")
+    from hpc.hf_utils import parse_hf_dataset_selector
 
-    cache_path = os.environ.get(
-        "HF_CACHE_DIR", os.path.expanduser("~/.cache/huggingface/hub")
+    selector = parse_hf_dataset_selector(repo_id)
+    if selector is None:
+        raise ValueError(f"Invalid Hugging Face dataset selector: {repo_id!r}")
+    if (
+        revision is not None
+        and selector.revision is not None
+        and revision != selector.revision
+    ):
+        raise ValueError(
+            "revision conflicts with the revision embedded in the dataset selector"
+        )
+
+    cache_path = Path(
+        cache_dir
+        or os.environ.get(
+            "HF_CACHE_DIR", os.path.expanduser("~/.cache/huggingface/hub")
+        )
     )
-    logger.info(f"Downloading dataset: {repo_id}")
+    logger.info(f"Downloading dataset: {selector.canonical()}")
     logger.info(f"Cache directory: {cache_path}")
-    logger.info(f"Revision: {revision or 'latest'}")
+    resolved_revision = revision or selector.revision
+    logger.info(f"Revision: {resolved_revision or 'latest'}")
     logger.info(f"Use snapshot: {use_snapshot}")
 
     if use_snapshot:
         # Use snapshot_download for full repository download
         dataset_path = snapshot_download(
-            repo_id=repo_id,
+            repo_id=selector.repo_id,
             cache_dir=str(cache_path),
-            revision=revision,
+            revision=resolved_revision,
             local_files_only=local_files_only,
             repo_type="dataset",
+            allow_patterns=[f"{selector.subdir}/**"] if selector.subdir else None,
         )
+        if selector.subdir:
+            dataset_path = os.path.join(dataset_path, selector.subdir)
+            if not os.path.isdir(dataset_path):
+                raise FileNotFoundError(
+                    f"Dataset selector {repo_id!r} did not resolve a subdirectory"
+                )
         logger.info(f"Dataset downloaded via snapshot to: {dataset_path}")
 
     else:
+        if selector.subdir:
+            raise ValueError("dataset subdirectory selectors require use_snapshot=True")
         # Use load_dataset for dataset-specific download
         # Load the dataset to trigger download
         load_dataset(
-            repo_id,
+            selector.repo_id,
             cache_dir=str(cache_path),
-            revision=revision,
+            revision=resolved_revision,
             download_mode="reuse_dataset_if_exists"
             if local_files_only
             else "reuse_cache_if_exists",
@@ -400,11 +424,14 @@ def download_hf_dataset(
 
         # Find the actual dataset directory in the cache
         # The dataset is typically stored in a subdirectory of the cache
-        dataset_name = repo_id.replace("/", "___")
+        dataset_name = selector.repo_id.replace("/", "___")
         potential_paths = [
             cache_path / "downloads" / "extracted" / dataset_name,
-            cache_path / "downloads" / "extracted" / f"{dataset_name}-{revision}"
-            if revision
+            cache_path
+            / "downloads"
+            / "extracted"
+            / f"{dataset_name}-{resolved_revision}"
+            if resolved_revision
             else None,
             cache_path / "datasets" / dataset_name,
         ]

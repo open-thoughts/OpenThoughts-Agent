@@ -13,10 +13,13 @@ import os
 import re
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import quote
 
 # Default HuggingFace org for auto-derived repo IDs (override with env var)
 DEFAULT_HF_ORG = "DCAgent"
 HF_ORG_ENV_VAR = "DCAGENT_HF_ORG"
+HF_SELECTOR_REVISION_SEPARATOR = "@"
+HF_SELECTOR_SUBDIR_SEPARATOR = "::"
 
 
 @dataclass(frozen=True)
@@ -27,14 +30,37 @@ class HfDatasetSelector:
     revision: str | None = None
     subdir: str | None = None
 
+    def canonical(self) -> str:
+        revision = (
+            f"{HF_SELECTOR_REVISION_SEPARATOR}{self.revision}" if self.revision else ""
+        )
+        subdir = f"{HF_SELECTOR_SUBDIR_SEPARATOR}{self.subdir}" if self.subdir else ""
+        return f"{self.repo_id}{revision}{subdir}"
+
+    def cache_name(self) -> str:
+        """Return a reversible cache key containing repo, subdirectory, and revision."""
+        components = (
+            ("repo", self.repo_id),
+            ("subdir", self.subdir),
+            ("revision", self.revision),
+        )
+        encoded = (
+            (name, quote(value, safe="-._"))
+            for name, value in components
+            if value is not None
+        )
+        return "__".join(f"{name}-{len(value)}-{value}" for name, value in encoded)
+
 
 def parse_hf_dataset_selector(value: str) -> HfDatasetSelector | None:
     """Parse ``org/repo[@revision][::subdir]`` dataset selectors."""
     if not value or value.startswith(("./", "../", "/", "~")) or "\\" in value:
         return None
 
-    repo_revision, separator, subdir = value.partition("::")
-    repo_id, revision_separator, revision = repo_revision.partition("@")
+    repo_revision, separator, subdir = value.partition(HF_SELECTOR_SUBDIR_SEPARATOR)
+    repo_id, revision_separator, revision = repo_revision.partition(
+        HF_SELECTOR_REVISION_SEPARATOR
+    )
     if repo_id.count("/") != 1 or not all(part.strip() for part in repo_id.split("/")):
         return None
     if separator and (
@@ -64,6 +90,17 @@ def is_hf_dataset_path(path: str) -> bool:
         True if path appears to be an HF dataset identifier
     """
     return parse_hf_dataset_selector(path) is not None
+
+
+def resolve_hf_dataset_selector(value: str) -> HfDatasetSelector:
+    """Resolve a selector revision to an immutable Hub commit."""
+    selector = parse_hf_dataset_selector(value)
+    if selector is None:
+        raise ValueError(f"Invalid Hugging Face dataset selector: {value!r}")
+    from huggingface_hub import HfApi
+
+    info = HfApi().dataset_info(selector.repo_id, revision=selector.revision)
+    return HfDatasetSelector(selector.repo_id, info.sha, selector.subdir)
 
 
 def sanitize_hf_repo_id(repo_id: str, max_length: int = 96) -> str:

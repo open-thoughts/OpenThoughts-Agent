@@ -19,11 +19,8 @@ import argparse
 import shutil
 from pathlib import Path
 
-from hpc.hf_utils import is_raw_tasks_directory
+from hpc.hf_utils import is_raw_tasks_directory, resolve_dataset_path
 from scripts.harbor import tasks_parquet_converter as tpc
-
-# Lazy import to avoid requiring google.cloud unless needed.
-download_hf_dataset = None
 
 
 def copy_raw_tasks(source_dir: Path, output_dir: Path, on_exist: str = "skip") -> int:
@@ -137,24 +134,14 @@ def main() -> None:
         else:
             parquet_paths = [candidate_path.resolve()]
     else:
-        # Not a local path - treat as HuggingFace repo
-        global download_hf_dataset
-        if download_hf_dataset is None:
-            try:
-                from data.commons import download_hf_dataset as _download_hf_dataset  # type: ignore
-            except ModuleNotFoundError as exc:
-                raise RuntimeError(
-                    f"Cannot resolve '{parquet_input}' as a local file and failed to import data.commons "
-                    f"to download Hugging Face repos: {exc}"
-                ) from exc
-            download_hf_dataset = _download_hf_dataset
-
+        # Not a local path - treat as a Hugging Face dataset selector.
         print(
             f"[extract] Treating '{parquet_input}' as a Hugging Face dataset repo; downloading snapshot..."
         )
-        snapshot_dir = Path(
-            download_hf_dataset(parquet_input, revision=args.tasks_revision)
-        )
+        if args.tasks_revision and "@" not in parquet_input.partition("::")[0]:
+            repo, separator, subdir = parquet_input.partition("::")
+            parquet_input = f"{repo}@{args.tasks_revision}{separator}{subdir}"
+        snapshot_dir = Path(resolve_dataset_path(parquet_input))
 
         # Check if it's raw tasks or parquet with task_binary
         if is_raw_tasks_directory(snapshot_dir):

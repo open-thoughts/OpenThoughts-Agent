@@ -33,7 +33,7 @@ from hpc.artifact_store import (
     write_authority_record,
 )
 from hpc.checkpoint_utils import is_huggingface_repo, pre_download_model
-from hpc.hf_utils import is_hf_dataset_path
+from hpc.hf_utils import is_hf_dataset_path, resolve_hf_dataset_selector
 from hpc.launch_utils import get_daytona_api_key_override
 from hpc.rl_config_utils import (
     expected_rl_world_sizes,
@@ -366,7 +366,35 @@ def resolve_rl_train_data(
     on_exist: str = "skip",
     verbose: bool = True,
 ) -> List[str]:
+    """Resolve data paths while preserving the historical list-only API."""
+    return list(
+        resolve_rl_train_data_with_sources(
+            train_data,
+            scratch_dir=scratch_dir,
+            on_exist=on_exist,
+            verbose=verbose,
+        ).paths
+    )
+
+
+@dataclass(frozen=True)
+class ResolvedRLData:
+    """Local data paths paired with their immutable or local source references."""
+
+    paths: tuple[str, ...]
+    sources: tuple[str, ...]
+
+
+def resolve_rl_train_data_with_sources(
+    train_data: List[str],
+    scratch_dir: Optional[str] = None,
+    on_exist: str = "skip",
+    verbose: bool = True,
+) -> ResolvedRLData:
     """Resolve train_data paths, extracting HF datasets to local task directories.
+
+    ``sources`` preserves local inputs and replaces Hub inputs with canonical
+    selectors pinned to their resolved commit.
 
     SkyRL's TerminalBenchTaskDataset expects local directory paths where each
     subdirectory is a task containing an instruction.md file. This function:
@@ -389,7 +417,7 @@ def resolve_rl_train_data(
         ['/scratch/tasks/my-dataset', '/local/path/tasks']
     """
     if not train_data:
-        return []
+        return ResolvedRLData((), ())
 
     # Determine scratch directory for extracted tasks
     # IMPORTANT: Must use a shared filesystem visible to all compute nodes.
@@ -415,16 +443,16 @@ def resolve_rl_train_data(
     tasks_base = Path(scratch_dir) / "tasks"
 
     resolved_paths = []
+    sources = []
 
     for data_path in train_data:
         if is_hf_dataset_path(data_path):
-            # It's a HuggingFace dataset - extract to local directory
-            # Extract repo name from "org/repo-name" -> "repo-name"
-            repo_name = data_path.split("/")[-1]
-            output_dir = tasks_base / repo_name
+            selector = resolve_hf_dataset_selector(data_path)
+            canonical_source = selector.canonical()
+            output_dir = tasks_base / selector.cache_name()
 
             if verbose:
-                print(f"[rl_launch_utils] Extracting HF dataset: {data_path}")
+                print(f"[rl_launch_utils] Extracting HF dataset: {canonical_source}")
                 print(f"[rl_launch_utils] Output directory: {output_dir}")
 
             # Check if already extracted (when on_exist="skip")
@@ -434,6 +462,7 @@ def resolve_rl_train_data(
                         f"[rl_launch_utils] Tasks already extracted, skipping: {output_dir}"
                     )
                 resolved_paths.append(str(output_dir))
+                sources.append(canonical_source)
                 continue
 
             # Run extract_tasks_from_parquet
@@ -442,7 +471,7 @@ def resolve_rl_train_data(
                 "-m",
                 "scripts.datagen.extract_tasks_from_parquet",
                 "--parquet",
-                data_path,
+                canonical_source,
                 "--output_dir",
                 str(output_dir),
                 "--on_exist",
@@ -500,14 +529,16 @@ def resolve_rl_train_data(
             _fix_task_permissions(output_dir, verbose=verbose)
 
             resolved_paths.append(str(output_dir))
+            sources.append(canonical_source)
         else:
             # It's a local path - fix permissions just in case
             local_path = Path(data_path)
             if local_path.exists():
                 _fix_task_permissions(local_path, verbose=verbose)
             resolved_paths.append(data_path)
+            sources.append(data_path)
 
-    return resolved_paths
+    return ResolvedRLData(tuple(resolved_paths), tuple(sources))
 
 
 def _fix_task_permissions(task_dir: Path, verbose: bool = True) -> None:
@@ -837,6 +868,8 @@ class RLJobConfig:
     model_path: str = ""
     train_data: List[str] = field(default_factory=list)
     val_data: List[str] = field(default_factory=list)
+    train_data_sources: List[str] = field(default_factory=list)
+    val_data_sources: List[str] = field(default_factory=list)
 
     # Resource allocation
     num_nodes: int = 1
@@ -1131,9 +1164,12 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
         except (ValueError, SyntaxError):
             train_data_raw = [train_data_raw]
 
+    train_data_sources: list[str] = []
     if train_data_raw:
         print(f"Resolving train_data: {train_data_raw}")
-        resolved_train_data = resolve_rl_train_data(train_data_raw)
+        resolved_train = resolve_rl_train_data_with_sources(train_data_raw)
+        resolved_train_data = list(resolved_train.paths)
+        train_data_sources = list(resolved_train.sources)
         exp_args["train_data"] = resolved_train_data
         print(f"Resolved train_data: {resolved_train_data}")
 
@@ -1172,11 +1208,13 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
         except (ValueError, SyntaxError):
             val_data_raw = [val_data_raw]
 
+    val_data_sources: list[str] = []
     if val_data_raw:
         print(f"Resolving val_data: {val_data_raw}")
-        resolved_val_data = resolve_rl_train_data(val_data_raw)
-        exp_args["val_data"] = resolved_val_data
-        print(f"Resolved val_data: {resolved_val_data}")
+        resolved_val = resolve_rl_train_data_with_sources(val_data_raw)
+        exp_args["val_data"] = list(resolved_val.paths)
+        val_data_sources = list(resolved_val.sources)
+        print(f"Resolved val_data: {exp_args['val_data']}")
 
     # Pre-download model for RL jobs
     # SkyRL's FSDP and DeepSpeed strategies don't have built-in pre-download logic
@@ -1263,6 +1301,8 @@ def construct_rl_sbatch_script(exp_args: dict, hpc) -> RLLaunchArtifacts:
         model_path=exp_args.get("model_path", ""),
         train_data=exp_args.get("train_data", []),
         val_data=exp_args.get("val_data", []),
+        train_data_sources=train_data_sources,
+        val_data_sources=val_data_sources,
         num_nodes=num_nodes,
         gpus_per_node=gpus_per_node,
         cpus_per_node=cpus_per_node,

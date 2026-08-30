@@ -34,7 +34,6 @@ from pathlib import Path, PurePosixPath
 from typing import Iterator, Sequence
 from tqdm import tqdm
 from datasets import load_dataset
-from data.gcs_cache import gcs_cache
 
 # Optional heavy imports; provide clear error if missing when used.
 try:
@@ -384,8 +383,24 @@ def from_hf_dataset(
         shutil.rmtree(temp_parquet_dir, ignore_errors=True)
 
 
-@gcs_cache()
 def from_hf_dataset_hdf5(
+    dataset_name: str,
+    output_path: str | None = None,
+    compression: str = "gzip",
+    compression_opts: int = 4,
+) -> str:
+    """Run the GCS-cached HDF5 conversion without importing GCS for other operations."""
+    from data.gcs_cache import gcs_cache
+
+    return gcs_cache()(_from_hf_dataset_hdf5)(
+        dataset_name,
+        output_path=output_path,
+        compression=compression,
+        compression_opts=compression_opts,
+    )
+
+
+def _from_hf_dataset_hdf5(
     dataset_name: str,
     output_path: str | None = None,
     compression: str = "gzip",

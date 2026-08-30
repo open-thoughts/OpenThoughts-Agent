@@ -2,12 +2,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from contextlib import contextmanager
 import json
+import subprocess
 
 import pytest
 
 from hpc.artifact_store import (
     ArtifactStoreBusyError,
     ensure_image,
+    mount_lease_path,
+    mount_path_for_image,
     mounted,
     resolve_trials_root,
     write_authority_record,
@@ -66,8 +69,10 @@ def test_mounted_read_only_unmounts_after_the_reader(
 
     assert calls == [
         ["fuse2fs", "-o", "ro", str(image), str(mount_path)],
+        ["mountpoint", "-q", str(mount_path)],
         ["fusermount3", "-u", str(mount_path)],
     ]
+    assert not mount_lease_path(image).exists()
 
 
 def test_mounted_refuses_an_image_with_an_active_writer(
@@ -76,15 +81,44 @@ def test_mounted_refuses_an_image_with_an_active_writer(
     image = tmp_path / "artifact_store.img"
     image.touch()
 
-    def busy_lock(_file, operation: int):
-        if operation & 4:
-            raise BlockingIOError
+    mount_lease_path(image).mkdir()
 
-    monkeypatch.setattr("hpc.artifact_store.fcntl.flock", busy_lock)
-
-    with pytest.raises(ArtifactStoreBusyError, match="active writer"):
+    with pytest.raises(ArtifactStoreBusyError, match="active mount lease"):
         with mounted(image):
             pass
+
+
+def test_mount_path_is_stable_and_node_local(tmp_path: Path) -> None:
+    image = tmp_path / "run" / "artifact_store.img"
+
+    first = mount_path_for_image(image)
+    second = mount_path_for_image(image)
+
+    assert first == second
+    assert first.parent == Path("/tmp/otagent-artifact-stores")
+
+
+def test_mounted_fails_closed_when_fuse2fs_did_not_mount(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    image = tmp_path / "artifact_store.img"
+    image.touch()
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], *, check: bool):
+        calls.append(command)
+        return SimpleNamespace(
+            returncode=1 if command[0] == "mountpoint" else 0, args=command
+        )
+
+    monkeypatch.setattr("hpc.artifact_store.subprocess.run", fake_run)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        with mounted(image, mount_path=tmp_path / "mount"):
+            pass
+
+    assert ["fusermount3", "-u", str(tmp_path / "mount")] in calls
+    assert not mount_lease_path(image).exists()
 
 
 def test_authority_record_names_the_live_node_and_mount(tmp_path: Path) -> None:
@@ -116,6 +150,8 @@ def test_rl_template_mounts_before_container_setup_and_forwards_term() -> None:
     assert template.index("fuse2fs -o rw,allow_other") < template.index(
         "setup_container_runtime"
     )
+    assert 'mountpoint -q "$ARTIFACT_STORE_MOUNT"' in template
+    assert 'mkdir "$ARTIFACT_STORE_LEASE"' in template
     assert 'kill -TERM "$RL_RUNNER_PID"' in template
     assert template.index("sync") < template.index(
         'fusermount3 -u "$ARTIFACT_STORE_MOUNT"'

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
+import socket
 import subprocess
 import tempfile
 from contextlib import contextmanager
@@ -17,10 +19,12 @@ from typing import Iterator, Literal
 ARTIFACT_STORE_IMAGE = "artifact_store.img"
 ARTIFACT_STORE_MOUNT = "artifact_mnt"
 ARTIFACT_STORE_LOCK_SUFFIX = ".lock"
+ARTIFACT_STORE_MOUNT_LEASE_SUFFIX = ".mount-lease"
 ARTIFACT_STORE_AUTHORITY = "artifact_authority.json"
 TRACE_JOBS_SUBDIR = "trace_jobs"
 DEFAULT_IMAGE_SIZE = "1T"
 DEFAULT_INODE_COUNT = 50_000_000
+DEFAULT_MOUNT_ROOT = Path("/tmp/otagent-artifact-stores")
 
 
 class ArtifactStoreBusyError(RuntimeError):
@@ -43,13 +47,25 @@ class ArtifactStorePaths:
         return self.mount / TRACE_JOBS_SUBDIR
 
 
+def mount_path_for_image(
+    image_path: Path, *, mount_root: Path = DEFAULT_MOUNT_ROOT
+) -> Path:
+    """Return a stable node-local mount path for an artifact image."""
+    image_path = Path(image_path).absolute()
+    identity = hashlib.sha256(str(image_path).encode()).hexdigest()[:12]
+    return Path(mount_root) / f"{image_path.parent.name}-{identity}"
+
+
+def mount_lease_path(image_path: Path) -> Path:
+    """Return the cross-host lease directory for an image mount."""
+    return Path(f"{Path(image_path)}{ARTIFACT_STORE_MOUNT_LEASE_SUFFIX}")
+
+
 def paths_for_run(run_dir: Path) -> ArtifactStorePaths:
-    """Return the canonical artifact-store paths below one durable run root."""
+    """Return the durable image and its deterministic node-local mount path."""
     run_dir = Path(run_dir)
-    return ArtifactStorePaths(
-        image=run_dir / ARTIFACT_STORE_IMAGE,
-        mount=run_dir / ARTIFACT_STORE_MOUNT,
-    )
+    image = run_dir / ARTIFACT_STORE_IMAGE
+    return ArtifactStorePaths(image=image, mount=mount_path_for_image(image))
 
 
 def ensure_image(
@@ -135,42 +151,74 @@ def mounted(
     image_path = Path(image_path)
     if not image_path.is_file():
         raise FileNotFoundError(image_path)
-    lock_path = Path(f"{image_path}{ARTIFACT_STORE_LOCK_SUFFIX}")
-    requested_lock = fcntl.LOCK_SH if mode == "ro" else fcntl.LOCK_EX
+    lease_path = mount_lease_path(image_path)
+    try:
+        lease_path.mkdir()
+    except FileExistsError as error:
+        raise ArtifactStoreBusyError(
+            f"artifact store has an active mount lease: {image_path}"
+        ) from error
+    lease_owner = lease_path / "owner"
+    try:
+        lease_owner.write_text(
+            f"kind=reader\nhost={socket.gethostname()}\npid={os.getpid()}\n"
+        )
+        lock_path = Path(f"{image_path}{ARTIFACT_STORE_LOCK_SUFFIX}")
+        requested_lock = fcntl.LOCK_SH if mode == "ro" else fcntl.LOCK_EX
+        with lock_path.open("a+b") as lock_file:
+            try:
+                fcntl.flock(lock_file, requested_lock | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise ArtifactStoreBusyError(
+                    f"artifact store is mounted by an active writer: {image_path}"
+                ) from error
 
-    with lock_path.open("a+b") as lock_file:
-        try:
-            fcntl.flock(lock_file, requested_lock | fcntl.LOCK_NB)
-        except BlockingIOError as error:
-            raise ArtifactStoreBusyError(
-                f"artifact store is mounted by an active writer: {image_path}"
-            ) from error
+            temporary_mount = None
+            if mount_path is None:
+                temporary_mount = tempfile.TemporaryDirectory(
+                    prefix="otagent-artifacts-"
+                )
+                resolved_mount = Path(temporary_mount.name)
+            else:
+                resolved_mount = Path(mount_path)
+                resolved_mount.mkdir(parents=True, exist_ok=True)
 
-        temporary_mount = None
-        if mount_path is None:
-            temporary_mount = tempfile.TemporaryDirectory(prefix="otagent-artifacts-")
-            resolved_mount = Path(temporary_mount.name)
-        else:
-            resolved_mount = Path(mount_path)
-            resolved_mount.mkdir(parents=True, exist_ok=True)
-
-        mounted_ok = False
-        try:
-            if mode == "rw":
-                check = subprocess.run(["e2fsck", "-p", str(image_path)], check=False)
-                if check.returncode not in {0, 1}:
-                    raise subprocess.CalledProcessError(check.returncode, check.args)
-            subprocess.run(
-                ["fuse2fs", "-o", mode, str(image_path), str(resolved_mount)],
-                check=True,
-            )
-            mounted_ok = True
-            yield resolved_mount
-        finally:
-            if mounted_ok:
-                subprocess.run(["fusermount3", "-u", str(resolved_mount)], check=True)
-            if temporary_mount is not None:
-                temporary_mount.cleanup()
+            mounted_ok = False
+            try:
+                if mode == "rw":
+                    check = subprocess.run(
+                        ["e2fsck", "-p", str(image_path)], check=False
+                    )
+                    if check.returncode not in {0, 1}:
+                        raise subprocess.CalledProcessError(
+                            check.returncode, check.args
+                        )
+                subprocess.run(
+                    ["fuse2fs", "-o", mode, str(image_path), str(resolved_mount)],
+                    check=True,
+                )
+                mount_check = subprocess.run(
+                    ["mountpoint", "-q", str(resolved_mount)], check=False
+                )
+                if mount_check.returncode != 0:
+                    subprocess.run(
+                        ["fusermount3", "-u", str(resolved_mount)], check=False
+                    )
+                    raise subprocess.CalledProcessError(
+                        mount_check.returncode, mount_check.args
+                    )
+                mounted_ok = True
+                yield resolved_mount
+            finally:
+                if mounted_ok:
+                    subprocess.run(
+                        ["fusermount3", "-u", str(resolved_mount)], check=True
+                    )
+                if temporary_mount is not None:
+                    temporary_mount.cleanup()
+    finally:
+        lease_owner.unlink(missing_ok=True)
+        lease_path.rmdir()
 
 
 @contextmanager

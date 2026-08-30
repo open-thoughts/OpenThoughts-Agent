@@ -52,12 +52,12 @@ rsync -avz --progress -e "ssh -i ~/.ssh/id_ed25519_jsc -4" \
 
 ## Image-backed RL trial artifacts
 
-RL configs can set `container.artifact_store.enabled: true`. The launcher creates a sparse ext4 image under the durable inner run root, and each chain link mounts it on the Ray head before Apptainer and Ray start. The SkyRL entrypoint and Harbor coordinators are pinned to that node. Check `artifact_authority.json` for the active Slurm job, node, mount, and trial paths.
+RL configs can set `container.artifact_store.enabled: true`. The launcher creates a sparse ext4 image under the durable inner run root, and each chain link mounts it below node-local `/tmp/otagent-artifact-stores` on the Ray head before Apptainer and Ray start. The live mount cannot reside below GPFS: Jupiter's `fusermount` refuses that filesystem even when `fuse2fs` reports success. The SkyRL entrypoint and Harbor coordinators are pinned to the mount node. Check `artifact_authority.json` for the active Slurm job, node, mount, and trial paths.
 
-Never mount `artifact_store.img` from a login node while its Slurm link is running. The image has one read-write authority, enforced by `artifact_store.img.lock`; a second mount can observe inconsistent ext4 metadata. Live inspection must run through the recorded node and mount:
+Never mount `artifact_store.img` from a login node while its Slurm link is running. The image has one read-write authority, enforced across hosts by `artifact_store.img.mount-lease` and on one host by `artifact_store.img.lock`; a second mount can observe inconsistent ext4 metadata. Live inspection must run through the recorded node and mount:
 
 ```bash
-srun --overlap --jobid <job_id> -w <node> -N1 -n1 ls <mount>/trace_jobs
+srun --mpi=none --overlap --jobid <job_id> -w <node> -N1 -n1 ls <mount>/trace_jobs
 ```
 
 After the link exits, repository readers mount the image read-only and release it automatically. For an ad-hoc inspection, use the same helper instead of a loop mount:

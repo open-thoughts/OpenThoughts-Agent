@@ -88,8 +88,8 @@ def test_artifact_store_moves_only_the_trial_tree_under_the_image_mount(
     assert resolved.export_dir == run_root / "exports"
     assert resolved.artifact_store is not None
     assert resolved.artifact_store.image == run_root / "artifact_store.img"
-    assert resolved.artifact_store.mount == run_root / "artifact_mnt"
-    assert resolved.trials_dir == run_root / "artifact_mnt" / "trace_jobs"
+    assert resolved.artifact_store.mount.parent == Path("/tmp/otagent-artifact-stores")
+    assert resolved.trials_dir == resolved.artifact_store.mount / "trace_jobs"
 
 
 def test_artifact_store_rejects_an_independent_trials_override(tmp_path: Path) -> None:

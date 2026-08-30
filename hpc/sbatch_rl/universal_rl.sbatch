@@ -237,17 +237,58 @@ cleanup_ray_logs() {
 ARTIFACT_STORE_ENABLED="{artifact_store_enabled}"
 ARTIFACT_STORE_IMAGE="{artifact_store_image}"
 ARTIFACT_STORE_MOUNT="{artifact_store_mount}"
+ARTIFACT_STORE_LEASE="${ARTIFACT_STORE_IMAGE}.mount-lease"
 ARTIFACT_STORE_MOUNTED=0
+ARTIFACT_STORE_LEASE_HELD=0
 RL_RUNNER_PID=""
 
+release_artifact_store_lease() {
+  if [[ "$ARTIFACT_STORE_LEASE_HELD" != "1" ]]; then
+    return
+  fi
+  rm -f "$ARTIFACT_STORE_LEASE/owner"
+  rmdir "$ARTIFACT_STORE_LEASE"
+  ARTIFACT_STORE_LEASE_HELD=0
+}
+
+acquire_artifact_store_lease() {
+  if ! mkdir "$ARTIFACT_STORE_LEASE" 2>/dev/null; then
+    local previous_job=""
+    local previous_state=""
+    if [[ -f "$ARTIFACT_STORE_LEASE/owner" ]]; then
+      previous_job=$(sed -n 's/^job_id=//p' "$ARTIFACT_STORE_LEASE/owner" | head -1)
+    fi
+    if [[ -z "$previous_job" ]]; then
+      echo "FATAL: artifact store has an active non-Slurm mount lease: $ARTIFACT_STORE_LEASE" >&2
+      return 1
+    fi
+    if ! previous_state=$(squeue -h -j "$previous_job" -o '%T'); then
+      echo "FATAL: could not validate artifact-store lease owner job $previous_job" >&2
+      return 1
+    fi
+    if [[ -n "$previous_state" ]]; then
+      echo "FATAL: artifact store is owned by active job $previous_job ($previous_state)" >&2
+      return 1
+    fi
+    echo "Recovering stale artifact-store lease from completed job $previous_job"
+    rm -f "$ARTIFACT_STORE_LEASE/owner"
+    rmdir "$ARTIFACT_STORE_LEASE"
+    mkdir "$ARTIFACT_STORE_LEASE"
+  fi
+  printf 'kind=writer\njob_id=%s\nnode=%s\n' "$SLURM_JOB_ID" "$(hostname)" > "$ARTIFACT_STORE_LEASE/owner"
+  ARTIFACT_STORE_LEASE_HELD=1
+}
+
 cleanup_artifact_store() {
+  local status=0
   if [[ "$ARTIFACT_STORE_MOUNTED" != "1" ]]; then
+    release_artifact_store_lease
     return
   fi
   echo "Flushing artifact store: $ARTIFACT_STORE_IMAGE"
   if ! sync; then
     echo "FATAL: sync failed for artifact store $ARTIFACT_STORE_IMAGE" >&2
-    return 1
+    status=1
   fi
   if ! fusermount3 -u "$ARTIFACT_STORE_MOUNT"; then
     echo "FATAL: could not unmount artifact store $ARTIFACT_STORE_MOUNT" >&2
@@ -256,7 +297,10 @@ cleanup_artifact_store() {
   ARTIFACT_STORE_MOUNTED=0
   flock -u 9 || true
   exec 9>&-
+  rmdir "$ARTIFACT_STORE_MOUNT" 2>/dev/null || true
+  release_artifact_store_lease
   echo "Artifact store unmounted"
+  return "$status"
 }
 
 cleanup_job() {
@@ -264,8 +308,8 @@ cleanup_job() {
   local cleanup_status=0
   trap - EXIT TERM
   set +e
-  cleanup_ray_logs || cleanup_status=1
   cleanup_artifact_store || cleanup_status=1
+  cleanup_ray_logs || cleanup_status=1
   if [[ "$status" == "0" ]] && [[ "$cleanup_status" != "0" ]]; then
     status=$cleanup_status
   fi
@@ -290,6 +334,7 @@ if [[ "$ARTIFACT_STORE_ENABLED" == "1" ]]; then
     exit 1
   fi
   mkdir -p "$ARTIFACT_STORE_MOUNT"
+  acquire_artifact_store_lease
   exec 9>"${ARTIFACT_STORE_IMAGE}.lock"
   if ! flock -n 9; then
     echo "FATAL: artifact store already has an active writer: $ARTIFACT_STORE_IMAGE" >&2
@@ -304,6 +349,10 @@ if [[ "$ARTIFACT_STORE_ENABLED" == "1" ]]; then
     exit "$E2FSCK_STATUS"
   fi
   fuse2fs -o rw,allow_other "$ARTIFACT_STORE_IMAGE" "$ARTIFACT_STORE_MOUNT"
+  if ! mountpoint -q "$ARTIFACT_STORE_MOUNT"; then
+    echo "FATAL: fuse2fs returned without mounting $ARTIFACT_STORE_MOUNT" >&2
+    exit 1
+  fi
   ARTIFACT_STORE_MOUNTED=1
   mkdir -p "$ARTIFACT_STORE_MOUNT/trace_jobs"
   echo "Artifact store mounted at $ARTIFACT_STORE_MOUNT"

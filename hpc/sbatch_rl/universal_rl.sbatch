@@ -320,11 +320,11 @@ cleanup_job() {
   exit "$status"
 }
 
+source "$WORKDIR/hpc/shell_utils/rl_shutdown.sh"
+
 forward_termination() {
   echo "Received Slurm shutdown signal; forwarding SIGTERM to the RL runner"
-  if [[ -n "$RL_RUNNER_PID" ]] && kill -0 "$RL_RUNNER_PID" 2>/dev/null; then
-    kill -TERM "$RL_RUNNER_PID"
-  else
+  if ! forward_termination_to_rl_runner "$RL_RUNNER_PID"; then
     exit 143
   fi
 }

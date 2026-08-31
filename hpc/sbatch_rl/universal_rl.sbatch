@@ -7,7 +7,11 @@
 #SBATCH --job-name={job_name}
 #SBATCH --mail-type=END,TIME_LIMIT,FAIL
 #SBATCH --mail-user={email_address}
-#SBATCH --signal=B:TERM@180
+# Send a batch-shell-only warning while the Ray job steps are still alive. The
+# USR1 trap below translates this into a cooperative TERM for the RL runner.
+# Five minutes covers MarinSkyRL's 120-second entrypoint shutdown deadline and
+# leaves time for artifact-store and Ray-log cleanup before the hard time limit.
+#SBATCH --signal=B:USR1@300
 {sbatch_extra_directives}
 
 # ==============================================================================
@@ -306,7 +310,7 @@ cleanup_artifact_store() {
 cleanup_job() {
   local status=$?
   local cleanup_status=0
-  trap - EXIT TERM
+  trap - EXIT TERM USR1
   set +e
   cleanup_artifact_store || cleanup_status=1
   cleanup_ray_logs || cleanup_status=1
@@ -317,7 +321,7 @@ cleanup_job() {
 }
 
 forward_termination() {
-  echo "Received SIGTERM; forwarding it to the RL runner"
+  echo "Received Slurm shutdown signal; forwarding SIGTERM to the RL runner"
   if [[ -n "$RL_RUNNER_PID" ]] && kill -0 "$RL_RUNNER_PID" 2>/dev/null; then
     kill -TERM "$RL_RUNNER_PID"
   else
@@ -326,7 +330,7 @@ forward_termination() {
 }
 
 trap cleanup_job EXIT
-trap forward_termination TERM
+trap forward_termination TERM USR1
 
 if [[ "$ARTIFACT_STORE_ENABLED" == "1" ]]; then
   if [[ ! -f "$ARTIFACT_STORE_IMAGE" ]]; then

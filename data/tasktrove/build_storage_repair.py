@@ -76,20 +76,23 @@ def write_task(files: dict[str, bytes]) -> bytes:
     return gzip.compress(raw.getvalue(), compresslevel=6, mtime=0)
 
 
-def task_toml_with_storage(
-    task_toml: bytes, expected_storage_mb: int | None, storage_mb: int
+def task_toml_with_environment_resource(
+    task_toml: bytes,
+    resource: str,
+    expected_value: int | None,
+    value: int,
 ) -> bytes:
     source = task_toml.decode("utf-8")
     config = TaskConfig.model_validate_toml(source)
-    current = config.environment.storage_mb
-    if current != expected_storage_mb:
+    current = getattr(config.environment, resource)
+    if current != expected_value:
         raise ValueError(
-            f"task declares storage_mb={current}, expected {expected_storage_mb}"
+            f"task declares {resource}={current}, expected {expected_value}"
         )
     environment = re.search(r"(?m)^\[environment\][ \t]*(?:#.*)?$", source)
     if environment is None:
         suffix = "" if source.endswith("\n") else "\n"
-        transformed = f"{source}{suffix}\n[environment]\nstorage_mb = {storage_mb}\n"
+        transformed = f"{source}{suffix}\n[environment]\n{resource} = {value}\n"
     else:
         next_table = re.search(r"(?m)^\[", source[environment.end() :])
         section_end = (
@@ -99,25 +102,42 @@ def task_toml_with_storage(
         )
         section = source[environment.end() : section_end]
         declaration = re.search(
-            r"(?m)^(storage_mb[ \t]*=[ \t]*)\d+([ \t]*(?:#.*)?)$", section
+            rf"(?m)^({re.escape(resource)}[ \t]*=[ \t]*)\d+([ \t]*(?:#.*)?)$",
+            section,
         )
         if current is None:
             transformed = (
                 source[: environment.end()]
-                + f"\nstorage_mb = {storage_mb}"
+                + f"\n{resource} = {value}"
                 + source[environment.end() :]
             )
         else:
             if declaration is None:
-                raise ValueError("parsed storage_mb has no replaceable declaration")
+                raise ValueError(f"parsed {resource} has no replaceable declaration")
             start = environment.end() + declaration.start()
             end = environment.end() + declaration.end()
-            replacement = f"{declaration.group(1)}{storage_mb}{declaration.group(2)}"
+            replacement = f"{declaration.group(1)}{value}{declaration.group(2)}"
             transformed = source[:start] + replacement + source[end:]
     parsed = TaskConfig.model_validate_toml(transformed)
-    if parsed.environment.storage_mb != storage_mb:
-        raise ValueError("transformed task has the wrong storage requirement")
+    if getattr(parsed.environment, resource) != value:
+        raise ValueError(f"transformed task has the wrong {resource} requirement")
     return transformed.encode("utf-8")
+
+
+def task_toml_with_storage(
+    task_toml: bytes, expected_storage_mb: int | None, storage_mb: int
+) -> bytes:
+    return task_toml_with_environment_resource(
+        task_toml, "storage_mb", expected_storage_mb, storage_mb
+    )
+
+
+def task_toml_with_memory(
+    task_toml: bytes, expected_memory_mb: int | None, memory_mb: int
+) -> bytes:
+    return task_toml_with_environment_resource(
+        task_toml, "memory_mb", expected_memory_mb, memory_mb
+    )
 
 
 def source_parquet(args: argparse.Namespace) -> Path:

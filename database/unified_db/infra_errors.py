@@ -39,6 +39,7 @@ INFRA_ERROR_TYPES = {
     "DaytonaNotFoundError",
     "EnvironmentStartTimeoutError",
     "DaytonaRateLimitError",
+    "ServiceUnavailableError",
     "CancelledError",
     "SandboxBuildFailedError",
     "AgentEnvironmentTimeoutError",

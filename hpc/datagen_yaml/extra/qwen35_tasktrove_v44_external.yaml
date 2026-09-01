@@ -1,0 +1,13 @@
+engine:
+  type: openai
+  model: vllm/Qwen/Qwen3.5-122B-A10B-FP8@a099dee70ccfcd8d5dda56aaa0b60cb8ecadabc9
+  max_output_tokens: 16384
+  healthcheck_interval: 300
+  openai:
+    api_key_env: EXTERNAL_AGENT_API_KEY
+backend:
+  type: none
+vllm_server: null
+extra_agent_kwargs:
+  api_base: ${oc.env:EXTERNAL_AGENT_API_BASE}
+  api_key: capability-url-no-auth-header

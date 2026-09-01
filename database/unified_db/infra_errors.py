@@ -37,6 +37,7 @@ INFRA_ERROR_TYPES = {
     "DaytonaAuthenticationError",
     "DaytonaAuthorizationError",
     "DaytonaNotFoundError",
+    "DaytonaSandboxStopError",
     "EnvironmentStartTimeoutError",
     "DaytonaRateLimitError",
     "ServiceUnavailableError",

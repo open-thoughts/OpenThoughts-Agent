@@ -42,6 +42,7 @@ INFRA_ERROR_TYPES = {
     "ServiceUnavailableError",
     "CancelledError",
     "SandboxBuildFailedError",
+    "AgentKilledBySignalError",
     "AgentEnvironmentTimeoutError",
     "VerificationNotCompletedError",
     "TrialNotScoredError",

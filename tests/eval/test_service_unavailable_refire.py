@@ -8,6 +8,7 @@ from eval.cloud.launch_eval_iris import DEFAULT_REFIRE_ERROR_TYPES
 def test_infrastructure_failures_are_refired() -> None:
     for error_type in (
         "AgentKilledBySignalError",
+        "DaytonaConflictError",
         "DaytonaSandboxStopError",
         "ServiceUnavailableError",
     ):
@@ -21,6 +22,7 @@ def test_infrastructure_failures_are_counted_as_infrastructure() -> None:
             "reward": {
                 "exception_stats": {
                     "AgentKilledBySignalError": ["trial-d"],
+                    "DaytonaConflictError": ["trial-g"],
                     "DaytonaSandboxStopError": ["trial-e", "trial-f"],
                     "ServiceUnavailableError": ["trial-a", "trial-b"],
                     "AgentTimeoutError": ["trial-c"],
@@ -30,9 +32,10 @@ def test_infrastructure_failures_are_counted_as_infrastructure() -> None:
     }
 
     assert compute_infra_error_stats(stats) == (
-        5,
+        6,
         {
             "AgentKilledBySignalError": 1,
+            "DaytonaConflictError": 1,
             "DaytonaSandboxStopError": 2,
             "ServiceUnavailableError": 2,
         },

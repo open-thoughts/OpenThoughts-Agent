@@ -49,6 +49,11 @@ import textwrap
 from pathlib import Path
 from typing import Optional
 
+from data.patchers.trusted_test_patch import (
+    trusted_test_patch_command,
+    write_trusted_test_patch_installer,
+)
+
 # ---------------------------------------------------------------------------
 # Python version normalisation
 # ---------------------------------------------------------------------------
@@ -437,6 +442,31 @@ def wrap_solve_sh(original_solve_sh: str) -> str:
     return header + body
 
 
+def install_trusted_test_patch_in_verifier(test_sh: str, base_commit: str) -> str:
+    """Replace the legacy best-effort hidden-patch block with fail-closed setup."""
+    if "/tests/install_trusted_test_patch.sh" in test_sh:
+        return test_sh
+
+    legacy_block = """\
+# Apply test patch (adds new test files; does NOT contain the golden fix)
+if [ -f /tests/test_patch.diff ]; then
+    git apply -v --allow-empty /tests/test_patch.diff || \\
+    git apply -v --allow-empty --reject /tests/test_patch.diff || true
+fi
+"""
+    if legacy_block not in test_sh:
+        raise ValueError("OpenSWE verifier has an unrecognized hidden-test patch block")
+
+    command = trusted_test_patch_command(base_commit)
+    trusted_block = f"""\
+# Restore hidden-test paths from the immutable base before applying the trusted patch.
+if ! {command}; then
+    exit 1
+fi
+"""
+    return test_sh.replace(legacy_block, trusted_block, 1)
+
+
 # ---------------------------------------------------------------------------
 # Per-task patching
 # ---------------------------------------------------------------------------
@@ -510,6 +540,11 @@ def patch_task(
     solve_path = src_dir / "solution" / "solve.sh"
     original_solve = solve_path.read_text() if solve_path.exists() else ""
     new_solve = wrap_solve_sh(original_solve) if original_solve else ""
+    test_sh_path = src_dir / "tests" / "test.sh"
+    test_patch_path = src_dir / "tests" / "test_patch.diff"
+    new_test_sh = test_sh_path.read_text() if test_sh_path.exists() else ""
+    if test_patch_path.exists():
+        new_test_sh = install_trusted_test_patch_in_verifier(new_test_sh, base_commit)
 
     if dry_run:
         return result
@@ -542,6 +577,13 @@ def patch_task(
         new_solve_path.write_text(new_solve)
         new_solve_path.chmod(
             new_solve_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH
+        )
+
+    if test_patch_path.exists():
+        output_test_sh = dst_dir / "tests" / "test.sh"
+        output_test_sh.write_text(new_test_sh)
+        write_trusted_test_patch_installer(
+            dst_dir / "tests" / "install_trusted_test_patch.sh"
         )
 
     return result

@@ -34,6 +34,11 @@ from typing import Optional
 
 from tqdm import tqdm
 
+from data.patchers.trusted_test_patch import (
+    trusted_test_patch_command,
+    write_trusted_test_patch_installer,
+)
+
 
 # ---------------------------------------------------------------------------
 # Task configuration
@@ -218,7 +223,7 @@ def _extract_test_section(eval_script: str) -> str:
     )
 
 
-def create_test_sh(eval_script: str, test_patch: str) -> str:
+def create_test_sh(eval_script: str, test_patch: str, base_commit: str) -> str:
     """
     Build Harbor test.sh.
 
@@ -234,12 +239,13 @@ def create_test_sh(eval_script: str, test_patch: str) -> str:
 
     patch_block = ""
     if has_patch:
-        patch_block = """\
+        install_command = trusted_test_patch_command(base_commit)
+        patch_block = f"""\
 
-# Apply test patch (adds new test files; does NOT contain the golden fix)
-if [ -f /tests/test_patch.diff ]; then
-    git apply -v --allow-empty /tests/test_patch.diff || \\
-    git apply -v --allow-empty --reject /tests/test_patch.diff || true
+# Restore every hidden-test path from the immutable base commit before applying
+# the trusted patch. Agent edits to product paths remain untouched.
+if ! {install_command}; then
+    exit 1
 fi
 """
 
@@ -332,7 +338,9 @@ def create_task_dir(datum: dict, out_root: Path, idx: int, prefix: str) -> None:
     eval_script = datum.get("eval_script") or ""
     test_patch = datum.get("test_patch") or ""
     test_sh_path = d / "tests" / "test.sh"
-    test_sh_path.write_text(create_test_sh(eval_script, test_patch), encoding="utf-8")
+    test_sh_path.write_text(
+        create_test_sh(eval_script, test_patch, base_commit), encoding="utf-8"
+    )
     test_sh_path.chmod(
         test_sh_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH
     )
@@ -340,6 +348,9 @@ def create_task_dir(datum: dict, out_root: Path, idx: int, prefix: str) -> None:
     # tests/test_patch.diff
     if test_patch:
         (d / "tests" / "test_patch.diff").write_text(test_patch, encoding="utf-8")
+        write_trusted_test_patch_installer(
+            d / "tests" / "install_trusted_test_patch.sh"
+        )
 
     # tests/config.json — metadata without large blobs (stored elsewhere)
     config = {

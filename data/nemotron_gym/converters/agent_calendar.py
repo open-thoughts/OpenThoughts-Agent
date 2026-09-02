@@ -1,8 +1,7 @@
 """Convert nvidia/Nemotron-RL-agent-calendar_scheduling.
 
-The expected output of the agent is a JSON list of events. The verifier
-(calendar_constraints) checks duration / time-window / natural-language
-constraint per event from `exp_cal_state`.
+The expected output of the agent is a JSON list of events. The verifier checks
+the exact event set, each event's local constraints, and pairwise non-overlap.
 """
 
 from __future__ import annotations
@@ -27,8 +26,9 @@ _INSTRUCTION_HEADER = (
     "You are scheduling events on a calendar. Read the conversation below and "
     "write your final calendar as a JSON list to `/app/answer.txt`. Each event "
     "must include `event_id` (int), `event_name` (str), `start_time` "
-    '("HH:MM"), and `duration` (minutes). The verifier checks duration, '
-    "time-window, and any natural-language constraint per event.\n\n"
+    '("HH:MM"), and `duration` (minutes). Events must not overlap. The verifier '
+    "checks the exact event set, duration, time window, declared constraints, "
+    "and pairwise overlap.\n\n"
     "---\n\n"
 )
 _MAX_EVENTS = 32

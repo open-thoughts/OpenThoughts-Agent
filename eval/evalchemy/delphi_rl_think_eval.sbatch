@@ -5,7 +5,14 @@
 #SBATCH --gres=gpu:4
 #SBATCH --time=08:00:00
 #SBATCH --job-name=delphi-think-eval
-#SBATCH --output=/leonardo_work/AIFAC_5C0_290/bfeuer00/experiments/delphi-eval/%x-%j.log
+#SBATCH --output=/leonardo_work/AIFAC_5C0_290/%u/experiments/delphi-eval/%x-%j.log
+#
+# PREREQUISITE (multi-operator): the --output directory above must EXIST BEFORE SUBMIT.
+# SLURM opens the log file before the job script runs and does NOT create intermediate
+# directories -- a missing dir fails the job instantly with "Unable to open file", which
+# looks like a launch bug rather than a missing mkdir. It already exists for the original
+# operator; a NEW operator runs this once:
+#   mkdir -p /leonardo_work/AIFAC_5C0_290/$USER/experiments/delphi-eval
 #
 # Held-out math eval for the 4 FORCED-THINKING RL grid cells (consolidated local HF dirs).
 # IDENTICAL harness to eval/evalchemy/evalchemy_eval.sbatch (same tasks, seeds, gen_kwargs,
@@ -21,10 +28,58 @@
 # Usage: sbatch --job-name=delphi-think-eval-<RUN> delphi_rl_think_eval.sbatch <LOCAL_MODEL_DIR> <RUN_NAME>
 set -euo pipefail
 
+# ----- $USER-scoped paths (multi-operator) -----------------------------------------------------
+# Resolves to the original bfeuer00 strings byte-identically when USER=bfeuer00. Read-only shared
+# runtime (conda, evalchemy-marin clone) falls back to the bfeuer00 copy; WRITE paths are per-user.
+_OTA_WORK="/leonardo_work/AIFAC_5C0_290/${USER:-$(id -un)}"
+_OTA_SHARED="/leonardo_work/AIFAC_5C0_290/bfeuer00"
+_pick() { [ -e "$1" ] && echo "$1" || echo "$2"; }
+# Conda: pick the root that actually CONTAINS the env. Testing only for a miniforge3 dir is not
+# enough -- an operator can have a partial install (e.g. otagent only) and would then fail with
+# "EnvironmentNameNotFound: evalchemy-marin" instead of falling back to the shared root.
+_pick_conda() { [ -d "${_OTA_WORK}/miniforge3/envs/$1" ] && echo "${_OTA_WORK}/miniforge3" || echo "${_OTA_SHARED}/miniforge3"; }
+_OTA_CONDA_ROOT="${OTAGENT_CONDA_ROOT:-$(_pick_conda evalchemy-marin)}"
+# Repo root by PROBE, not assumption — see the long note in delphi_eval.sbatch. A bare
+# "$WORK/$USER/code/OpenThoughts-Agent" default silently mis-points THINK_TEMPLATE below for any
+# operator who cloned elsewhere, and lm-eval then fails on a missing chat template rather than
+# saying the repo was not found.
+_OTA_MARKER="eval/evalchemy/evalchemy_eval.sbatch"
+_ota_up() {
+  local d="${1:-}"
+  [ -n "$d" ] || return 1
+  while [ -n "$d" ] && [ "$d" != "/" ]; do
+    [ -f "$d/${_OTA_MARKER}" ] && { printf '%s' "$d"; return 0; }
+    d="$(dirname "$d")"
+  done
+  return 1
+}
+_ota_first_repo() {
+  local c
+  for c in "$@"; do
+    [ -n "$c" ] && [ -f "$c/${_OTA_MARKER}" ] && { printf '%s' "$c"; return 0; }
+  done
+  return 1
+}
+_OTA_REPO="$(_ota_first_repo \
+  "${OTAGENT_REPO_DIR:-}" \
+  "${_OTA_WORK}/code/OpenThoughts-Agent" \
+  "$(_ota_up "${SLURM_SUBMIT_DIR:-}" || true)" \
+  "${_OTA_SHARED}/code/OpenThoughts-Agent" \
+  "$(_ota_up "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)" || true)" \
+  || true)"
+if [ -z "${_OTA_REPO}" ]; then
+  echo "ERROR: cannot locate an OpenThoughts-Agent checkout containing ${_OTA_MARKER}." >&2
+  echo "  Set OTAGENT_REPO_DIR=/path/to/OpenThoughts-Agent and resubmit." >&2
+  echo "  tried: OTAGENT_REPO_DIR=${OTAGENT_REPO_DIR:-<unset>}, ${_OTA_WORK}/code/OpenThoughts-Agent," >&2
+  echo "         SLURM_SUBMIT_DIR=${SLURM_SUBMIT_DIR:-<unset>} (and parents), ${_OTA_SHARED}/code/OpenThoughts-Agent" >&2
+  exit 1
+fi
+
+
 # Clean any propagated python env that can shadow conda's base-python stdlib
 # (intermittent "ImportError: cannot import name 'JSONEncoder' from 'json'" on some compute nodes).
 unset PYTHONHOME PYTHONPATH PYTHONSTARTUP 2>/dev/null || true
-source /leonardo_work/AIFAC_5C0_290/bfeuer00/miniforge3/etc/profile.d/conda.sh
+source "${_OTA_CONDA_ROOT}/etc/profile.d/conda.sh"
 # Activate with a small retry — the JSONEncoder import flake is transient (GPFS/conda).
 for try in 1 2 3 4 5; do
   conda activate evalchemy-marin 2>/dev/null || true
@@ -32,20 +87,20 @@ for try in 1 2 3 4 5; do
     echo ">>> conda evalchemy-marin active (try $try): $(which python)"; break
   fi
   echo ">>> conda activate flake on try $try; retrying in 10s"; conda deactivate 2>/dev/null || true; sleep 10
-  source /leonardo_work/AIFAC_5C0_290/bfeuer00/miniforge3/etc/profile.d/conda.sh
+  source "${_OTA_CONDA_ROOT}/etc/profile.d/conda.sh"
 done
 python -c "from json import JSONEncoder; import sys; assert 'evalchemy-marin' in sys.executable" \
   || { echo "FATAL: could not activate evalchemy-marin cleanly after retries"; exit 17; }
-cd /leonardo_work/AIFAC_5C0_290/bfeuer00/code/evalchemy-marin
+cd "${EVALCHEMY_DIR:-$(_pick "${_OTA_WORK}/code/evalchemy-marin" "${_OTA_SHARED}/code/evalchemy-marin")}"
 
 source ~/secrets.env
-export HF_HOME=/leonardo_work/AIFAC_5C0_290/bfeuer00/data/hub
-export HF_HUB_CACHE=/leonardo_work/AIFAC_5C0_290/bfeuer00/data/hub
+export HF_HOME="${HF_HOME:-${_OTA_WORK}/data/hub}"
+export HF_HUB_CACHE="${HF_HUB_CACHE:-${_OTA_WORK}/data/hub}"
 export HF_HUB_OFFLINE=1
 export HF_ALLOW_CODE_EVAL=1
 export TOKENIZERS_PARALLELISM=false
 
-CACHE_ROOT=/leonardo_work/AIFAC_5C0_290/bfeuer00/experiments/delphi-eval/.cache
+CACHE_ROOT="${CACHE_ROOT:-${_OTA_WORK}/experiments/delphi-eval/.cache}"
 mkdir -p "$CACHE_ROOT"/{flashinfer,triton,inductor,vllm,xdg,hf_local}
 export HOME="$CACHE_ROOT/hf_local"
 export XDG_CACHE_HOME="$CACHE_ROOT/xdg"
@@ -57,8 +112,8 @@ mkdir -p "$HOME/.cache/flashinfer"
 
 MODEL_DIR="${1:?usage: sbatch ... <LOCAL_MODEL_DIR> <RUN_NAME>}"
 RUN_NAME="${2:?usage: sbatch ... <LOCAL_MODEL_DIR> <RUN_NAME>}"
-THINK_TEMPLATE="${THINK_TEMPLATE:-/leonardo_work/AIFAC_5C0_290/bfeuer00/code/OpenThoughts-Agent/chat_templates/delphi_v0_think.jinja2}"
-OUT_ROOT="/leonardo_work/AIFAC_5C0_290/bfeuer00/experiments/delphi-eval"
+THINK_TEMPLATE="${THINK_TEMPLATE:-${_OTA_REPO}/chat_templates/delphi_v0_think.jinja2}"
+OUT_ROOT="${OUT_ROOT:-${_OTA_WORK}/experiments/delphi-eval}"
 OUT="${OUT_ROOT}/${RUN_NAME}"
 TP_SIZE=2
 MAX_MODEL_LEN=4096

@@ -146,9 +146,49 @@ module purge 2>/dev/null || true
 module load gcc/13.2.0 cuda/12.8 2>/dev/null || true
 
 # --- Conda activation: otagent (harbor + fork vLLM + DB client + uploader) ---
-source "${SCRATCH}/miniconda3/etc/profile.d/conda.sh"
-conda activate otagent
-echo "Conda env: otagent (prefix $CONDA_PREFIX)"
+# OTAGENT_CONDA_PREFIX (full path to the env) lets a borrowing operator point at a shared read-only
+# env instead of building their own $SCRATCH/miniconda3. Activate by full prefix path (not by bare
+# name, which needs the env registered in the active conda root). The conda root is derived from
+# the prefix.
+#
+# Resolution order, first EXISTING env wins:
+#   1. OTAGENT_CONDA_PREFIX  — explicit operator override
+#   2. OTAGENT_DIR           — sent by the listener from the cluster view's conda_envs
+#                              (hpc.py vista eval_cluster_view pins the shared read-only env)
+#   3. $SCRATCH/miniconda3/envs/otagent — the operator's own env, once built
+#
+# Falling back on EXISTENCE (not just on the var being unset) is the load-bearing part: a borrowing
+# operator can have a bare $SCRATCH/miniconda3 with no otagent env in it, and the old
+# unset-only default picked that non-existent path over the perfectly good shared env the listener
+# had already passed in OTAGENT_DIR. That failed job 886379 nine seconds in with
+# "EnvironmentLocationNotFound: Not a conda environment: $SCRATCH/miniconda3/envs/otagent".
+# Same defect class as the evalchemy sbatch fix: validate the ENV, not just its root.
+_pick_conda_prefix() {
+    for _c in "$@"; do
+        [ -n "$_c" ] && [ -x "${_c}/bin/python" ] && { printf '%s' "$_c"; return 0; }
+    done
+    # Nothing exists — echo the first non-empty candidate so the error names what we wanted.
+    for _c in "$@"; do [ -n "$_c" ] && { printf '%s' "$_c"; return 1; }; done
+    return 1
+}
+# Snapshot the configured values first: the assignment below overwrites
+# OTAGENT_CONDA_PREFIX even on failure, so the error message must not read it back.
+_want_prefix="${OTAGENT_CONDA_PREFIX:-<unset>}"
+_want_dir="${OTAGENT_DIR:-<unset>}"
+OTAGENT_CONDA_PREFIX="$(_pick_conda_prefix \
+    "${OTAGENT_CONDA_PREFIX:-}" \
+    "${OTAGENT_DIR:-}" \
+    "${SCRATCH}/miniconda3/envs/otagent")" || {
+    echo "ERROR: no usable otagent conda env found (no <prefix>/bin/python). Tried, in order:" >&2
+    echo "  1. OTAGENT_CONDA_PREFIX = ${_want_prefix}" >&2
+    echo "  2. OTAGENT_DIR          = ${_want_dir}  (from the cluster view's conda_envs)" >&2
+    echo "  3. \$SCRATCH default     = ${SCRATCH}/miniconda3/envs/otagent" >&2
+    exit 1
+}
+_OTAGENT_CONDA_ROOT="${OTAGENT_CONDA_PREFIX%/envs/*}"
+source "${_OTAGENT_CONDA_ROOT}/etc/profile.d/conda.sh"
+conda activate "${OTAGENT_CONDA_PREFIX}"
+echo "Conda env: ${OTAGENT_CONDA_PREFIX} (prefix $CONDA_PREFIX)"
 
 # Prepend conda's lib so its libstdc++ wins over the system/module versions.
 export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -790,6 +830,18 @@ export UPLOAD_USERNAME="${UPLOAD_USERNAME:-$USER}"
 export UPLOAD_MODE="${UPLOAD_MODE:-skip_on_error}"
 export RUN_TAG
 
+# Local-only smoke/canary guard (mirrors the leonardo sbatch): EVAL_SKIP_UPLOAD=1 preserves the
+# results on disk and skips the HF/DB uploader entirely, so a subset/canary is NEVER registered as a
+# full-benchmark leaderboard result. upload_eval_results() does HF upload AND Supabase registration in
+# one call, so this single exit covers both. Also side-steps the bare os.environ["HF_TOKEN"] below when
+# no token is configured (canary path).
+case "${EVAL_SKIP_UPLOAD:-0}" in
+    1|true|TRUE|yes|YES)
+        echo "EVAL_SKIP_UPLOAD=${EVAL_SKIP_UPLOAD}: preserving local results at $RUN_DIR, skipping HF/DB upload"
+        exit 0
+        ;;
+esac
+
 UPLOAD_LOG="$RUN_DIR/upload.log"
 echo "Uploading results from: $RUN_DIR" | tee -a "$UPLOAD_LOG"
 
@@ -819,7 +871,14 @@ def sanitize_hf_repo_id(repo_id: str, max_length: int = 96) -> str:
 run_dir = os.environ["RUN_DIR"]; run_tag = os.environ["RUN_TAG"]
 username = os.environ.get("UPLOAD_USERNAME", os.environ.get("USER", "tacc"))
 error_mode = os.environ.get("UPLOAD_MODE", "skip_on_error")
-hf_repo_id = sanitize_hf_repo_id(f"DCAgent2/{run_tag}")
+# Trace-upload HF org. Default DCAgent2 (byte-identical to before), overridable via
+# EVAL_UPLOAD_HF_ORG so an operator without DCAgent2 write can land traces in an org they
+# CAN write (e.g. laion). Without this the upload dies with a 403 "Make sure your token has
+# the correct permissions", the leg logs "HF upload failed but DB records uploaded", and the
+# hf_traces_link is never set — so the leaderboard row has no traces. Ported from
+# eval/leonardo/eval_harbor.sbatch, which has had this since 06ef8f9; TACC was missed.
+hf_upload_org = os.environ.get("EVAL_UPLOAD_HF_ORG", "DCAgent2")
+hf_repo_id = sanitize_hf_repo_id(f"{hf_upload_org}/{run_tag}")
 hf_token = os.environ["HF_TOKEN"]
 dataset_hf = os.environ.get("REPO_ID", "")
 benchmark_name = os.environ.get("BENCHMARK_NAME", "") or (dataset_hf.split("/")[-1] if "/" in dataset_hf else dataset_hf)

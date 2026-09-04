@@ -1483,10 +1483,16 @@ vista = HPC(
     # name "tacc"; the view's cluster_name is "tacc" (mirroring tacc.yaml) and the
     # listener's _resolve_cluster_view_by_name() matches EITHER c.name ("vista") OR the
     # view's cluster_name ("tacc"), so `--cluster-config tacc` AND `--cluster-config vista`
-    # both resolve. User-scoped paths mirror that yaml (penfever's). Vista-specific vs
-    # leonardo: hardware_profile gh200, 1 GPU/node, NO mem_per_node_mb (RealMemory is
-    # misreported as 1 MB → request whole nodes), and hardware.gpu_gres false (GPUs are
-    # not a SLURM gres here). Compute nodes have full egress so proxy is disabled.
+    # both resolve. User-scoped write/code paths are $SCRATCH-parameterized (to_eval_cluster_view
+    # expandvars-expands them at call time on the login node, where $SCRATCH is always set); each
+    # operator's $SCRATCH already encodes their /scratch/<allocnum>/<user> root, so $USER alone is
+    # insufficient here (the alloc-number differs per user). For penfever $SCRATCH=/scratch/10635/
+    # penfever, so this renders byte-identical to the prior hardcoded values. The conda env /
+    # cuda_home stay pinned to penfever's prefix ON PURPOSE — it is world-readable and shared
+    # read-only, so a new operator borrows it without rebuilding (point at your own once built).
+    # Vista-specific vs leonardo: hardware_profile gh200, 1 GPU/node, NO mem_per_node_mb (RealMemory
+    # is misreported as 1 MB → request whole nodes), and hardware.gpu_gres false (GPUs are not a
+    # SLURM gres here). Compute nodes have full egress so proxy is disabled.
     eval_cluster_view={
         "cluster_name": "tacc",
         "baseline_model_configs": "eval/clusters/tacc_baseline_model_configs.yaml",
@@ -1500,16 +1506,16 @@ vista = HPC(
             "otagent": "/scratch/10635/penfever/miniconda3/envs/otagent",
         },
         "paths": {
-            "project_root": "/scratch/10635/penfever/OpenThoughts-Agent",
-            "hf_cache": "/scratch/10635/penfever/hub",
-            "eval_jobs_dir": "/scratch/10635/penfever/eval_jobs",
+            "project_root": "$SCRATCH/OpenThoughts-Agent",
+            "hf_cache": "$SCRATCH/hub",
+            "eval_jobs_dir": "$SCRATCH/eval_jobs",
             "eval_logs_dir": "eval/tacc/logs",
             "listener_logs_dir": "experiments/listener_logs",
             "sbatch_script": "eval/tacc/eval_harbor.sbatch",
             "dp_sbatch_script": "eval/tacc/eval_harbor.sbatch",
-            "harbor_src": "/scratch/10635/penfever/harbor/src",
-            "datasets_dirs": ["/scratch/10635/penfever/hub"],
-            "secrets_file": "/scratch/10635/penfever/keys.env",
+            "harbor_src": "$SCRATCH/harbor/src",
+            "datasets_dirs": ["$SCRATCH/hub"],
+            "secrets_file": "$SCRATCH/keys.env",
         },
         "proxy": {"enabled": False},
         "hardware": {

@@ -28,8 +28,8 @@ environment:
   kwargs:
     auto_snapshot: true
 verifier:
-  override_timeout_sec: 14400
-  max_timeout_sec: 14400
+  override_timeout_sec: null
+  max_timeout_sec: 600
 agents:
   - name: terminus-2
     model_name: placeholder/override-at-runtime

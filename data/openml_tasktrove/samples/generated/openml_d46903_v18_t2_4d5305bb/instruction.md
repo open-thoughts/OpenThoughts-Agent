@@ -1,4 +1,4 @@
-Build a classification model for the target column `rating`.
+Build a regression model for the target column `Abalone_age`.
 
 Inspect `/app/data/train.csv`, which contains `row_id`, features, and the target.
 Predict the target for every row of `/app/data/test.csv`, which contains only
@@ -7,9 +7,8 @@ feature.
 
 Write `/app/submission.csv` with exactly two columns, in this order:
 `row_id,prediction`. Include each test row ID exactly once, without extra rows.
-Targets are integer class codes from 0 through 9.
-Submit integer class predictions. Class meanings, in code order: ["A", "AA", "AAA", "B", "BB", "BBB", "C", "CC", "CCC", "D"].
-Your predictions are evaluated using accuracy (higher is better).
+Submit finite numeric predictions. Your predictions are evaluated using RMSE
+(lower is better). The verifier reports raw RMSE and a separate validity flag.
 
 
 Choose your own model and training approach. Python, pandas, and scikit-learn

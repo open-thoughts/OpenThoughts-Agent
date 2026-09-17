@@ -2,11 +2,11 @@ schema_version = "1.2"
 artifacts = ["/app/submission.csv"]
 
 [task]
-name = "openml/openml_d46569_v1_t1_112895d7"
-keywords = ["tabular", "supervised-learning", "classification"]
+name = "openml/openml_d46917_v8_t2_157b68f5"
+keywords = ["tabular", "supervised-learning", "regression"]
 
 [metadata]
-metric = "accuracy"
+metric = "rmse"
 
 [agent]
 timeout_sec = 300

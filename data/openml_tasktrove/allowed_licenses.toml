@@ -1,0 +1,12 @@
+# Dataset licenses approved for automatic redistribution by this source.
+# Additions change policy for every discovered dataset and require code review.
+
+[[licenses]]
+id = "CC0-1.0"
+url = "https://creativecommons.org/publicdomain/zero/1.0/"
+aliases = ["CC0", "CC0 1.0", "Creative Commons Zero"]
+
+[[licenses]]
+id = "CC-BY-4.0"
+url = "https://creativecommons.org/licenses/by/4.0/"
+aliases = ["CC BY 4.0", "Creative Commons Attribution 4.0"]

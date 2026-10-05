@@ -1,0 +1,23 @@
+schema_version = "1.2"
+artifacts = ["/app/submission.csv"]
+
+[task]
+name = "openml/openml_d46903_v18_t2_4d5305bb"
+keywords = ["tabular", "supervised-learning", "regression"]
+
+[metadata]
+metric = "rmse"
+
+[agent]
+timeout_sec = 300
+
+[environment]
+cpus = 2
+memory_mb = 2048
+storage_mb = 4096
+allow_internet = false
+build_timeout_sec = 600
+
+[verifier]
+environment_mode = "separate"
+timeout_sec = 120

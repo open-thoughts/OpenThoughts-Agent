@@ -1,0 +1,98 @@
+{
+  "id": "openml_d46564_v3_t1_34a04005",
+  "context": {
+    "events": [
+      {
+        "type": "message",
+        "role": "user",
+        "content": "Build a classification model for the target column `target`.\n\nUse the labelled training data in `data/train.csv` to predict the target for every row in `data/test.csv`. Feature values may be missing. Do not use `row_id` as a feature.\n\nReturn a CSV prediction artifact with exactly two columns, in order: `row_id,prediction`. Include every test row ID exactly once, with no extra rows.\nPredictions must be integer class IDs from 0 through 2.\nClass meanings, in ID order: [\"bearish\", \"bullish\", \"neutral\"].\nPredictions are evaluated using accuracy (higher is better)."
+      }
+    ]
+  },
+  "environment_requirements": {
+    "capabilities": [
+      "filesystem",
+      "shell",
+      "process"
+    ],
+    "docker_image": null,
+    "working_directory": "/app",
+    "setup_commands": [],
+    "environment_variables": {},
+    "tool_providers": {}
+  },
+  "final_tools": [],
+  "answer_type": "file",
+  "verifier": {
+    "kind": "tabular_predictions",
+    "parameters_json": "{\"allow_duplicate_row_ids\":false,\"allow_extra_row_ids\":false,\"artifact_format\":\"csv\",\"id_column\":\"row_id\",\"max_file_bytes\":10000000,\"metric\":\"accuracy\",\"prediction_column\":\"prediction\",\"require_all_test_rows\":true,\"require_column_order\":true,\"require_finite_predictions\":true,\"require_regular_file\":true,\"required_columns\":[\"row_id\",\"prediction\"],\"target\":\"target\",\"task_type\":\"classification\",\"valid_classes\":[0,1,2]}",
+    "environment_requirements": {
+      "capabilities": [],
+      "docker_image": null,
+      "working_directory": null,
+      "setup_commands": [],
+      "environment_variables": {},
+      "tool_providers": {}
+    }
+  },
+  "source": {
+    "dataset": "openml/46564",
+    "revision": "3",
+    "row": "task-363293:target",
+    "importer_revision": "8d8f24419d203755f5a40b1db45b24815c97ec6e"
+  },
+  "schema_version": "0.18",
+  "resources": {
+    "all": [],
+    "worker": [
+      {
+        "path": "data/train.csv",
+        "source": {
+          "kind": "dataset_path",
+          "path": "openml_d46564_v3_t1_34a04005/resources/train.csv",
+          "sha256": "7d42832793ba65ef4b2054e92b7450a8c635db64abcccfbee3bfef41b722519a"
+        },
+        "format": "copy",
+        "mode": null
+      },
+      {
+        "path": "data/test.csv",
+        "source": {
+          "kind": "dataset_path",
+          "path": "openml_d46564_v3_t1_34a04005/resources/test.csv",
+          "sha256": "bfd58a5fad67e4fbc84d2a713bb79ba385dffc073ecf57e237ff50b38daf8855"
+        },
+        "format": "copy",
+        "mode": null
+      },
+      {
+        "path": "data/ATTRIBUTION.md",
+        "source": {
+          "kind": "dataset_path",
+          "path": "openml_d46564_v3_t1_34a04005/resources/ATTRIBUTION.md",
+          "sha256": "72f51d8ee087ba4464f30411435b3604deaa8f87ea74a0797a530f160f2160e8"
+        },
+        "format": "copy",
+        "mode": null
+      }
+    ],
+    "oracle": [],
+    "verifier": [
+      {
+        "path": "hidden_labels.csv",
+        "source": {
+          "kind": "dataset_path",
+          "path": "openml_d46564_v3_t1_34a04005/resources/hidden_labels.csv",
+          "sha256": "da1155a8ab55313b1ce03098b3c557dd91a7fde3b6697b0cf00e68d501504872"
+        },
+        "format": "copy",
+        "mode": null
+      }
+    ]
+  },
+  "tags": [
+    "openml",
+    "classification",
+    "accuracy"
+  ]
+}

@@ -51,9 +51,10 @@ each dataset/version group and released before the next group.
 Use `--all` for a complete paginated crawl instead of supplying an artificial
 large limit.
 
-The checked-in `openml_tasks.parquet` is a small review sample. It contains five
-automatically eligible supervised classification tasks and one unsupported or
-unlicensed task to demonstrate filtering.
+The checked-in `openml_tasks.parquet` is a small review sample. It contains seven
+automatically eligible supervised classification tasks, four automatically
+eligible supervised regression tasks, and one unlicensed task to demonstrate
+filtering.
 
 ### License policy
 
@@ -162,11 +163,35 @@ The verifier rejects missing files, wrong columns, duplicate, missing, or extra
 row IDs, non-finite predictions, and invalid class codes. The reference solution
 uses the same public files as the agent.
 
+## TaskCompendium sample representations
+
+The checked-in Harbor samples also have semantic TaskCompendium representations
+under `samples/task_specs/`. They use schema 0.18 from Marin commit
+`9394c740befa71f31bb6e908b6305171d5baf01a`. These TaskSpecs describe the file,
+shell, and process capabilities and the `tabular_predictions` verifier contract;
+they are not passed through TaskCompendium's currently narrower runtime lowering.
+
+Regenerate them from the existing samples without rerunning OpenML discovery or
+splitting:
+
+```bash
+uv run data/openml_tasktrove/samples/build_task_specs.py
+```
+
+Each TaskSpec keeps train/test data and attribution worker-visible while mounting
+hidden labels only for the verifier. The script copies the referenced bytes,
+records their SHA-256 hashes, and validates a JSON round trip through the pinned
+TaskCompendium `TaskSpec` model.
+
 ## Tests
 
 ```bash
 uv run --with openml==0.15.1 --with jinja2==3.1.6 \
   pytest tests/test_openml_tasktrove.py -q
+uv run --with \
+  'taskcompendium @ git+https://github.com/marin-community/marin.git@9394c740befa71f31bb6e908b6305171d5baf01a#subdirectory=lib/taskcompendium' \
+  --with openml==0.15.1 --with jinja2==3.1.6 \
+  pytest tests/test_openml_tasktrove.py -k task_specs -q
 OPENML_HARBOR_E2E=1 $OPENML_PYTHON -m pytest \
   tests/test_openml_tasktrove.py -k pipeline_twice -s
 ```

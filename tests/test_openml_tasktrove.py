@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pandas as pd
 import pyarrow.parquet as pq
@@ -308,6 +309,115 @@ def test_canonicalization_preserves_large_integer_changes():
     before = common.canonicalize(df, "target")[2]
     df.loc[0, "x"] += 1
     assert common.canonicalize(df, "target")[2] != before
+
+
+def test_checked_in_manifest_matches_generated_samples():
+    samples = Path("data/openml_tasktrove/samples/generated")
+    provenance_rows = {
+        row["openml_task_id"]: row
+        for row in (
+            json.loads(path.read_text()) for path in samples.glob("*/provenance.json")
+        )
+    }
+    manifest_rows = {
+        row["openml_task_id"]: row
+        for row in common.read_manifest("data/openml_tasktrove/openml_tasks.parquet")
+        if row["eligible"]
+    }
+    assert manifest_rows.keys() == provenance_rows.keys()
+    for task_id, manifest_row in manifest_rows.items():
+        assert manifest_row == {
+            field: provenance_rows[task_id].get(field)
+            for field in common.MANIFEST_FIELDS
+        }
+
+
+def test_checked_in_task_specs_match_samples(tmp_path):
+    pytest.importorskip("taskcompendium")
+    from data.openml_tasktrove.samples import build_task_specs
+    from taskcompendium.models import AnswerType, DatasetPath, TaskSpec
+
+    output = tmp_path / "task_specs"
+    specifications = build_task_specs.run(output_dir=output)
+    checked_in = build_task_specs.OUTPUT_DIR
+    assert {specification.id for specification in specifications} == {
+        path.name for path in checked_in.iterdir() if path.is_dir()
+    }
+
+    for specification in specifications:
+        generated_dir = output / specification.id
+        expected_dir = checked_in / specification.id
+        generated_files = {
+            path.relative_to(generated_dir): path.read_bytes()
+            for path in generated_dir.rglob("*")
+            if path.is_file()
+        }
+        expected_files = {
+            path.relative_to(expected_dir): path.read_bytes()
+            for path in expected_dir.rglob("*")
+            if path.is_file()
+        }
+        assert generated_files == expected_files
+
+        serialized = generated_files[Path("specification.json")].decode()
+        reloaded = TaskSpec.model_validate_json(serialized)
+        assert reloaded == specification
+        assert reloaded.answer_type == AnswerType.FILE
+        assert reloaded.environment_requirements.capabilities == (
+            "filesystem",
+            "shell",
+            "process",
+        )
+        assert reloaded.environment_requirements.working_directory == "/app"
+        assert {resource.path for resource in reloaded.resources.worker} == {
+            "data/train.csv",
+            "data/test.csv",
+            "data/ATTRIBUTION.md",
+        }
+        assert {resource.path for resource in reloaded.resources.verifier} == {
+            "hidden_labels.csv"
+        }
+        assert all(
+            isinstance(resource.source, DatasetPath)
+            for resource in reloaded.resources.worker + reloaded.resources.verifier
+        )
+        for resource in reloaded.resources.worker + reloaded.resources.verifier:
+            assert build_task_specs.sha256(output / resource.source.path) == (
+                resource.source.sha256
+            )
+        assert not any(
+            "hidden" in resource.path for resource in reloaded.resources.worker
+        )
+        provenance = json.loads(
+            (
+                build_task_specs.SAMPLES_DIR / specification.id / "provenance.json"
+            ).read_text()
+        )
+        assert reloaded.source.dataset == f"openml/{provenance['openml_dataset_id']}"
+        assert reloaded.source.revision == str(provenance["dataset_version"])
+        assert reloaded.source.row == (
+            f"task-{provenance['openml_task_id']}:{provenance['target']}"
+        )
+        assert reloaded.source.importer_revision == build_task_specs.IMPORTER_REVISION
+        parameters = json.loads(reloaded.verifier.parameters_json)
+        assert parameters["task_type"] == provenance["task_type"]
+        assert parameters["target"] == provenance["target"]
+        assert parameters["metric"] == provenance["metric"]
+        assert parameters["require_all_test_rows"]
+        assert not parameters["allow_extra_row_ids"]
+        assert not parameters["allow_duplicate_row_ids"]
+        assert parameters["require_finite_predictions"]
+        config = build_task_specs.verifier_config(
+            build_task_specs.SAMPLES_DIR / specification.id
+        )
+        if provenance["task_type"] == "classification":
+            assert parameters["valid_classes"] == list(range(len(config["classes"])))
+        else:
+            assert "valid_classes" not in parameters
+        context = reloaded.context.events[0].content
+        assert provenance["task_type"] in context
+        assert f"`{provenance['target']}`" in context
+        assert "/app/submission.csv" not in context
 
 
 @pytest.mark.skipif(

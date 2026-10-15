@@ -447,7 +447,7 @@ function gotoSpan(d) {
 }
 function scrollToTurn(k) {
   const el = $('#turn-' + k); if (!el) return;
-  history.replaceState(null, '', '#' + TRAJ.meta.traj_id + ':' + k);
+  history.replaceState(null, '', '#' + TRAJ.meta.traj_id + '.' + k);
   el.scrollIntoView({ block: 'start' });
   $$('#convo .msg.focus').forEach(e => e.classList.remove('focus'));
   el.classList.add('focus');
@@ -713,12 +713,12 @@ async function main() {
     + (ts.length > 1 ? `<button data-tag="delta" title="difference between two score sets (choose the pair in the controls)">Δ</button>` : '');
   $$('#ckpt button').forEach(b => b.onclick = () => { S.tag = b.dataset.tag; changed(); });
   bind(); syncControls(); renderTrajTable(); renderBookmarks();
-  // deep links: #t05 opens a trajectory, #t05:12 also scrolls to turn 12
+  // deep links: #t05 opens a trajectory, #t05.12 (or #t05:12) also scrolls to turn 12
   // #spans / #bookmarks / #about open a view
   const h = location.hash.slice(1), views = ['spans', 'bookmarks', 'about'];
-  const [want, turn] = (h && !views.includes(h) ? h : store.get('traj', null) || INDEX.trajectories[0].traj_id).split(':');
+  const [want, turn] = (h && !views.includes(h) ? h : store.get('traj', null) || INDEX.trajectories[0].traj_id).split(/[:.]/);
   await openTraj(INDEX.trajectories.some(t => t.traj_id === want) ? want : INDEX.trajectories[0].traj_id);
   showView(views.includes(h) ? h : h ? 'traj' : store.get('view', 'traj'));
-  if (turn != null && G && +turn < G.tStart.length) { scrollToTurn(+turn); history.replaceState(null, '', '#' + want + ':' + turn); }
+  if (turn != null && G && +turn < G.tStart.length) { scrollToTurn(+turn); history.replaceState(null, '', '#' + want + '.' + turn); }
 }
 main().catch(e => { document.body.insertAdjacentHTML('afterbegin', `<pre style="color:#c00;padding:10px">${esc(String(e.stack || e))}\n\nServe this directory over HTTP (python3 -m http.server), not file://.</pre>`); });

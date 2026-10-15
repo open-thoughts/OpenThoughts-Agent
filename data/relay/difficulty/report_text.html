@@ -1,0 +1,212 @@
+<div class="col">
+<div class="kicker">SFTA · Milestone 1b · 20 CalibForge teacher episodes</div>
+<h1>Where a student struggles with a teacher's traces</h1>
+<p class="tldr">Score whole turns against the student's own replies to find where the teacher is off-policy, then pick
+spans inside those turns by the gap to the student's top choice.</p>
+<ul class="tldr-list">
+<li>Single tokens never separate teacher from student (0.42–0.58, where 0.5 is chance). Whole turns do, up to 0.91 for
+RLVR1, once the student's own uncertainty is subtracted.</li>
+<li>The teacher reads as off-policy for RLVR1 and on-policy for 09-21. That matches CalibForge SFT hurting RLVR1 and
+helping 09-21 (two students, so a hypothesis).</li>
+<li>The SFT recipe trains only 47% of what the teacher wrote. Of the hard tokens it does train, 66% are still hard
+after three passes.</li>
+</ul>
+</div>
+
+<div class="tiles">
+<div class="tile"><b>0.91</b><span>Chance a teacher turn scores as more off-policy than RLVR1's own reply, using turn
+curvature D. Raw NLL gets 0.71.</span></div>
+<div class="tile"><b>19 of 25</b><span>Spans flagged by the gap to the student's top choice that are worth teaching,
+judged blind. The z-score gets 10.</span></div>
+<div class="tile"><b>47%</b><span>Teacher tokens the current SFT recipe trains (232k of 493k). The untrained half does
+not move during SFT.</span></div>
+</div>
+
+<div class="col">
+<ol class="outline">
+<li><a href="#turns">Off-policiness shows up in whole turns, not in single tokens</a></li>
+<li><a href="#students">The teacher is off-policy for RLVR1 and on-policy for 09-21</a></li>
+<li><a href="#spans">Inside a turn, the gap to the student's top choice picks the spans worth teaching</a></li>
+<li><a href="#masked">The SFT recipe never trains half of what the teacher wrote</a></li>
+<li><a href="#hard">Among the tokens SFT does train, two-thirds of the hard ones stay hard</a></li>
+<li><a href="#next">What I would do next</a></li>
+<li><a href="#method">Measures and method</a></li>
+</ol>
+</div>
+
+<section id="turns">
+<div class="col">
+<div class="kicker">1 · Detecting off-policy text</div>
+<h2>Off-policiness shows up in whole turns, not in single tokens</h2>
+<p class="lead">Averaged over a turn, the calibrated measures pick the teacher's text out from RLVR1's own replies
+82–91% of the time. Token by token, no measure gets past 58%.</p>
+<p>For every teacher turn I sampled 8 replies from the student at the same point in the episode and asked how often a
+measure scores the teacher's turn as more foreign than the student's own reply. Raw NLL does worst, because the
+student's own samples at temperature 1 are noisier than the teacher's text. The measures that <b class="k">subtract the
+student's own uncertainty</b> (surprisal − entropy, its standardized form z, and the turn-level D) fix that.</p>
+</div>
+<figure>
+<!--FIG:turn-->
+<figcaption>Each dot is the chance that a teacher turn scores as more off-policy than one of the student's own replies,
+over 419 turns. The bars around each dot span the 95% range across trajectories. Switch the view to see the same
+comparison when the student does not see the teacher's earlier thinking.</figcaption>
+</figure>
+<div class="col">
+<div class="note"><p>At the token level every measure sits between 0.42 and 0.58, in reasoning, prose and commands
+alike, for both students and both views. Ranking tokens by surprise finds where the student is uncertain, not where
+the teacher departs from it.</p>
+<p>With earlier reasoning dropped, turn length alone separates 09-21's replies from the teacher's (0.69) better than
+any likelihood measure.</p></div>
+</div>
+</section>
+
+<section id="students">
+<div class="col">
+<div class="kicker">2 · Two students, one teacher</div>
+<h2>The teacher is off-policy for RLVR1 and on-policy for 09-21, which matches how SFT went for each</h2>
+<p class="lead">With D, the teacher's turns look as typical to 09-21 as its own replies, and clearly foreign to
+RLVR1.</p>
+<div class="tbl-wrap"><table class="t">
+<tr><th>Student</th><th>D, full history</th><th>D, earlier reasoning dropped</th><th>CalibForge SFT on it</th></tr>
+<tr><td>09-21 (Datakit SFT)</td><td class="n">0.48</td><td class="n">0.64</td><td><span class="pill good">helped</span></td></tr>
+<tr><td>RLVR1 step 12</td><td class="n">0.84</td><td class="n">0.91</td><td><span class="pill bad">hurt</span></td></tr>
+</table></div>
+<p>If this holds on more students, a D score on 20 episodes (under one node-hour per student) would tell us
+<b class="k">whether a teacher's traces will help a student before any training</b>. Dropping the earlier reasoning
+makes the teacher look more foreign to both students, because the later text follows a plan the student can no
+longer see.</p>
+<div class="note"><p>Two students make this a hypothesis, not a rule. Raw NLL for 09-21 is 0.33, meaning the
+teacher's text is more predictable to 09-21 than the student's own samples are.</p></div>
+</div>
+</section>
+
+<section id="spans">
+<div class="col">
+<div class="kicker">3 · Picking spans to teach</div>
+<h2>Inside a turn, the gap to the student's top choice picks the spans worth teaching</h2>
+<p class="lead">Judged blind, 19 of the gap's top 25 spans are knowledge, strategy, reading tool output or earlier
+reasoning. The z-score and p-value manage 10.</p>
+<p>I took each measure's top 25 tokens (one per turn) with their context and had Opus label them without knowing
+which measure picked them. The z-score is good at telling whole turns apart but bad at picking spans. Dividing by the
+student's spread inflates positions where the student is nearly certain, so its top tokens land on
+<b class="k">whitespace, code layout and teacher mistakes</b>.</p>
+</div>
+<figure>
+<!--FIG:spans-->
+<figcaption>Top 25 tokens per measure, labelled blind. Green is worth teaching. With 25 spans per measure,
+differences under about 5 are noise.</figcaption>
+</figure>
+<div class="col">
+<p>The first tokens of a turn are a cheap second signal. 18 of their 25 are worth teaching, 13 of them the teacher
+reading the tool output it just got, and none are invented specifics.</p>
+<h3>What the gap finds, and what the z-score finds</h3>
+<div class="exs">
+<!--EX:t19:3:1219-->
+<!--EX:t10:1:1587-->
+<!--EX:t10:4:395-->
+<!--EX:t06:12:4278-->
+</div>
+<div class="note"><p>Token rankings agree across the two students and both history views (rank correlation
+0.83–0.98), so a span list built with 09-21 carries over to RLVR1.</p></div>
+<h3>All judged examples, by measure</h3>
+<!--FIG:examples_all-->
+</div>
+</section>
+
+<section id="masked">
+<div class="col">
+<div class="kicker">4 · What SFT trains</div>
+<h2>The SFT recipe never trains half of what the teacher wrote</h2>
+<p class="lead">Only 47% of the teacher's tokens in these episodes are SFT targets. The rest is earlier-turn reasoning
+over 1,000 tokens, which the renderer cuts and masks, and it does not move at all.</p>
+<p>I exported the clean-pair vanilla SFT (09-21, three passes over 1,877 CalibForge episodes that include these 20)
+after each pass and scored the same teacher tokens again. The trained and untrained split comes from the real
+training rows.</p>
+</div>
+<figure>
+<!--FIG:sftcurve-->
+<figcaption>Mean NLL of the teacher's content tokens before SFT and after each pass. Trained tokens fall from 0.68 to
+0.54 and level off by pass 2. The masked half stays at 0.96.</figcaption>
+</figure>
+<div class="col">
+<p>Most of the teacher's reasoning is never taught. SFTA has to settle first <b class="k">whether to train it or to
+target only the trained half</b>.</p>
+</div>
+</section>
+
+<section id="hard">
+<div class="col">
+<div class="kicker">5 · What SFT fails to teach</div>
+<h2>Among the tokens SFT does train, two-thirds of the hard ones stay hard</h2>
+<p class="lead">Of the trained tokens that start hard (under 10% probability), 66% are still hard after three passes,
+and nothing beyond starting NLL predicts which.</p>
+</div>
+<figure>
+<!--FIG:hard-->
+<figcaption>Trained content tokens, before SFT and after pass 3. Hard means NLL of at least 2.3 nats.</figcaption>
+</figure>
+<div class="col">
+<p>Starting NLL predicts which hard tokens stay hard (0.78). At equal starting NLL the best measure reaches only 0.57.
+The weak pattern points one way. Tokens the student was <b class="k">unsure about tend to stay hard</b>, and tokens it
+was confidently wrong about tend to get learned.</p>
+</div>
+<figure>
+<!--FIG:predict-->
+<figcaption>Chance that a measure, taken on the student before SFT, ranks a token that stays hard above one that gets
+learned. Dark dots use all hard tokens. Light dots compare only tokens with the same starting NLL, and they all sit
+near 0.5.</figcaption>
+</figure>
+<div class="col">
+<p>So "SFT failed to learn it" is not a target by itself. Only 11 of the top 25 such spans are worth teaching (section
+3). The rest are wording, invented values and teacher confusion. Filter with the gap first, then look at the tokens
+the student was unsure about. That is where extra context from a TA could help.</p>
+<div class="note"><p>A token learned by pass 1 and hard again by pass 3 is rare (0.3% of tokens), so forgetting is not
+what keeps tokens hard here.</p></div>
+</div>
+</section>
+
+<section id="next">
+<div class="col">
+<div class="kicker">Next</div>
+<h2>What I would do next</h2>
+<ol class="next">
+<li><b>Decide whether SFT should train the masked reasoning.</b> Which half SFTA targets changes everything after
+it.</li>
+<li><b>Score D for a few more students whose CalibForge SFT outcome is known</b> (under one node-hour each). This tests
+whether a high D predicts that SFT will hurt.</li>
+<li><b>Run a TA pilot on the top-D turns.</b> Give the TA the top-gap spans, have it write hints, and check whether the
+hints lower the student's NLL on those spans. No training yet.</li>
+</ol>
+</div>
+</section>
+
+<section id="method">
+<div class="col">
+<div class="kicker">Reference</div>
+<h2>Measures and method</h2>
+<dl class="gl">
+<dt>Raw NLL</dt><dd>−log p of the teacher's token under the student.</dd>
+<dt>Gap to the student's top choice</dt><dd>log p of the student's most likely token minus log p of the teacher's
+token. Zero when they agree.</dd>
+<dt>Surprisal − entropy</dt><dd>NLL minus the student's entropy at that position. How much more surprised the student
+is than its usual uncertainty there.</dd>
+<dt>Standardized log-prob (z)</dt><dd>Surprisal − entropy divided by the spread of surprisal under the student's own
+distribution (Fast-DetectGPT).</dd>
+<dt>Turn curvature D</dt><dd>The same, summed over a whole turn before dividing. One number per turn.</dd>
+<dt>Surprise p-value</dt><dd>−log of the probability mass the student puts on tokens no more likely than the teacher's.</dd>
+<dt>Confident conflict</dt><dd>NLL weighted by how sure the student is. High when the token is unlikely and the
+student is confident (EAFT).</dd>
+<dt>Rank, entropy</dt><dd>Rank of the teacher's token in the student's top 20, and the student's entropy itself.</dd>
+<dt>NLL change without earlier reasoning</dt><dd>How much harder a token gets when the student does not see the
+teacher's earlier thinking.</dd>
+<dt>First tokens of a turn</dt><dd>Position in the turn, earliest first. A baseline.</dd>
+</dl>
+<p class="method">20 passing CalibForge episodes from Qwen3.8-27B with Mini SWE Agent 2 (seed 20261014, stratified by
+domain, no exclusions), 419 teacher turns and 493k teacher tokens. Students are Grug-67B-A2B Datakit SFT 09-21 and
+Antidoom RLVR1 step 12, scored teacher-forced with vLLM prompt logprobs (top 20) at 131k context, no truncation. Every
+teacher turn got 8 replies per student per history view (13,408 replies). The separation numbers are AUROC, with 95%
+bootstrap intervals over trajectories. Entropy is a lower bound from the top 20. Span labels come from six blind Opus
+judges over 174 windows. Total cost about 7.6 GB200 node-hours. The per-token scores for all 20 episodes are in the
+<a href="index.html">token viewer</a>.</p>
+</div>
+</section>

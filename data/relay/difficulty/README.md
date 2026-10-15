@@ -43,5 +43,13 @@ site with the extra tag. Scores join renders by token position and are checked a
 python3 -m http.server 8765 -d <site dir>     # then open http://localhost:8765
 ```
 
-Deep links: `#t05` opens a trajectory, `#t05:12` opens turn 12, and `#spans` / `#bookmarks` / `#about` open those
+Deep links: `#t05` opens a trajectory, `#t05.12` opens turn 12, and `#spans` / `#bookmarks` / `#about` open those
 views. Bookmarks live in browser localStorage, with JSON export and import.
+
+The method-benchmark report is `compare.html`: `python compare_page.py --bench <benchmark dir> --text report_text.html
+--out <site dir>/compare.html` fills the figures in `report_text.html` (the prose, written after reading the results)
+from `benchmark.json` and the judged windows.
+
+The same site can be published as a private claude.ai Artifact: `python artifact_bundle.py --site <site dir> --out <dir>`
+writes the benchmark page as the artifact page plus `viewer.html`, its JS/CSS and the per-trajectory JSON (the
+38 MB `tables/` CSVs stay local). Bookmark export is a download, which the Artifact frame blocks.

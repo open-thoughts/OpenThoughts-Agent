@@ -25,9 +25,19 @@ else
   echo 0 > /logs/verifier/reward.txt
 fi
 """
+TMP_GUARD = """# Restore only verifier scratch infrastructure if the agent removed it.
+if [ -L /tmp ] || { [ -e /tmp ] && [ ! -d /tmp ]; }; then
+    echo "Verifier scratch /tmp is a symlink or non-directory; refusing repair" >&2
+    exit 1
+fi
+if [ ! -d /tmp ]; then
+    mkdir -m 1777 -- /tmp
+fi
+
+"""
 
 
-def repaired_script(original: str) -> str:
+def repaired_script(original: str, *, restore_missing_tmp: bool = False) -> str:
     if not original.startswith(HEADER):
         raise ValueError("Expected converted SWE-bench errexit header")
     if (
@@ -39,7 +49,10 @@ def repaired_script(original: str) -> str:
     if 'dependencies = ["swebench==4.0.3"' not in original:
         raise ValueError("Only SWE-bench 4.0.3 converted fixtures are supported")
     result = original.replace(HEADER, "#!/bin/bash\nset +e\nset -uo pipefail\n", 1)
-    result = result.replace(TRUSTED_RESET, "set -e\n\n        " + TRUSTED_RESET, 1)
+    guard = TMP_GUARD if restore_missing_tmp else ""
+    result = result.replace(
+        TRUSTED_RESET, "set -e\n\n" + guard + "        " + TRUSTED_RESET, 1
+    )
     result = result.replace(
         REPORT,
         REPORT + '\nwith open("/logs/verifier/reward.txt", "w") as reward:\n'
@@ -55,11 +68,11 @@ def repaired_script(original: str) -> str:
     return result
 
 
-def repair(source: Path, destination: Path) -> None:
+def repair(source: Path, destination: Path, *, restore_missing_tmp: bool = False) -> None:
     if destination.exists():
         raise FileExistsError(destination)
     original = (source / "tests/test.sh").read_text()
-    output = repaired_script(original)
+    output = repaired_script(original, restore_missing_tmp=restore_missing_tmp)
     shutil.copytree(source, destination)
     (destination / "tests/test.sh").write_text(output)
     receipt = {
@@ -73,6 +86,9 @@ def repair(source: Path, destination: Path) -> None:
         "trusted_test_reset_and_apply_failures_remain_unscored": True,
         "reward_requires_completed_official_report": True,
     }
+    if restore_missing_tmp:
+        receipt["restore_missing_verifier_tmp"] = True
+        receipt["tmp_symlinks_and_non_directories_refused"] = True
     (destination / "swe_runner_repair.json").write_text(
         json.dumps(receipt, indent=2) + "\n"
     )
@@ -82,5 +98,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("destination", type=Path)
+    parser.add_argument("--restore-missing-tmp", action="store_true")
     args = parser.parse_args()
-    repair(args.source, args.destination)
+    repair(args.source, args.destination, restore_missing_tmp=args.restore_missing_tmp)

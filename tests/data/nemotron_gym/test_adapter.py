@@ -376,6 +376,73 @@ def test_calendar_verifier_accepts_complete_non_overlapping_schedule():
     assert valid, errors
 
 
+def test_calendar_verifier_accepts_back_to_back_half_open_intervals():
+    expected, events = _valid_calendar_case()
+    expected["1"].update(constraint=None, min_time="10:00")
+    events[1]["start_time"] = "10:30"
+
+    valid, errors = _calendar_evaluator()(expected, events)
+
+    assert valid, errors
+
+
+def test_calendar_verifier_reports_overlapping_ids_and_intervals():
+    expected, events = _valid_calendar_case()
+    expected["1"].update(constraint=None, min_time="10:00")
+    events[1]["start_time"] = "10:15"
+
+    valid, errors = _calendar_evaluator()(expected, events)
+
+    assert not valid
+    assert errors == ["events 0 [10:00, 10:30) and 1 [10:15, 11:00) overlap"]
+
+
+def test_calendar_verifier_rejects_same_start_and_unsorted_outer_overlap():
+    expected, events = _valid_calendar_case()
+    expected["1"].update(constraint=None, min_time="10:00")
+    events[0].update(start_time="10:00", duration=45)
+    expected["0"]["duration"] = 45
+    events[1]["start_time"] = "10:00"
+    events.reverse()
+
+    valid, errors = _calendar_evaluator()(expected, events)
+
+    assert not valid
+    assert errors == ["events 0 [10:00, 10:45) and 1 [10:00, 10:45) overlap"]
+
+
+def test_calendar_verifier_reports_every_conflicting_pair():
+    expected, events = _valid_calendar_case()
+    expected["0"]["duration"] = 120
+    expected["1"].update(duration=15, constraint=None, min_time="10:00")
+    expected["2"] = {
+        "event_id": 2,
+        "event_name": "C",
+        "duration": 15,
+        "min_time": "10:00",
+        "max_time": "16:00",
+        "constraint": None,
+    }
+    events = [
+        {"event_id": 2, "event_name": "C", "start_time": "11:00", "duration": 15},
+        {
+            "event_id": 0,
+            "event_name": "Design Review",
+            "start_time": "10:00",
+            "duration": 120,
+        },
+        {"event_id": 1, "event_name": "Lunch", "start_time": "10:15", "duration": 15},
+    ]
+
+    valid, errors = _calendar_evaluator()(expected, events)
+
+    assert not valid
+    assert errors == [
+        "events 0 [10:00, 12:00) and 1 [10:15, 10:30) overlap",
+        "events 0 [10:00, 12:00) and 2 [11:00, 11:15) overlap",
+    ]
+
+
 def test_calendar_verifier_leaves_no_reward_for_corrupt_verifier_data(tmp_path):
     namespace = _calendar_namespace()
     namespace["DATA"] = tmp_path / "verifier_data.json"

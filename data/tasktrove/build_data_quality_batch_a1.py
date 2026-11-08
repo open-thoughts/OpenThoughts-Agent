@@ -32,6 +32,7 @@ TASKTROVE_REPO = "open-thoughts/TaskTrove"
 TASKTROVE_V342_REVISION = "3e96fe6464ce5ab6209e98801caab29b4a1fe87a"
 MAX_BATCH_ROWS = 32
 MIN_RETAINED_TASKS = 300
+CALENDAR_GRANULARITY_MINUTES = 5
 TASK_SCHEMA = pa.schema([("path", pa.string()), ("task_binary", pa.binary())])
 METHODS2TEST_BLOCK_REASON = (
     "no certifiable >=300-task repair: 0/32 evenly spaced normalized oracles "
@@ -237,7 +238,11 @@ def _feasible_calendar(expected: dict[str, dict]) -> list[dict] | None:
             return None
         starts = [
             start
-            for start in range(minimum, maximum - duration + 1, 15)
+            for start in range(
+                minimum,
+                maximum - duration + 1,
+                CALENDAR_GRANULARITY_MINUTES,
+            )
             if _CHECK_CALENDAR_CONSTRAINT(
                 spec.get("constraint"), start, start + duration
             )
@@ -246,32 +251,38 @@ def _feasible_calendar(expected: dict[str, dict]) -> list[dict] | None:
             return None
         candidates[event_id] = starts
 
-    order = sorted(
-        candidates, key=lambda event_id: (len(candidates[event_id]), event_id)
-    )
-    placed: dict[int, int] = {}
-
-    def search(index: int) -> bool:
-        if index == len(order):
-            return True
-        event_id = order[index]
-        duration = expected[str(event_id)]["duration"]
-        for start in candidates[event_id]:
-            end = start + duration
-            if any(
-                start < other_start + expected[str(other_id)]["duration"]
-                and other_start < end
-                for other_id, other_start in placed.items()
-            ):
+    event_ids = sorted(candidates)
+    states: dict[int, tuple[int, dict[int, int]]] = {0: (0, {})}
+    for mask in range(1 << len(event_ids)):
+        state = states.get(mask)
+        if state is None:
+            continue
+        previous_end, placements = state
+        for index, event_id in enumerate(event_ids):
+            bit = 1 << index
+            if mask & bit:
                 continue
-            placed[event_id] = start
-            if search(index + 1):
-                return True
-            del placed[event_id]
-        return False
+            start = next(
+                (
+                    candidate
+                    for candidate in candidates[event_id]
+                    if candidate >= previous_end
+                ),
+                None,
+            )
+            if start is None:
+                continue
+            end = start + expected[str(event_id)]["duration"]
+            next_mask = mask | bit
+            existing = states.get(next_mask)
+            if existing is not None and existing[0] <= end:
+                continue
+            states[next_mask] = (end, {**placements, event_id: start})
 
-    if not search(0):
+    complete = states.get((1 << len(event_ids)) - 1)
+    if complete is None:
         return None
+    placed = complete[1]
     return [
         {
             "event_id": event_id,

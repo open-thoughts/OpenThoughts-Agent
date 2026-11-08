@@ -68,6 +68,11 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Iterable, Iterator
 
+from data.patchers.trusted_test_patch import (
+    trusted_test_patch_command,
+    write_trusted_test_patch_installer,
+)
+
 
 # ---------------------------------------------------------------------------
 # Base image map
@@ -332,11 +337,10 @@ TEST_SH_TEMPLATE = dedent(
 
     mkdir -p /logs/verifier
 
-    # Apply the hidden test patch (the tests the fix PR introduced)
-    cd /testbed
-    if [ -f /tests/test_patch.diff ]; then
-        git apply --verbose /tests/test_patch.diff || \\
-            git apply --verbose --reject /tests/test_patch.diff || true
+    # Restore hidden-test paths from the immutable base before applying the
+    # trusted patch. Product-code edits made by the agent remain untouched.
+    if ! {trusted_test_patch_command}; then
+        exit 1
     fi
 
     # Run the task's test command (per-row from install_config.test_cmd).
@@ -1099,7 +1103,10 @@ def patch_row(row: dict, output_root: Path, dry_run: bool = False) -> dict:
 
     # 3. tests/test.sh
     (task_dir / "tests" / "test.sh").write_text(
-        TEST_SH_TEMPLATE.format(test_cmd=test_cmd)
+        TEST_SH_TEMPLATE.format(
+            test_cmd=test_cmd,
+            trusted_test_patch_command=trusted_test_patch_command(base_commit),
+        )
     )
 
     # 4. tests/test_state.py
@@ -1126,6 +1133,9 @@ def patch_row(row: dict, output_root: Path, dry_run: bool = False) -> dict:
     # 6. tests/test_patch.diff
     if test_patch and test_patch.strip():
         (task_dir / "tests" / "test_patch.diff").write_text(test_patch)
+        write_trusted_test_patch_installer(
+            task_dir / "tests" / "install_trusted_test_patch.sh"
+        )
 
     # 7. solution/solve.sh
     (task_dir / "solution" / "solve.sh").write_text(

@@ -166,17 +166,51 @@ def test_authority_record_names_the_live_node_and_mount(tmp_path: Path) -> None:
 def test_rl_template_mounts_before_container_setup_and_forwards_term() -> None:
     template = Path("hpc/sbatch_rl/universal_rl.sbatch").read_text()
 
-    assert "#SBATCH --signal=B:TERM@180" in template
+    assert "#SBATCH --signal=B:USR1@300" in template
     assert template.index("fuse2fs -o rw,fakeroot") < template.index(
         "setup_container_runtime"
     )
     assert "allow_other" not in template
     assert 'mountpoint -q "$ARTIFACT_STORE_MOUNT"' in template
     assert 'mkdir "$ARTIFACT_STORE_LEASE"' in template
-    assert 'kill -TERM "$RL_RUNNER_PID"' in template
     assert template.index("sync") < template.index(
         'fusermount3 -u "$ARTIFACT_STORE_MOUNT"'
     )
+
+
+def test_rl_shutdown_forwards_term_to_live_runner(tmp_path: Path) -> None:
+    marker = tmp_path / "terminated"
+    runner = subprocess.Popen(
+        [
+            "bash",
+            "-c",
+            'trap \'printf terminated > "$1"; exit 0\' TERM; printf "ready\\n"; while true; do sleep 1; done',
+            "runner",
+            str(marker),
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert runner.stdout is not None
+        assert runner.stdout.readline() == "ready\n"
+        subprocess.run(
+            [
+                "bash",
+                "-c",
+                'source "$1"; forward_termination_to_rl_runner "$2"',
+                "forwarder",
+                str(Path("hpc/shell_utils/rl_shutdown.sh").resolve()),
+                str(runner.pid),
+            ],
+            check=True,
+        )
+        assert runner.wait(timeout=5) == 0
+        assert marker.read_text() == "terminated"
+    finally:
+        if runner.poll() is None:
+            runner.kill()
+            runner.wait(timeout=5)
 
 
 def test_trace_exporter_mounts_an_image_backed_run(

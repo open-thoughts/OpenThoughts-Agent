@@ -6,7 +6,11 @@ import tarfile
 
 import pytest
 
-from data.tasktrove.build_data_quality_batch_a1 import build, read_task
+from data.tasktrove.build_data_quality_batch_a1 import (
+    _feasible_calendar,
+    build,
+    read_task,
+)
 
 
 def _archive(members: list[tuple[tarfile.TarInfo, bytes]]) -> bytes:
@@ -58,3 +62,25 @@ def test_rspec_build_is_blocked_without_output(tmp_path) -> None:
     assert report["status"] == "blocked"
     assert report["probe_false_positives"] == 3
     assert not list(stage.rglob("*.parquet"))
+
+
+def test_calendar_solver_supports_five_minute_constraints() -> None:
+    expected = {
+        "0": {
+            "event_id": 0,
+            "event_name": "Five-minute boundary",
+            "duration": 10,
+            "min_time": "10:05",
+            "max_time": "10:15",
+            "constraint": "at 10:05am",
+        }
+    }
+
+    assert _feasible_calendar(expected) == [
+        {
+            "event_id": 0,
+            "event_name": "Five-minute boundary",
+            "start_time": "10:05",
+            "duration": 10,
+        }
+    ]

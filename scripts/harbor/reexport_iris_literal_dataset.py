@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -12,11 +13,13 @@ from pathlib import Path, PurePosixPath
 
 from datasets import load_dataset
 from google.cloud import storage
+from google.auth.exceptions import DefaultCredentialsError
 
 from scripts.harbor.make_and_upload_trace_dataset import count_populated_literal_rows
 
 
 DOWNLOAD_WORKERS = 16
+GCS_S3_ENDPOINT = "https://storage.googleapis.com"
 
 
 def parse_gs_uri(uri: str) -> tuple[str, str]:
@@ -37,15 +40,75 @@ def safe_destination(root: Path, relative_key: str) -> Path:
     return root.joinpath(*relative_path.parts)
 
 
+def _download_prefix_with_hmac(
+    bucket_name: str, prefix: str, destination: Path, source_prefix: str
+) -> int:
+    """Read GCS via its S3 endpoint when workload identity is unavailable."""
+    import boto3
+    from botocore.config import Config
+
+    access_key = os.environ.get("MARIN_HMAC_ACCESS_ID")
+    secret_key = os.environ.get("MARIN_HMAC_SECRET")
+    if not access_key or not secret_key:
+        raise RuntimeError(
+            "GCS ADC is unavailable and MARIN_HMAC_ACCESS_ID/MARIN_HMAC_SECRET "
+            "were not provided for the GCS S3-compatible fallback"
+        )
+    client = boto3.client(
+        "s3",
+        endpoint_url=GCS_S3_ENDPOINT,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        config=Config(max_pool_connections=DOWNLOAD_WORKERS),
+    )
+    objects = []
+    for page in client.get_paginator("list_objects_v2").paginate(
+        Bucket=bucket_name, Prefix=prefix
+    ):
+        objects.extend(item["Key"] for item in page.get("Contents", []))
+    if not objects:
+        raise RuntimeError(f"No objects found under {source_prefix}")
+
+    def download(key: str) -> None:
+        relative = key.removeprefix(prefix)
+        target = safe_destination(destination, relative)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        client.download_file(bucket_name, key, str(target))
+
+    print(
+        f"[literal-reexport] downloading {len(objects)} GCS objects via HMAC fallback",
+        flush=True,
+    )
+    with ThreadPoolExecutor(max_workers=DOWNLOAD_WORKERS) as executor:
+        futures = [executor.submit(download, key) for key in objects]
+        for copied, future in enumerate(as_completed(futures), start=1):
+            future.result()
+            if copied % 500 == 0 or copied == len(objects):
+                print(
+                    f"[literal-reexport] downloaded {copied}/{len(objects)} objects",
+                    flush=True,
+                )
+    return len(objects)
+
+
 def download_prefix(source_prefix: str, destination: Path) -> int:
-    """Download one durable GCS prefix with bounded concurrency."""
+    """Download one durable GCS prefix with bounded concurrency.
+
+    Iris GPU cleanup workers do not consistently receive Google ADC.  Fall back
+    to the existing Marin HMAC credentials against GCS's S3-compatible endpoint.
+    """
     bucket_name, prefix = parse_gs_uri(source_prefix)
-    storage.Client().bucket(bucket_name)
-    blobs = [
-        blob
-        for blob in storage.Client().list_blobs(bucket_name, prefix=prefix)
-        if blob.name != prefix
-    ]
+    try:
+        client = storage.Client()
+        blobs = [
+            blob
+            for blob in client.list_blobs(bucket_name, prefix=prefix)
+            if blob.name != prefix
+        ]
+    except DefaultCredentialsError:
+        return _download_prefix_with_hmac(
+            bucket_name, prefix, destination, source_prefix
+        )
     if not blobs:
         raise RuntimeError(f"No objects found under {source_prefix}")
 

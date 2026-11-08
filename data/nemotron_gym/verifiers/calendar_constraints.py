@@ -155,9 +155,20 @@ def evaluate_calendar(expected: object, events: object) -> tuple[bool, list[str]
         intervals.append((start, end, event_id))
 
     intervals.sort()
-    for previous, current in zip(intervals, intervals[1:]):
-        if current[0] < previous[1]:
-            errors.append(f"events {previous[2]} and {current[2]} overlap")
+    for index, previous in enumerate(intervals):
+        for current in intervals[index + 1 :]:
+            if current[0] >= previous[1]:
+                break
+            previous_start, previous_end, previous_id = previous
+            current_start, current_end, current_id = current
+            errors.append(
+                f"events {previous_id} "
+                f"[{previous_start // 60:02d}:{previous_start % 60:02d}, "
+                f"{previous_end // 60:02d}:{previous_end % 60:02d}) and "
+                f"{current_id} "
+                f"[{current_start // 60:02d}:{current_start % 60:02d}, "
+                f"{current_end // 60:02d}:{current_end % 60:02d}) overlap"
+            )
     return not errors, errors
 
 

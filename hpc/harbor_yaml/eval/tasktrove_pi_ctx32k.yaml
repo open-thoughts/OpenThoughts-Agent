@@ -23,8 +23,8 @@ environment:
   kwargs:
     auto_snapshot: true
 verifier:
-  override_timeout_sec: 7200
-  max_timeout_sec: 7200
+  override_timeout_sec: null
+  max_timeout_sec: 600
 agents:
   - name: pi
     model_name: placeholder/override-at-runtime

@@ -1,0 +1,13 @@
+schema_version = "1.2"
+artifacts = ["/app/probe.txt"]
+[task]
+name = "openml-preflight/isolation"
+[agent]
+timeout_sec = 60
+[environment]
+cpus = 1
+memory_mb = 512
+allow_internet = false
+[verifier]
+environment_mode = "separate"
+timeout_sec = 60

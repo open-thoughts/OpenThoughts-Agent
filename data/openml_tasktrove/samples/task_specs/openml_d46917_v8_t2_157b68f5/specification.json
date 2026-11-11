@@ -1,0 +1,98 @@
+{
+  "id": "openml_d46917_v8_t2_157b68f5",
+  "context": {
+    "events": [
+      {
+        "type": "message",
+        "role": "user",
+        "content": "Build a regression model for the target column `ConcreteCompressiveStrength`.\n\nUse the labelled training data in `data/train.csv` to predict the target for every row in `data/test.csv`. Feature values may be missing. Do not use `row_id` as a feature.\n\nReturn a CSV prediction artifact with exactly two columns, in order: `row_id,prediction`. Include every test row ID exactly once, with no extra rows.\nPredictions must be finite numeric values.\nPredictions are evaluated using rmse (lower is better)."
+      }
+    ]
+  },
+  "environment_requirements": {
+    "capabilities": [
+      "filesystem",
+      "shell",
+      "process"
+    ],
+    "docker_image": null,
+    "working_directory": "/app",
+    "setup_commands": [],
+    "environment_variables": {},
+    "tool_providers": {}
+  },
+  "final_tools": [],
+  "answer_type": "file",
+  "verifier": {
+    "kind": "tabular_predictions",
+    "parameters_json": "{\"allow_duplicate_row_ids\":false,\"allow_extra_row_ids\":false,\"artifact_format\":\"csv\",\"id_column\":\"row_id\",\"max_file_bytes\":10000000,\"metric\":\"rmse\",\"prediction_column\":\"prediction\",\"require_all_test_rows\":true,\"require_column_order\":true,\"require_finite_predictions\":true,\"require_regular_file\":true,\"required_columns\":[\"row_id\",\"prediction\"],\"target\":\"ConcreteCompressiveStrength\",\"task_type\":\"regression\"}",
+    "environment_requirements": {
+      "capabilities": [],
+      "docker_image": null,
+      "working_directory": null,
+      "setup_commands": [],
+      "environment_variables": {},
+      "tool_providers": {}
+    }
+  },
+  "source": {
+    "dataset": "openml/46917",
+    "revision": "8",
+    "row": "task-363625:ConcreteCompressiveStrength",
+    "importer_revision": "8d8f24419d203755f5a40b1db45b24815c97ec6e"
+  },
+  "schema_version": "0.18",
+  "resources": {
+    "all": [],
+    "worker": [
+      {
+        "path": "data/train.csv",
+        "source": {
+          "kind": "dataset_path",
+          "path": "openml_d46917_v8_t2_157b68f5/resources/train.csv",
+          "sha256": "5f870d3c306bf29f11d1e041ceb5a99353be5cdd1a22499202fed81cd699aa4b"
+        },
+        "format": "copy",
+        "mode": null
+      },
+      {
+        "path": "data/test.csv",
+        "source": {
+          "kind": "dataset_path",
+          "path": "openml_d46917_v8_t2_157b68f5/resources/test.csv",
+          "sha256": "a88357b6ca53773088f5f41babbac140f296404c0756d36f5d9b7d04486c2000"
+        },
+        "format": "copy",
+        "mode": null
+      },
+      {
+        "path": "data/ATTRIBUTION.md",
+        "source": {
+          "kind": "dataset_path",
+          "path": "openml_d46917_v8_t2_157b68f5/resources/ATTRIBUTION.md",
+          "sha256": "1f8c7c7d88a5951a07e831b91a0a7fb0f7992680bc77483dfc417ed9c79c2dc5"
+        },
+        "format": "copy",
+        "mode": null
+      }
+    ],
+    "oracle": [],
+    "verifier": [
+      {
+        "path": "hidden_labels.csv",
+        "source": {
+          "kind": "dataset_path",
+          "path": "openml_d46917_v8_t2_157b68f5/resources/hidden_labels.csv",
+          "sha256": "de811dac05b46da27c11982e0dcbb7d06961a6a96eb49e8d6584324c6152d77e"
+        },
+        "format": "copy",
+        "mode": null
+      }
+    ]
+  },
+  "tags": [
+    "openml",
+    "regression",
+    "rmse"
+  ]
+}

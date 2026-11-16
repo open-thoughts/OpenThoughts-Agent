@@ -51,7 +51,7 @@ def main() -> None:
     upload_tasks_to_hf(subsampled_dataset_dir, "mlfoundations-dev/staqc-sandboxes")
     hf_dataset = run_dataset_to_traces(
         subsampled_dataset_dir,
-        model_name="gpt-5-nano-2025-08-07",
+        model_name="gpt-6-luna",
         agent_name="terminus-2",
         n_concurrent=256,
         agent_kwargs={"max_episodes": 8},
